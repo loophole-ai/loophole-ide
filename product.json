@@ -23,6 +23,14 @@
 	"win32x64UserAppId": "{{8BED5DC1-6C55-46E6-9FE6-18F7E6F7C7F1}",
 	"win32arm64UserAppId": "{{F6C87466-BC82-4A8F-B0FF-18CA366BA4D8}",
 	"win32AppUserModelId": "Void.Editor",
+    "win32ContextMenu": {
+        "x64": {
+            "clsid": "00a95dc5-df32-4682-b5a3-f057708a7c09"
+        },
+        "arm64": {
+            "clsid": "8f8181af-0130-4554-8bc2-8a2cccbdcbcb"
+        }
+    },
 	"win32ShellNameShort": "Loophole",
 	"win32TunnelServiceMutex": "void-tunnelservice",
 	"win32TunnelMutex": "void-tunnel",
