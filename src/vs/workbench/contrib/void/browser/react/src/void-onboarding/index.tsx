@@ -4,6 +4,6 @@
  *--------------------------------------------------------------------------------------*/
 
 import { mountFnGenerator } from '../util/mountFnGenerator.js'
-import { LoopholeOnboarding } from './VoidOnboarding.js'
+import { LoopholeOnboarding as VoidOnboarding } from './VoidOnboarding.js'
 
 export const mountVoidOnboarding = mountFnGenerator(VoidOnboarding)
