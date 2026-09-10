@@ -34,7 +34,7 @@ http = "1"
 gethostname = "0.4.3"
 libc = "0.2.144"
 tunnels = { git = "https://github.com/microsoft/dev-tunnels", rev = "64048c1409ff56cb958b879de7ea069ec71edc8b", default-features = false, features = ["connections"] }
-keyring = { version = "2.0.3", default-features = false, features = ["linux-secret-service-rt-tokio-crypto-openssl", "platform-windows", "platform-macos", "linux-keyutils"] }
+keyring = { version = "2.0.3", default-features = false, features = ["platform-windows", "platform-macos"] }
 dialoguer = "0.10.4"
 hyper = { version = "1", features = ["server", "http1", "client"] }
 hyper-util = { version = "0.1", features = ["tokio", "server-auto"] }
@@ -75,6 +75,7 @@ core-foundation = "0.9.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = { version = "3.13.1", default-features = false, features = ["tokio"] }
+keyring = { version = "2.0.3", default-features = false, features = ["linux-secret-service-rt-tokio-crypto-openssl", "linux-keyutils"] }
 
 [patch.crates-io]
 russh = { git = "https://github.com/microsoft/vscode-russh", branch = "main" }
