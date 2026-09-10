@@ -1,25 +1,24 @@
-name: CI Build — Windows
+name: Publish Build — Windows
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      upload_to_gofile:
-        description: 'Upload artifacts to Gofile.io for faster download?'
+      version:
         required: true
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
+        type: string
+      release_id:
+        required: true
+        type: string
+  workflow_dispatch:
 
 env:
-  NODE_VERSION: '24.18.0'
+  NODE_VERSION: '22'
   ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
   ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Resolve version from package.json or manual override
+  # Resolve version from package.json (used by both jobs)
   # ─────────────────────────────────────────────────────────────────────────────
   resolve-version:
     name: Resolve Version
@@ -44,8 +43,9 @@ jobs:
     name: Build Windows x64
     needs: resolve-version
     runs-on: windows-2022
+    environment: publish
     env:
-      VERSION: ${{ needs.resolve-version.outputs.version }}
+      VERSION: ${{ inputs.version || needs.resolve-version.outputs.version }}
 
     steps:
       # ── Checkout ──────────────────────────────────────────────────────────────
@@ -60,18 +60,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-
-      # ── Pin npm (< 11.2.0 required by preinstall.ts) ──────────────────────────
-      - name: Pin npm (< 11.2.0 required by preinstall)
-        shell: pwsh
-        run: |
-          npm install -g npm@11.1.0
-          Write-Host "node: $(node -v)"
-          Write-Host "npm:  $(npm -v)"
-          if ([version](npm -v) -ge [version]'11.2.0') {
-            Write-Error "npm is still >= 11.2.0 after pin — PATH is not honoring setup-node"
-            exit 1
-          }
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -94,8 +82,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             cli/target
-          key: ${{ runner.os }}-cargo-x64-${{ hashFiles('cli/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-x64-
+          key: publish-win-x64-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: publish-win-x64-cargo-
 
       - name: Cache Electron
         uses: actions/cache@v4
@@ -103,15 +91,20 @@ jobs:
           path: |
             ${{ env.ELECTRON_CACHE }}
             ${{ env.ELECTRON_BUILDER_CACHE }}
-          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
-          restore-keys: ${{ runner.os }}-electron-
+          key: publish-win-x64-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: publish-win-x64-electron-
 
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: ${{ runner.os }}-node-
+          key: publish-win-x64-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: publish-win-x64-node-
+
+      - name: Clear stale postinstall state marker
+        shell: pwsh
+        run: |
+          Remove-Item -Path "node_modules/.postinstall-state", "node_modules/.postinstall-state-contents" -ErrorAction SilentlyContinue
 
       # ── Install & compile ──────────────────────────────────────────────────────
       - name: Install node-gyp
@@ -122,20 +115,16 @@ jobs:
         env:
           npm_config_arch: x64
 
+      - name: Install open-remote-ssh dependencies
+        run: npm install
+        working-directory: extensions/open-remote-ssh
+
       - name: Backup node-pty conpty binaries
         shell: pwsh
         run: |
           $src = "node_modules/node-pty/build/Release/conpty"
 
           if (-not (Test-Path $src)) {
-            # This usually means the node_modules cache (see "Cache node_modules" step
-            # above) restored a stale copy from an earlier run where, for whatever
-            # reason, node-pty's own postinstall never produced this folder. Once that
-            # bad cache is saved, npm sees node-pty already present on future cache hits
-            # and skips re-running postinstall, so the folder never gets regenerated on
-            # its own. Self-heal by re-running node-pty's postinstall script directly —
-            # it's idempotent and just copies conpty.dll/OpenConsole.exe from the
-            # package's own bundled third_party/conpty folder, no network needed.
             Write-Warning "conpty folder missing after npm install (likely a stale node_modules cache) — repairing by re-running node-pty's postinstall"
             $env:npm_config_arch = "x64"
             node node_modules/node-pty/scripts/post-install.js
@@ -152,7 +141,7 @@ jobs:
       - name: Rebuild native modules for Electron
         run: |
           npm install -g @electron/rebuild
-          electron-rebuild -f -w node-pty
+          electron-rebuild -f -w node-pty,onnxruntime-node
         env:
           npm_config_arch: x64
 
@@ -237,7 +226,7 @@ jobs:
             } else { Write-Warning "No .exe found in system-setup — skipping" }
           } else { Write-Warning "system-setup folder not found — skipping" }
 
-      # ── 3. CLI binary ──────────────────────────────────────────────────────────
+      # ── 3. CLI binary (.exe) ────────────────────────────────────────────────────
       - name: Stage — CLI binary
         shell: pwsh
         run: |
@@ -246,6 +235,18 @@ jobs:
             Copy-Item $cliBin "dist/loophole-cli-win32-x64-$env:VERSION.exe"
             Write-Host "Staged CLI binary"
           } else { Write-Warning "CLI binary not found — skipping" }
+
+      # ── 4. ZIP archive (reuses the package already built above) ───────────────
+      - name: Stage — ZIP
+        shell: pwsh
+        run: |
+          if (Test-Path ".build/win32-x64") {
+            $src = Get-ChildItem ".build/win32-x64" -Filter "*.zip" | Select-Object -First 1
+            if ($src) {
+              Copy-Item $src.FullName "dist/Loophole-win32-x64-$env:VERSION.zip"
+              Write-Host "Staged: $($src.Name)"
+            } else { Write-Warning "No .zip found in .build/win32-x64 — skipping" }
+          } else { Write-Warning ".build/win32-x64 folder not found — skipping" }
 
       # ── Summary ───────────────────────────────────────────────────────────────
       - name: List built artifacts
@@ -257,7 +258,26 @@ jobs:
             Write-Host "  $($_.Name)  ($size MB)"
           }
 
-      # ── Upload all artifacts to GitHub ────────────────────────────────────────
+      - name: Compute SHA256 hashes
+        shell: pwsh
+        run: |
+          $hashes = @{}
+          Get-ChildItem dist | Where-Object { !$_.PSIsContainer } | ForEach-Object {
+            $sha = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            $hashes[$_.Name] = $sha
+            Write-Host "$($_.Name) → $sha"
+          }
+          $hashes | ConvertTo-Json | Set-Content sha256-hashes.json
+          Get-Content sha256-hashes.json
+
+      - name: Upload SHA256 hashes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-hashes-windows-x64
+          path: sha256-hashes.json
+          retention-days: 7
+
+      # ── Upload all artifacts to GitHub Actions ─────────────────────────────────
       - name: Upload — User Installer
         uses: actions/upload-artifact@v4
         with:
@@ -282,6 +302,15 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+      - name: Upload — ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-win32-x64-${{ env.VERSION }}-zip
+          path: dist/Loophole-win32-x64-${{ env.VERSION }}.zip
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── Zip artifacts for easier download ──────────────────────────────────────
       - name: Zip artifacts
         shell: pwsh
         run: |
@@ -297,9 +326,8 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-      # ── Upload to Gofile.io (optional) ────────────────────────────────────────
+      # ── Upload to Gofile.io and save links ─────────────────────────────────────
       - name: Upload to Gofile.io
-        if: ${{ github.event.inputs.upload_to_gofile == 'true' }}
         shell: bash
         run: |
           echo "======================================"
@@ -307,35 +335,78 @@ jobs:
           echo "======================================"
 
           # Get best available server
-          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])")
+          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
+          if [ -z "$SERVER" ]; then
+            echo "::warning::Failed to get Gofile.io server — skipping upload"
+            echo "[]" > gofile-links-x64.json
+            exit 0
+          fi
           echo "Using server: $SERVER"
 
-          for FILE in dist/*.zip; do
-            FILENAME=$(basename "$FILE")
-            echo ""
-            echo "Uploading: $FILENAME"
-            RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
-            echo "Response: $RESPONSE"
-            LINK=$(echo $RESPONSE | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['downloadPage'])")
-            echo " $FILENAME → $LINK"
+          # Create JSON array to store links
+          echo "[" > gofile-links-x64.json
+          FIRST=true
+
+          for FILE in dist/*; do
+            if [ -f "$FILE" ]; then
+              FILENAME=$(basename "$FILE")
+              echo ""
+              echo "Uploading: $FILENAME"
+              RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
+
+              # Validate response is valid JSON before parsing
+              if ! echo "$RESPONSE" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+                echo "::warning::Invalid response from Gofile.io for $FILENAME"
+                continue
+              fi
+
+              LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data', {}).get('downloadPage', 'N/A'))" 2>/dev/null)
+              if [ -n "$LINK" ] && [ "$LINK" != "N/A" ]; then
+                echo " $FILENAME → $LINK"
+
+                # Add to JSON (handle comma for valid JSON array)
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  echo "," >> gofile-links-x64.json
+                fi
+
+                echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"windows-x64\"}" >> gofile-links-x64.json
+              fi
+            fi
           done
+
+          echo "]" >> gofile-links-x64.json
+
+      - name: Upload Gofile links artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofile-links-windows-x64
+          path: gofile-links-x64.json
+          retention-days: 7
+
+      # ── Upload to GitHub Release ───────────────────────────────────────────────
+      - name: Upload to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $files = Get-ChildItem dist
+          foreach ($f in $files) {
+            Write-Host "Uploading $($f.Name)..."
+            gh release upload "$env:VERSION" "$($f.FullName)" --clobber
+          }
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Build all Windows arm64 artifacts
-  #
-  # Cross-compiled from the same windows-2022 runner type used for x64 — this is
-  # the same approach upstream VS Code uses (no dedicated ARM64 hardware needed).
-  # The underlying gulp tasks (vscode-win32-arm64, vscode-win32-arm64-*-setup,
-  # vscode-win32-arm64-inno-updater) and Inno Setup arm64 AppIds already exist
-  # in build/gulpfile.vscode.win32.ts and build/gulpfile.vscode.ts — this job
-  # just wires them up the same way the x64 job already does.
   # ─────────────────────────────────────────────────────────────────────────────
   build-windows-arm64:
     name: Build Windows arm64
     needs: resolve-version
     runs-on: windows-2022
+    environment: publish
     env:
-      VERSION: ${{ needs.resolve-version.outputs.version }}
+      VERSION: ${{ inputs.version || needs.resolve-version.outputs.version }}
 
     steps:
       # ── Checkout ──────────────────────────────────────────────────────────────
@@ -350,18 +421,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-
-      # ── Pin npm (< 11.2.0 required by preinstall.ts) ──────────────────────────
-      - name: Pin npm (< 11.2.0 required by preinstall)
-        shell: pwsh
-        run: |
-          npm install -g npm@11.1.0
-          Write-Host "node: $(node -v)"
-          Write-Host "npm:  $(npm -v)"
-          if ([version](npm -v) -ge [version]'11.2.0') {
-            Write-Error "npm is still >= 11.2.0 after pin — PATH is not honoring setup-node"
-            exit 1
-          }
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -384,8 +443,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             cli/target
-          key: ${{ runner.os }}-cargo-arm64-${{ hashFiles('cli/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-arm64-
+          key: publish-win-arm64-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: publish-win-arm64-cargo-
 
       - name: Cache Electron
         uses: actions/cache@v4
@@ -393,15 +452,20 @@ jobs:
           path: |
             ${{ env.ELECTRON_CACHE }}
             ${{ env.ELECTRON_BUILDER_CACHE }}
-          key: ${{ runner.os }}-electron-arm64-${{ hashFiles('package-lock.json') }}
-          restore-keys: ${{ runner.os }}-electron-arm64-
+          key: publish-win-arm64-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: publish-win-arm64-electron-
 
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: ${{ runner.os }}-node-arm64-${{ hashFiles('package-lock.json') }}
-          restore-keys: ${{ runner.os }}-node-arm64-
+          key: publish-win-arm64-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: publish-win-arm64-node-
+
+      - name: Clear stale postinstall state marker
+        shell: pwsh
+        run: |
+          Remove-Item -Path "node_modules/.postinstall-state", "node_modules/.postinstall-state-contents" -ErrorAction SilentlyContinue
 
       # ── Install & compile ──────────────────────────────────────────────────────
       - name: Install node-gyp
@@ -411,6 +475,10 @@ jobs:
         run: npm install
         env:
           npm_config_arch: arm64
+
+      - name: Install open-remote-ssh dependencies
+        run: npm install
+        working-directory: extensions/open-remote-ssh
 
       - name: Backup node-pty conpty binaries
         shell: pwsh
@@ -434,7 +502,7 @@ jobs:
       - name: Rebuild native modules for Electron
         run: |
           npm install -g @electron/rebuild
-          electron-rebuild -f -w node-pty --arch=arm64
+          electron-rebuild -f -w node-pty,onnxruntime-node --arch=arm64
         env:
           npm_config_arch: arm64
 
@@ -519,7 +587,7 @@ jobs:
             } else { Write-Warning "No .exe found in system-setup — skipping" }
           } else { Write-Warning "system-setup folder not found — skipping" }
 
-      # ── 3. CLI binary ──────────────────────────────────────────────────────────
+      # ── 3. CLI binary (.exe) ────────────────────────────────────────────────────
       - name: Stage — CLI binary
         shell: pwsh
         run: |
@@ -528,6 +596,18 @@ jobs:
             Copy-Item $cliBin "dist/loophole-cli-win32-arm64-$env:VERSION.exe"
             Write-Host "Staged CLI binary"
           } else { Write-Warning "CLI binary not found — skipping" }
+
+      # ── 4. ZIP archive (reuses the package already built above) ───────────────
+      - name: Stage — ZIP
+        shell: pwsh
+        run: |
+          if (Test-Path ".build/win32-arm64") {
+            $src = Get-ChildItem ".build/win32-arm64" -Filter "*.zip" | Select-Object -First 1
+            if ($src) {
+              Copy-Item $src.FullName "dist/Loophole-win32-arm64-$env:VERSION.zip"
+              Write-Host "Staged: $($src.Name)"
+            } else { Write-Warning "No .zip found in .build/win32-arm64 — skipping" }
+          } else { Write-Warning ".build/win32-arm64 folder not found — skipping" }
 
       # ── Summary ───────────────────────────────────────────────────────────────
       - name: List built artifacts
@@ -539,7 +619,26 @@ jobs:
             Write-Host "  $($_.Name)  ($size MB)"
           }
 
-      # ── Upload all artifacts to GitHub ────────────────────────────────────────
+      - name: Compute SHA256 hashes
+        shell: pwsh
+        run: |
+          $hashes = @{}
+          Get-ChildItem dist | Where-Object { !$_.PSIsContainer } | ForEach-Object {
+            $sha = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            $hashes[$_.Name] = $sha
+            Write-Host "$($_.Name) → $sha"
+          }
+          $hashes | ConvertTo-Json | Set-Content sha256-hashes.json
+          Get-Content sha256-hashes.json
+
+      - name: Upload SHA256 hashes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-hashes-windows-arm64
+          path: sha256-hashes.json
+          retention-days: 7
+
+      # ── Upload all artifacts to GitHub Actions ─────────────────────────────────
       - name: Upload — User Installer
         uses: actions/upload-artifact@v4
         with:
@@ -564,6 +663,15 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+      - name: Upload — ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-win32-arm64-${{ env.VERSION }}-zip
+          path: dist/Loophole-win32-arm64-${{ env.VERSION }}.zip
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── Zip artifacts for easier download ──────────────────────────────────────
       - name: Zip artifacts
         shell: pwsh
         run: |
@@ -579,24 +687,73 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-      # ── Upload to Gofile.io (optional) ────────────────────────────────────────
+      # ── Upload to Gofile.io and save links ─────────────────────────────────────
       - name: Upload to Gofile.io
-        if: ${{ github.event.inputs.upload_to_gofile == 'true' }}
         shell: bash
         run: |
           echo "======================================"
           echo "  Uploading artifacts to Gofile.io"
           echo "======================================"
 
-          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])")
+          # Get best available server
+          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
+          if [ -z "$SERVER" ]; then
+            echo "::warning::Failed to get Gofile.io server — skipping upload"
+            echo "[]" > gofile-links-arm64.json
+            exit 0
+          fi
           echo "Using server: $SERVER"
 
-          for FILE in dist/*.zip; do
-            FILENAME=$(basename "$FILE")
-            echo ""
-            echo "Uploading: $FILENAME"
-            RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
-            echo "Response: $RESPONSE"
-            LINK=$(echo $RESPONSE | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['downloadPage'])")
-            echo " $FILENAME → $LINK"
+          # Create JSON array to store links
+          echo "[" > gofile-links-arm64.json
+          FIRST=true
+
+          for FILE in dist/*; do
+            if [ -f "$FILE" ]; then
+              FILENAME=$(basename "$FILE")
+              echo ""
+              echo "Uploading: $FILENAME"
+              RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
+
+              # Validate response is valid JSON before parsing
+              if ! echo "$RESPONSE" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+                echo "::warning::Invalid response from Gofile.io for $FILENAME"
+                continue
+              fi
+
+              LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data', {}).get('downloadPage', 'N/A'))" 2>/dev/null)
+              if [ -n "$LINK" ] && [ "$LINK" != "N/A" ]; then
+                echo " $FILENAME → $LINK"
+
+                # Add to JSON (handle comma for valid JSON array)
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  echo "," >> gofile-links-arm64.json
+                fi
+
+                echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"windows-arm64\"}" >> gofile-links-arm64.json
+              fi
+            fi
           done
+
+          echo "]" >> gofile-links-arm64.json
+
+      - name: Upload Gofile links artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofile-links-windows-arm64
+          path: gofile-links-arm64.json
+          retention-days: 7
+
+      # ── Upload to GitHub Release ───────────────────────────────────────────────
+      - name: Upload to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $files = Get-ChildItem dist
+          foreach ($f in $files) {
+            Write-Host "Uploading $($f.Name)..."
+            gh release upload "$env:VERSION" "$($f.FullName)" --clobber
+          }
