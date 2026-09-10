@@ -111,15 +111,39 @@ function buildWin32Setup(arch: string, target: string): task.CallbackTask {
 			Quality: quality
 		};
 
-		if (quality === 'stable' || quality === 'insider') {
-			definitions['AppxPackage'] = `${quality === 'stable' ? 'code' : 'code_insider'}_${arch}.appx`;
-			definitions['AppxPackageDll'] = `${quality === 'stable' ? 'code' : 'code_insider'}_explorer_command_${arch}.dll`;
-			definitions['AppxPackageName'] = `${product.win32AppUserModelId}`;
-			const ctxMenu = (product as { win32ContextMenu?: Record<string, { clsid: string }> }).win32ContextMenu;
-			if (ctxMenu && ctxMenu[arch]) {
-				definitions['FileExplorerContextMenuCLSID'] = ctxMenu[arch].clsid;
-			}
-		}
+		// AppX / MSIX packaging is not produced by this fork's build pipeline.
+		//
+		// Upstream VS Code defines AppxPackage, AppxPackageDll, and AppxPackageName
+		// here so that the Inno Setup script (build/win32/code.iss) can bundle the
+		// Windows 11 modern context-menu shell extension into the installer.
+		//
+		// Those definitions gate the `#ifdef AppxPackageName` block in code.iss,
+		// which adds:
+		//     Source: "appx\{#AppxPackage}"     -> code_x64.appx
+		//     Source: "appx\{#AppxPackageDll}"  -> code_explorer_command_x64.dll
+		//
+		// Because this fork does not build or ship those files, defining
+		// AppxPackageName makes Inno Setup abort with:
+		//     "Source file ...\appx\code_x64.appx does not exist."
+		//
+		// Leaving these defines unset causes Inno Setup to skip the appx entries
+		// entirely. The legacy registry-based context menu (installed via the
+		// [Registry] section of code.iss) continues to work on Windows 10 and 11,
+		// so users still get an "Open with ..." right-click entry.
+		//
+		// If AppX support is ever added to the build pipeline, restore the block
+		// below and make sure code_x64.appx / code_explorer_command_x64.dll are
+		// generated before Inno Setup runs.
+		//
+		// if (quality === 'stable' || quality === 'insider') {
+		//     definitions['AppxPackage'] = `${quality === 'stable' ? 'code' : 'code_insider'}_${arch}.appx`;
+		//     definitions['AppxPackageDll'] = `${quality === 'stable' ? 'code' : 'code_insider'}_explorer_command_${arch}.dll`;
+		//     definitions['AppxPackageName'] = `${product.win32AppUserModelId}`;
+		//     const ctxMenu = (product as { win32ContextMenu?: Record<string, { clsid: string }> }).win32ContextMenu;
+		//     if (ctxMenu && ctxMenu[arch]) {
+		//         definitions['FileExplorerContextMenuCLSID'] = ctxMenu[arch].clsid;
+		//     }
+		// }
 
 		fs.writeFileSync(productJsonPath, JSON.stringify(productJson, undefined, '\t'));
 
