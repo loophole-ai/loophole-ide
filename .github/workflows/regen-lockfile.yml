@@ -1,0 +1,42 @@
+name: Regenerate package-lock.json
+
+on:
+  workflow_dispatch:
+
+jobs:
+  regen-lockfile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libkrb5-dev libgssapi-krb5-2
+
+      - name: Install gyp dependencies (required by preinstall)
+        run: npm ci
+        working-directory: build/npm/gyp
+
+      - name: Delete old lock file
+        run: rm -f package-lock.json
+
+      - name: Regenerate package-lock.json
+        run: npm install --package-lock-only
+        env:
+          npm_config_arch: x64
+
+      - name: Commit and push regenerated lock file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git diff --staged --quiet || git commit -m "fix: regenerate package-lock.json with full postinstall"
+          git push

@@ -1,0 +1,12 @@
+# GitHub Actions workflows — require review from maintainers
+.github/workflows/ @GarvAgnihotri
+
+# Build and policy files
+build/lib/policies/ @GarvAgnihotri
+
+# VS Code API definitions
+src/vscode-dts/vscode.d.ts @GarvAgnihotri
+src/vs/workbench/services/extensions/common/extensionPoints.json @GarvAgnihotri
+
+# Loophole core
+src/vs/workbench/contrib/void/ @GarvAgnihotri

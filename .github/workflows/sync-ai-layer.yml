@@ -1,0 +1,68 @@
+name: Sync AI Layer from clean/vscode-1.116
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code branch
+        uses: actions/checkout@v4
+        with:
+          ref: code
+          path: code
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout clean/vscode-1.116 branch (AI source)
+        uses: actions/checkout@v4
+        with:
+          ref: clean/vscode-1.116
+          path: ai-source
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 1: Copy void contrib folder
+      - name: Copy void contrib folder
+        run: |
+          rm -rf code/src/vs/workbench/contrib/void
+          cp -r ai-source/src/vs/workbench/contrib/void \
+                code/src/vs/workbench/contrib/void
+          echo "✅ Copied contrib/void/"
+
+      # Step 2: Copy .loopholerules
+      - name: Copy .loopholerules
+        run: |
+          cp ai-source/.loopholerules code/.loopholerules
+          echo "✅ Copied .loopholerules"
+
+
+      # Step 4: Commit and push to code branch
+      - name: Check for changes
+        id: changes
+        run: |
+          cd code
+          git diff --quiet && git diff --staged --quiet \
+            && echo "changed=false" >> $GITHUB_OUTPUT \
+            || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          cd code
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/vs/workbench/contrib/void \
+            .loopholerules \
+            src/vs/workbench/workbench.common.main.ts
+          git commit -m "sync: update AI layer from main
+
+          - Synced src/vs/workbench/contrib/void/
+          - Synced .loopholerules
+          - Ensured void import in workbench.common.main.ts
+
+          Source commit: ${{ github.sha }}"
+          git push origin code

@@ -1,0 +1,129 @@
+{
+	"nameShort": "Loophole",
+	"nameLong": "Loophole Editor",
+	"loopholeVersion": "2.2.0",
+	"loopholeRelease": "1000",
+	"applicationName": "void",
+	"dataFolderName": ".void-editor",
+	"win32MutexName": "loophole",
+	"licenseName": "MIT",
+	"licenseUrl": "https://github.com/loophole-ai/loophole-ide/blob/main/LICENSE.txt",
+	"serverLicenseUrl": "https://github.com/loophole-ai/loophole-ide/blob/main/LICENSE.txt",
+	"serverGreeting": [],
+	"serverLicense": [],
+	"serverLicensePrompt": "",
+	"serverApplicationName": "void-server",
+	"serverDataFolderName": ".void-server",
+	"tunnelApplicationName": "void-tunnel",
+	"win32DirName": "Loophole",
+	"win32NameVersion": "Loophole",
+	"win32RegValueName": "VoidEditor",
+	"win32x64AppId": "{{9D394D01-1728-45A7-B997-A6C82C5452C3}",
+	"win32arm64AppId": "{{0668DD58-2BDE-4101-8CDA-40252DF8875D}",
+	"win32x64UserAppId": "{{8BED5DC1-6C55-46E6-9FE6-18F7E6F7C7F1}",
+	"win32arm64UserAppId": "{{F6C87466-BC82-4A8F-B0FF-18CA366BA4D8}",
+	"win32AppUserModelId": "Void.Editor",
+	"win32ShellNameShort": "Loophole",
+	"win32TunnelServiceMutex": "void-tunnelservice",
+	"win32TunnelMutex": "void-tunnel",
+	"darwinBundleIdentifier": "com.loophole-ai.loophole",
+	"linuxIconName": "void-editor",
+	"licenseFileName": "LICENSE.txt",
+	"reportIssueUrl": "https://github.com/loophole-ai/loophole-ide/issues/new",
+	"nodejsRepository": "https://nodejs.org",
+	"urlProtocol": "void",
+	"extensionsGallery": {
+		"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery",
+		"itemUrl": "https://marketplace.visualstudio.com/items",
+		"publisherUrl": "https://marketplace.visualstudio.com/publishers",
+		"resourceUrlTemplate": "https://{publisher}.vscode-unpkg.net/{publisher}/{name}/{version}/{path}",
+		"controlUrl": "https://az764295.vo.msecnd.net/extensions/marketplace.json",
+		"nlsBaseUrl": "https://download.visualstudio.microsoft.com/download/pr/",
+		"extensionUrlTemplate": "https://marketplace.visualstudio.com/items?itemName={publisher}.{name}"
+	},
+	"builtInExtensions": [],
+	"linkProtectionTrustedDomains": [
+		"https://loophole.dev",
+		"https://loophole.dev",
+		"https://github.com/loophole-ai/loophole-ide",
+		"https://ollama.com"
+	],
+	"sharedDataFolderName": ".void-editor-shared",
+	"defaultChatAgent": {
+		"extensionId": "void.void",
+		"chatExtensionId": "void.void",
+		"chatExtensionOutputId": "",
+		"chatExtensionOutputExtensionStateCommand": "",
+		"documentationUrl": "https://loophole.dev",
+		"skusDocumentationUrl": "https://loophole.dev",
+		"publicCodeMatchesUrl": "https://loophole.dev",
+		"managePlanUrl": "https://loophole.dev",
+		"upgradePlanUrl": "https://loophole.dev",
+		"signUpUrl": "https://loophole.dev",
+		"termsStatementUrl": "https://loophole.dev",
+		"privacyStatementUrl": "https://loophole.dev",
+		"provider": {
+			"default": {
+				"id": "void",
+				"name": "Void"
+			},
+			"enterprise": {
+				"id": "void",
+				"name": "Void"
+			},
+			"google": {
+				"id": "void",
+				"name": "Void"
+			},
+			"apple": {
+				"id": "void",
+				"name": "Void"
+			}
+		},
+		"providerExtensionId": "void.void",
+		"providerUriSetting": "",
+		"providerScopes": [],
+		"entitlementUrl": "https://loophole.dev",
+		"entitlementSignupLimitedUrl": "https://loophole.dev",
+		"tokenEntitlementUrl": "https://loophole.dev",
+		"mcpRegistryDataUrl": "https://loophole.dev",
+		"chatQuotaExceededContext": "",
+		"completionsQuotaExceededContext": "",
+		"walkthroughCommand": "",
+		"completionsMenuCommand": "",
+		"chatRefreshTokenCommand": "",
+		"generateCommitMessageCommand": "void.generateCommitMessageAction",
+		"resolveMergeConflictsCommand": "",
+		"completionsAdvancedSetting": "",
+		"completionsEnablementSetting": "",
+		"nextEditSuggestionsSetting": ""
+	},
+	"quality": "stable",
+	"onboardingThemes": [
+		{
+			"id": "loophole-dark",
+			"label": "Loophole Dark",
+			"themeId": "Loophole Dark",
+			"type": "dark"
+		},
+		{
+			"id": "loophole-light",
+			"label": "Loophole Light",
+			"themeId": "Loophole Light",
+			"type": "light"
+		},
+		{
+			"id": "dark-2026",
+			"label": "Dark 2026",
+			"themeId": "Dark 2026",
+			"type": "dark"
+		},
+		{
+			"id": "light-2026",
+			"label": "Light 2026",
+			"themeId": "Light 2026",
+			"type": "light"
+		}
+	],
+	"builtInExtensionsEnabledWithAutoUpdates": []
+}

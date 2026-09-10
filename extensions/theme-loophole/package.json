@@ -1,0 +1,32 @@
+{
+  "name": "theme-loophole",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "1.0.0",
+  "publisher": "loophole",
+  "license": "MIT",
+  "engines": {
+    "vscode": "*"
+  },
+  "categories": ["Themes"],
+  "contributes": {
+    "themes": [
+      {
+        "id": "Loophole Dark",
+        "label": "%loopholeDarkLabel%",
+        "uiTheme": "vs-dark",
+        "path": "./themes/loophole-dark-color-theme.json"
+      },
+      {
+        "id": "Loophole Light",
+        "label": "%loopholeLightLabel%",
+        "uiTheme": "vs",
+        "path": "./themes/loophole-light-color-theme.json"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/loophole-ai/loophole-ide.git"
+  }
+}

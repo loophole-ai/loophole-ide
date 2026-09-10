@@ -1,0 +1,53 @@
+# Loophole IDE - AI Agent Rules
+
+## Project Context
+This is a fork of the VSCode repository called Loophole, built on the Void editor framework. The codebase is large and complex, requiring careful navigation and modification.
+
+## Code Location
+- Primary development directory: `src/vs/workbench/contrib/void`
+- You may need to explore the full repository to find relevant code, services, and built-in functions
+- Always verify file locations before making changes
+
+## TypeScript Guidelines
+- **Type Safety**: Never cast to types unless absolutely necessary. NEVER lazily cast to 'any'. Always find and use the correct type
+- **Type Inference**: Let TypeScript infer types when possible
+- **Type Definitions**: Use proper type definitions from the codebase rather than creating new ones
+
+## Code Style
+- **Semicolons**: Do not add or remove semicolons from existing files. Follow the existing convention in each file
+- **Minimal Changes**: Make the least number of changes necessary to solve the problem
+- **Consistency**: Match the existing code style and patterns in the file you're modifying
+
+## Modification Boundaries
+- **Restricted Area**: Never modify files outside `src/vs/workbench/contrib/void` without explicit user consultation
+- **Core VSCode Files**: Changes to core VSCode files require approval first
+- **Breaking Changes**: Avoid changes that could break existing functionality
+
+## Naming Conventions
+- **Mapping Types**: All types that map from value A to B should be named `bOfA`
+  - Example: A hashmap from toolId to toolName should be named `toolNameOfToolId`
+  - Example: A map from sessionId to session should be named `sessionOfSessionId`
+- **Descriptive Names**: Use clear, descriptive names that explain the purpose
+- **Consistent Patterns**: Follow existing naming patterns in the codebase
+
+## Testing and Validation
+- **No Auto-Validation**: Do not run any commands to validate your changes
+- **Manual Testing**: Tell the user what manual testing steps they should perform
+- **Verification**: Describe how to verify the changes work correctly
+
+## Problem Solving Approach
+1. **Explore First**: Search the codebase thoroughly before making changes
+2. **Understand Context**: Understand how existing code works before modifying it
+3. **Reuse Patterns**: Look for existing patterns and services that solve similar problems
+4. **Ask Questions**: If uncertain about the approach, ask the user for guidance
+
+## Communication
+- **Clear Explanations**: Explain what you're doing and why
+- **Risk Assessment**: Highlight potential risks or side effects of changes
+- **Alternatives**: Suggest alternative approaches when appropriate
+- **Progress Updates**: Keep the user informed of your progress
+
+## Security and Safety
+- **No Destructive Actions**: Never perform actions that could destroy data or break the build
+- **Backup Changes**: Ensure changes can be easily reverted if needed
+- **Review Dependencies**: Check if your changes affect other parts of the system

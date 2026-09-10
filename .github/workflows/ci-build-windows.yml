@@ -1,0 +1,578 @@
+name: CI Build — Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_gofile:
+        description: 'Upload artifacts to Gofile.io for faster download?'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  NODE_VERSION: '22'
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Resolve version from package.json or manual override
+  # ─────────────────────────────────────────────────────────────────────────────
+  resolve-version:
+    name: Resolve Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./product.json').loopholeVersion ?? require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build all Windows x64 artifacts
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-windows-x64:
+    name: Build Windows x64
+    needs: resolve-version
+    runs-on: windows-2022
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Toolchain ─────────────────────────────────────────────────────────────
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup Rust (for CLI)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # ── Caches ────────────────────────────────────────────────────────────────
+      - name: Cache Rust artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-x64-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-x64-
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-electron-
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      # ── Install & compile ──────────────────────────────────────────────────────
+      - name: Install node-gyp
+        run: npm install -g node-gyp
+
+      - name: Install dependencies
+        run: npm install
+        env:
+          npm_config_arch: x64
+
+      - name: Backup node-pty conpty binaries
+        shell: pwsh
+        run: |
+          $src = "node_modules/node-pty/build/Release/conpty"
+
+          if (-not (Test-Path $src)) {
+            # This usually means the node_modules cache (see "Cache node_modules" step
+            # above) restored a stale copy from an earlier run where, for whatever
+            # reason, node-pty's own postinstall never produced this folder. Once that
+            # bad cache is saved, npm sees node-pty already present on future cache hits
+            # and skips re-running postinstall, so the folder never gets regenerated on
+            # its own. Self-heal by re-running node-pty's postinstall script directly —
+            # it's idempotent and just copies conpty.dll/OpenConsole.exe from the
+            # package's own bundled third_party/conpty folder, no network needed.
+            Write-Warning "conpty folder missing after npm install (likely a stale node_modules cache) — repairing by re-running node-pty's postinstall"
+            $env:npm_config_arch = "x64"
+            node node_modules/node-pty/scripts/post-install.js
+          }
+
+          if (Test-Path $src) {
+            Copy-Item $src -Destination "$env:RUNNER_TEMP/conpty-backup" -Recurse -Force
+            Write-Host "Backed up conpty binaries from $src"
+          } else {
+            Write-Error "conpty folder still missing after repair attempt — node-pty's postinstall could not produce it. Check that node_modules/node-pty/third_party/conpty exists in the installed package."
+            exit 1
+          }
+
+      - name: Rebuild native modules for Electron
+        run: |
+          npm install -g @electron/rebuild
+          electron-rebuild -f -w node-pty
+        env:
+          npm_config_arch: x64
+
+      - name: Restore node-pty conpty binaries
+        shell: pwsh
+        run: |
+          $backup = "$env:RUNNER_TEMP/conpty-backup"
+          $dest = "node_modules/node-pty/build/Release/conpty"
+          if (Test-Path $backup) {
+            New-Item -ItemType Directory -Force -Path $dest | Out-Null
+            Copy-Item "$backup/*" -Destination $dest -Recurse -Force
+            Write-Host "Restored conpty binaries to $dest"
+            Get-ChildItem $dest
+          } else {
+            Write-Error "No conpty backup found — electron-rebuild will produce an app without a working Windows terminal"
+            exit 1
+          }
+
+      - name: Install React dependencies
+        run: npm install
+        working-directory: src/vs/workbench/contrib/void/browser/react
+
+      - name: Build React components
+        run: node build.js
+        working-directory: src/vs/workbench/contrib/void/browser/react
+
+      - name: Compile TypeScript
+        run: npm run compile
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Build CLI (Rust, x64)
+        working-directory: cli
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      # ── Package base app ───────────────────────────────────────────────────────
+      - name: Package Electron app
+        run: npm run gulp vscode-win32-x64
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Create dist directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+      # ── 1. User Installer (.exe) ───────────────────────────────────────────────
+      - name: Copy Inno Updater tools
+        run: npm run gulp vscode-win32-x64-inno-updater
+
+      - name: Build User Installer
+        run: npm run gulp vscode-win32-x64-user-setup
+        env:
+          VSCODE_QUALITY: stable
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — User Installer
+        shell: pwsh
+        run: |
+          if (Test-Path ".build/win32-x64/user-setup") {
+            $src = Get-ChildItem ".build/win32-x64/user-setup" -Filter "*.exe" | Select-Object -First 1
+            if ($src) {
+              Copy-Item $src.FullName "dist/LoopholeUserSetup-x64-$env:VERSION.exe"
+              Write-Host "Staged: $($src.Name)"
+            } else { Write-Warning "No .exe found in user-setup — skipping" }
+          } else { Write-Warning "user-setup folder not found — skipping" }
+
+      # ── 2. System Installer (.exe) ─────────────────────────────────────────────
+      - name: Build System Installer
+        run: npm run gulp vscode-win32-x64-system-setup
+        env:
+          VSCODE_QUALITY: stable
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — System Installer
+        shell: pwsh
+        run: |
+          if (Test-Path ".build/win32-x64/system-setup") {
+            $src = Get-ChildItem ".build/win32-x64/system-setup" -Filter "*.exe" | Select-Object -First 1
+            if ($src) {
+              Copy-Item $src.FullName "dist/LoopholeSetup-x64-$env:VERSION.exe"
+              Write-Host "Staged: $($src.Name)"
+            } else { Write-Warning "No .exe found in system-setup — skipping" }
+          } else { Write-Warning "system-setup folder not found — skipping" }
+
+      # ── 3. CLI binary ──────────────────────────────────────────────────────────
+      - name: Stage — CLI binary
+        shell: pwsh
+        run: |
+          $cliBin = "cli/target/x86_64-pc-windows-msvc/release/loophole.exe"
+          if (Test-Path $cliBin) {
+            Copy-Item $cliBin "dist/loophole-cli-win32-x64-$env:VERSION.exe"
+            Write-Host "Staged CLI binary"
+          } else { Write-Warning "CLI binary not found — skipping" }
+
+      # ── Summary ───────────────────────────────────────────────────────────────
+      - name: List built artifacts
+        shell: pwsh
+        run: |
+          Write-Host "`n=== dist/ artifacts ==="
+          Get-ChildItem dist | ForEach-Object {
+            $size = [math]::Round($_.Length / 1MB, 2)
+            Write-Host "  $($_.Name)  ($size MB)"
+          }
+
+      # ── Upload all artifacts to GitHub ────────────────────────────────────────
+      - name: Upload — User Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: LoopholeUserSetup-x64-${{ env.VERSION }}
+          path: dist/LoopholeUserSetup-x64-${{ env.VERSION }}.exe
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — System Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: LoopholeSetup-x64-${{ env.VERSION }}
+          path: dist/LoopholeSetup-x64-${{ env.VERSION }}.exe
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-cli-win32-x64-${{ env.VERSION }}
+          path: dist/loophole-cli-win32-x64-${{ env.VERSION }}.exe
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Zip artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -Filter "*.exe" | ForEach-Object {
+            Compress-Archive -Path $_.FullName -DestinationPath "dist/$($_.BaseName).zip"
+          }
+
+      - name: Upload — Zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-win32-x64-zips-${{ env.VERSION }}
+          path: dist/*.zip
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── Upload to Gofile.io (optional) ────────────────────────────────────────
+      - name: Upload to Gofile.io
+        if: ${{ github.event.inputs.upload_to_gofile == 'true' }}
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "  Uploading artifacts to Gofile.io"
+          echo "======================================"
+
+          # Get best available server
+          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])")
+          echo "Using server: $SERVER"
+
+          for FILE in dist/*.zip; do
+            FILENAME=$(basename "$FILE")
+            echo ""
+            echo "Uploading: $FILENAME"
+            RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
+            echo "Response: $RESPONSE"
+            LINK=$(echo $RESPONSE | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['downloadPage'])")
+            echo " $FILENAME → $LINK"
+          done
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build all Windows arm64 artifacts
+  #
+  # Cross-compiled from the same windows-2022 runner type used for x64 — this is
+  # the same approach upstream VS Code uses (no dedicated ARM64 hardware needed).
+  # The underlying gulp tasks (vscode-win32-arm64, vscode-win32-arm64-*-setup,
+  # vscode-win32-arm64-inno-updater) and Inno Setup arm64 AppIds already exist
+  # in build/gulpfile.vscode.win32.ts and build/gulpfile.vscode.ts — this job
+  # just wires them up the same way the x64 job already does.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-windows-arm64:
+    name: Build Windows arm64
+    needs: resolve-version
+    runs-on: windows-2022
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Toolchain ─────────────────────────────────────────────────────────────
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup Rust (for CLI)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+
+      # ── Caches ────────────────────────────────────────────────────────────────
+      - name: Cache Rust artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: ${{ runner.os }}-cargo-arm64-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-arm64-
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: ${{ runner.os }}-electron-arm64-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-electron-arm64-
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-arm64-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-arm64-
+
+      # ── Install & compile ──────────────────────────────────────────────────────
+      - name: Install node-gyp
+        run: npm install -g node-gyp
+
+      - name: Install dependencies
+        run: npm install
+        env:
+          npm_config_arch: arm64
+
+      - name: Backup node-pty conpty binaries
+        shell: pwsh
+        run: |
+          $src = "node_modules/node-pty/build/Release/conpty"
+
+          if (-not (Test-Path $src)) {
+            Write-Warning "conpty folder missing after npm install (likely a stale node_modules cache) — repairing by re-running node-pty's postinstall"
+            $env:npm_config_arch = "arm64"
+            node node_modules/node-pty/scripts/post-install.js
+          }
+
+          if (Test-Path $src) {
+            Copy-Item $src -Destination "$env:RUNNER_TEMP/conpty-backup" -Recurse -Force
+            Write-Host "Backed up conpty binaries from $src"
+          } else {
+            Write-Error "conpty folder still missing after repair attempt — node-pty's postinstall could not produce it. Check that node_modules/node-pty/third_party/conpty exists in the installed package."
+            exit 1
+          }
+
+      - name: Rebuild native modules for Electron
+        run: |
+          npm install -g @electron/rebuild
+          electron-rebuild -f -w node-pty --arch=arm64
+        env:
+          npm_config_arch: arm64
+
+      - name: Restore node-pty conpty binaries
+        shell: pwsh
+        run: |
+          $backup = "$env:RUNNER_TEMP/conpty-backup"
+          $dest = "node_modules/node-pty/build/Release/conpty"
+          if (Test-Path $backup) {
+            New-Item -ItemType Directory -Force -Path $dest | Out-Null
+            Copy-Item "$backup/*" -Destination $dest -Recurse -Force
+            Write-Host "Restored conpty binaries to $dest"
+            Get-ChildItem $dest
+          } else {
+            Write-Error "No conpty backup found — electron-rebuild will produce an app without a working Windows terminal"
+            exit 1
+          }
+
+      - name: Install React dependencies
+        run: npm install
+        working-directory: src/vs/workbench/contrib/void/browser/react
+
+      - name: Build React components
+        run: node build.js
+        working-directory: src/vs/workbench/contrib/void/browser/react
+
+      - name: Compile TypeScript
+        run: npm run compile
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Build CLI (Rust, arm64)
+        working-directory: cli
+        run: cargo build --release --target aarch64-pc-windows-msvc
+
+      # ── Package base app ───────────────────────────────────────────────────────
+      - name: Package Electron app
+        run: npm run gulp vscode-win32-arm64
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Create dist directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+      # ── 1. User Installer (.exe) ───────────────────────────────────────────────
+      - name: Copy Inno Updater tools
+        run: npm run gulp vscode-win32-arm64-inno-updater
+
+      - name: Build User Installer
+        run: npm run gulp vscode-win32-arm64-user-setup
+        env:
+          VSCODE_QUALITY: stable
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — User Installer
+        shell: pwsh
+        run: |
+          if (Test-Path ".build/win32-arm64/user-setup") {
+            $src = Get-ChildItem ".build/win32-arm64/user-setup" -Filter "*.exe" | Select-Object -First 1
+            if ($src) {
+              Copy-Item $src.FullName "dist/LoopholeUserSetup-arm64-$env:VERSION.exe"
+              Write-Host "Staged: $($src.Name)"
+            } else { Write-Warning "No .exe found in user-setup — skipping" }
+          } else { Write-Warning "user-setup folder not found — skipping" }
+
+      # ── 2. System Installer (.exe) ─────────────────────────────────────────────
+      - name: Build System Installer
+        run: npm run gulp vscode-win32-arm64-system-setup
+        env:
+          VSCODE_QUALITY: stable
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — System Installer
+        shell: pwsh
+        run: |
+          if (Test-Path ".build/win32-arm64/system-setup") {
+            $src = Get-ChildItem ".build/win32-arm64/system-setup" -Filter "*.exe" | Select-Object -First 1
+            if ($src) {
+              Copy-Item $src.FullName "dist/LoopholeSetup-arm64-$env:VERSION.exe"
+              Write-Host "Staged: $($src.Name)"
+            } else { Write-Warning "No .exe found in system-setup — skipping" }
+          } else { Write-Warning "system-setup folder not found — skipping" }
+
+      # ── 3. CLI binary ──────────────────────────────────────────────────────────
+      - name: Stage — CLI binary
+        shell: pwsh
+        run: |
+          $cliBin = "cli/target/aarch64-pc-windows-msvc/release/loophole.exe"
+          if (Test-Path $cliBin) {
+            Copy-Item $cliBin "dist/loophole-cli-win32-arm64-$env:VERSION.exe"
+            Write-Host "Staged CLI binary"
+          } else { Write-Warning "CLI binary not found — skipping" }
+
+      # ── Summary ───────────────────────────────────────────────────────────────
+      - name: List built artifacts
+        shell: pwsh
+        run: |
+          Write-Host "`n=== dist/ artifacts ==="
+          Get-ChildItem dist | ForEach-Object {
+            $size = [math]::Round($_.Length / 1MB, 2)
+            Write-Host "  $($_.Name)  ($size MB)"
+          }
+
+      # ── Upload all artifacts to GitHub ────────────────────────────────────────
+      - name: Upload — User Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: LoopholeUserSetup-arm64-${{ env.VERSION }}
+          path: dist/LoopholeUserSetup-arm64-${{ env.VERSION }}.exe
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — System Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: LoopholeSetup-arm64-${{ env.VERSION }}
+          path: dist/LoopholeSetup-arm64-${{ env.VERSION }}.exe
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-cli-win32-arm64-${{ env.VERSION }}
+          path: dist/loophole-cli-win32-arm64-${{ env.VERSION }}.exe
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Zip artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -Filter "*.exe" | ForEach-Object {
+            Compress-Archive -Path $_.FullName -DestinationPath "dist/$($_.BaseName).zip"
+          }
+
+      - name: Upload — Zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-win32-arm64-zips-${{ env.VERSION }}
+          path: dist/*.zip
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── Upload to Gofile.io (optional) ────────────────────────────────────────
+      - name: Upload to Gofile.io
+        if: ${{ github.event.inputs.upload_to_gofile == 'true' }}
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "  Uploading artifacts to Gofile.io"
+          echo "======================================"
+
+          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])")
+          echo "Using server: $SERVER"
+
+          for FILE in dist/*.zip; do
+            FILENAME=$(basename "$FILE")
+            echo ""
+            echo "Uploading: $FILENAME"
+            RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
+            echo "Response: $RESPONSE"
+            LINK=$(echo $RESPONSE | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['downloadPage'])")
+            echo " $FILENAME → $LINK"
+          done

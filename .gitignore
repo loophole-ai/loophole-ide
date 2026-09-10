@@ -1,0 +1,163 @@
+# =============================================================================
+# Loophole .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Custom Project Files
+# -----------------------------------------------------------------------------
+test_scripts
+test_scripts/
+
+# -----------------------------------------------------------------------------
+# Dependencies
+# -----------------------------------------------------------------------------
+node_modules/
+build/node_modules
+font-size/node_modules/
+package-lock.json
+yarn.lock
+.pnp
+.pnp.js
+
+# -----------------------------------------------------------------------------
+# Build Artifacts
+# -----------------------------------------------------------------------------
+.tmp/
+.build/
+dist/
+build/
+*.tgz
+sourcemaps/
+/out*/
+/extensions/**/out/
+extensions/**/dist/
+src/vs/base/browser/ui/codicons/codicon/codicon.ttf
+
+# -----------------------------------------------------------------------------
+# Platform-Specific Build Artifacts
+# -----------------------------------------------------------------------------
+build/darwin/.dmgbuild
+build/linux/appimage/out
+build/linux/appimage/pkg2appimage.AppDir
+build/linux/appimage/pkg2appimage-*.AppImage
+build/linux/appimage/squashfs-root
+build/linux/appimage/VSCodium
+build/windows/msi/releasedir
+build/windows/msi/Files*.wxs
+build/windows/msi/Files*.wixobj
+
+# -----------------------------------------------------------------------------
+# Snap Packages
+# -----------------------------------------------------------------------------
+stores/snapcraft/insider/*.snap
+stores/snapcraft/stable/*.snap
+
+# -----------------------------------------------------------------------------
+# Testing & Coverage
+# -----------------------------------------------------------------------------
+coverage/
+.nyc_output/
+test_data/
+test-results/
+test-results.xml
+test-output.json
+test/componentFixtures/.screenshots/*
+!test/componentFixtures/.screenshots/baseline/
+.vscode-test
+
+# -----------------------------------------------------------------------------
+# Logs
+# -----------------------------------------------------------------------------
+*.log
+npm-debug.log
+yarn-error.log
+
+# -----------------------------------------------------------------------------
+# Environment Variables
+# -----------------------------------------------------------------------------
+*.env
+.env.local
+.env.*.local
+
+# -----------------------------------------------------------------------------
+# OS Files
+# -----------------------------------------------------------------------------
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+
+# -----------------------------------------------------------------------------
+# IDE & Editor Files
+# -----------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# -----------------------------------------------------------------------------
+# TypeScript & Build Cache
+# -----------------------------------------------------------------------------
+*.tsbuildinfo
+.eslintcache
+*.snap.actual
+
+# -----------------------------------------------------------------------------
+# Database & State Files
+# -----------------------------------------------------------------------------
+vscode.lsif
+vscode.db
+/.profile-oss
+
+# -----------------------------------------------------------------------------
+# CLI Tools
+# -----------------------------------------------------------------------------
+/cli/target
+/cli/openssl
+
+# -----------------------------------------------------------------------------
+# AI & Agent Configuration (Local Files)
+# -----------------------------------------------------------------------------
+.claude/
+.chat-simulation-data
+.playwright-cli
+.playwright-mcp
+.agents/agents/*.local.md
+.github/agents/*.local.md
+.agents/agents/*.local.agent.md
+.github/agents/*.local.agent.md
+.agents/hooks/*.local.json
+.github/hooks/*.local.json
+.agents/instructions/*.local.instructions.md
+.github/instructions/*.local.instructions.md
+.agents/prompts/*.local.prompt.md
+.github/prompts/*.local.prompt.md
+.agents/skills/.local/
+.github/skills/.local/
+
+# -----------------------------------------------------------------------------
+# Documentation & Assets
+# -----------------------------------------------------------------------------
+assets/
+vscode-telemetry-docs/
+font-size/generate-css.js
+
+# -----------------------------------------------------------------------------
+# Configuration Overrides
+# -----------------------------------------------------------------------------
+product.overrides.json
+/extensionsCG/
+
+# -----------------------------------------------------------------------------
+# Process Files
+# -----------------------------------------------------------------------------
+*.pid
+*.seed
+*.pid.lock

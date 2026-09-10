@@ -1,0 +1,789 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import gulp from 'gulp';
+import * as fs from 'fs';
+import * as path from 'path';
+import es from 'event-stream';
+import vfs from 'vinyl-fs';
+import rename from 'gulp-rename';
+import replace from 'gulp-replace';
+import filter from 'gulp-filter';
+import electron from '@vscode/gulp-electron';
+import jsonEditor from 'gulp-json-editor';
+import * as util from './lib/util.ts';
+import { getVersion, getVoidVersion } from './lib/getVersion.ts';
+import { readISODate, writeISODate } from './lib/date.ts';
+import * as task from './lib/task.ts';
+import buildfile from './buildfile.ts';
+import * as optimize from './lib/optimize.ts';
+import { inlineMeta } from './lib/inlineMeta.ts';
+import packageJson from '../package.json' with { type: 'json' };
+import product from '../product.json' with { type: 'json' };
+import * as child_process from 'child_process';
+import * as crypto from 'crypto';
+import * as i18n from './lib/i18n.ts';
+import { getProductionDependencies } from './lib/dependencies.ts';
+import { config } from './lib/electron.ts';
+import { createAsar } from './lib/asar.ts';
+import minimist from 'minimist';
+import { compileBuildWithoutManglingTask, compileBuildWithManglingTask } from './gulpfile.compile.ts';
+import { compileNonNativeExtensionsBuildTask, compileNativeExtensionsBuildTask, compileAllExtensionsBuildTask, compileExtensionMediaBuildTask, cleanExtensionsBuildTask } from './gulpfile.extensions.ts';
+import { copyCodiconsTask } from './lib/compilation.ts';
+import { getCopilotExcludeFilter } from './lib/copilot.ts';
+import { useEsbuildTranspile } from './buildConfig.ts';
+import { promisify } from 'util';
+import globCallback from 'glob';
+import rceditCallback from 'rcedit';
+import { spawnTsgo } from './lib/tsgo.ts';
+import { runEsbuildTranspile, runEsbuildBundle } from './lib/esbuild.ts';
+
+
+const glob = promisify(globCallback);
+const rcedit = promisify(rceditCallback);
+const root = path.dirname(import.meta.dirname);
+const commit = getVersion(root);
+
+// Build
+const vscodeEntryPoints = [
+	buildfile.workerEditor,
+	buildfile.workerExtensionHost,
+	buildfile.workerNotebook,
+	buildfile.workerLanguageDetection,
+	buildfile.workerLocalFileSearch,
+	buildfile.workerProfileAnalysis,
+	buildfile.workerOutputLinks,
+	buildfile.workerBackgroundTokenization,
+	buildfile.workbenchDesktop,
+	buildfile.code
+].flat();
+
+const vscodeResourceIncludes = [
+
+	// NLS
+	'out-build/nls.messages.json',
+	'out-build/nls.keys.json',
+
+	// Workbench
+	'out-build/vs/code/electron-browser/workbench/workbench.html',
+	'out-build/vs/sessions/electron-browser/sessions.html',
+
+	// Electron Preload
+	'out-build/vs/base/parts/sandbox/electron-browser/preload.js',
+	'out-build/vs/base/parts/sandbox/electron-browser/preload-aux.js',
+	'out-build/vs/platform/browserView/electron-browser/preload-browserView.js',
+
+	// Node Scripts
+	'out-build/vs/base/node/{terminateProcess.sh,cpuUsage.sh,ps.sh}',
+
+	// Touchbar
+	'out-build/vs/workbench/browser/parts/editor/media/*.png',
+	'out-build/vs/workbench/contrib/debug/browser/media/*.png',
+
+	// External Terminal
+	'out-build/vs/workbench/contrib/externalTerminal/**/*.scpt',
+
+	// Terminal shell integration
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.fish',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.ps1',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.psm1',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.sh',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.zsh',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/psreadline/**',
+
+	// Accessibility Signals
+	'out-build/vs/platform/accessibilitySignal/browser/media/*.mp3',
+
+	// Welcome
+	'out-build/vs/workbench/contrib/welcomeGettingStarted/common/media/**/*.{svg,png}',
+	'out-build/vs/workbench/contrib/welcomeOnboarding/browser/media/*.svg',
+
+	// Sessions
+	'out-build/vs/sessions/contrib/chat/browser/media/*.svg',
+	'out-build/vs/sessions/skills/**/SKILL.md',
+
+	// Extensions
+	'out-build/vs/workbench/contrib/extensions/browser/media/{theme-icon.png,language-icon.svg}',
+
+	// Webview
+	'out-build/vs/workbench/contrib/webview/browser/pre/*.{js,html}',
+
+	// Extension Host Worker
+	'out-build/vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html',
+
+	// Tree Sitter highlights
+	'out-build/vs/editor/common/languages/highlights/*.scm',
+
+	// Tree Sitter injection queries
+	'out-build/vs/editor/common/languages/injections/*.scm'
+];
+
+const vscodeResources = [
+
+	// Includes
+	...vscodeResourceIncludes,
+
+	// Excludes
+	'!out-build/vs/code/browser/**',
+	'!out-build/vs/editor/standalone/**',
+	'!out-build/vs/code/**/*-dev.html',
+	'!out-build/vs/workbench/contrib/issue/**/*-dev.html',
+	'!**/test/**'
+];
+
+const bootstrapEntryPoints = [
+	'out-build/main.js',
+	'out-build/cli.js',
+	'out-build/bootstrap-fork.js'
+];
+
+const bundleVSCodeTask = task.define('bundle-vscode', task.series(
+	util.rimraf('out-vscode'),
+	// Optimize: bundles source files automatically based on
+	// import statements based on the passed in entry points.
+	// In addition, concat window related bootstrap files into
+	// a single file.
+	optimize.bundleTask(
+		{
+			out: 'out-vscode',
+			esm: {
+				src: 'out-build',
+				entryPoints: [
+					...vscodeEntryPoints,
+					...bootstrapEntryPoints
+				],
+				resources: vscodeResources,
+				skipTSBoilerplateRemoval: entryPoint => entryPoint === 'vs/code/electron-browser/workbench/workbench' || entryPoint === 'vs/sessions/electron-browser/sessions'
+			}
+		}
+	)
+));
+gulp.task(bundleVSCodeTask);
+
+const sourceMappingURLBase = `https://main.vscode-cdn.net/sourcemaps/${commit}`;
+const isCI = !!process.env['CI'] || !!process.env['BUILD_ARTIFACTSTAGINGDIRECTORY'] || !!process.env['GITHUB_WORKSPACE'];
+const useCdnSourceMapsForPackagingTasks = isCI;
+const stripSourceMapsInPackagingTasks = isCI;
+const minifyVSCodeTask = task.define('minify-vscode', task.series(
+	bundleVSCodeTask,
+	util.rimraf('out-vscode-min'),
+	optimize.minifyTask('out-vscode', `${sourceMappingURLBase}/core`)
+));
+gulp.task(minifyVSCodeTask);
+
+gulp.task(task.define('core-ci-old', task.series(
+	gulp.task('compile-build-with-mangling') as task.Task,
+	task.parallel(
+		gulp.task('minify-vscode') as task.Task,
+		gulp.task('minify-vscode-reh') as task.Task,
+		gulp.task('minify-vscode-reh-web') as task.Task,
+	)
+)));
+
+gulp.task(task.define('core-ci', task.series(
+	copyCodiconsTask,
+	compileNonNativeExtensionsBuildTask,
+	compileExtensionMediaBuildTask,
+	writeISODate('out-build'),
+	// Type-check with tsgo (no emit)
+	task.define('tsgo-typecheck', () => spawnTsgo(path.join(root, 'src', 'tsconfig.json'), { taskName: 'tsgo-typecheck', noEmit: true })),
+	// Transpile individual files to out-build first (for unit tests)
+	task.define('esbuild-out-build', () => runEsbuildTranspile('out-build', false)),
+	// Then bundle for shipping (bundles also write NLS files to out-build)
+	task.parallel(
+		task.define('esbuild-vscode-min', () => runEsbuildBundle('out-vscode-min', true, true, 'desktop', `${sourceMappingURLBase}/core`)),
+		task.define('esbuild-vscode-reh-min', () => runEsbuildBundle('out-vscode-reh-min', true, true, 'server', `${sourceMappingURLBase}/core`)),
+		task.define('esbuild-vscode-reh-web-min', () => runEsbuildBundle('out-vscode-reh-web-min', true, true, 'server-web', `${sourceMappingURLBase}/core`)),
+	)
+)));
+
+/**
+ * Compute checksums for some files.
+ *
+ * @param out The out folder to read the file from.
+ * @param filenames The paths to compute a checksum for.
+ * @return A map of paths to checksums.
+ */
+function computeChecksums(out: string, filenames: string[]): Record<string, string> {
+	const result: Record<string, string> = {};
+	filenames.forEach(function (filename) {
+		const fullPath = path.join(process.cwd(), out, filename);
+		result[filename] = computeChecksum(fullPath);
+	});
+	return result;
+}
+
+/**
+ * Compute checksums for a file.
+ *
+ * @param filename The absolute path to a filename.
+ * @return The checksum for `filename`.
+ */
+function computeChecksum(filename: string): string {
+	const contents = fs.readFileSync(filename);
+
+	const hash = crypto
+		.createHash('sha256')
+		.update(contents)
+		.digest('base64')
+		.replace(/=+$/, '');
+
+	return hash;
+}
+
+/**
+ * Some `.build` inputs (telemetry, policies, appx) are produced by external
+ * pipeline steps that do not run in this build. Substitute an empty stream
+ * when the directory is absent instead of failing the glob walk with ENOENT.
+ */
+function optionalSrc(dir: string, globs: string | string[], opts: Parameters<typeof gulp.src>[1]): NodeJS.ReadWriteStream {
+	return fs.existsSync(dir) ? esSrc(globs, opts) : es.readArray([]);
+}
+
+/**
+ * gulp 5 readables are streamx-based: when piped they unconditionally call
+ * dest.end(), but the bare merge stream returned by es.merge has no end()
+ * method. Interpose a classic through stream so the source can be merged.
+ */
+function esSrc(globs: string | string[], opts?: Parameters<typeof gulp.src>[1]): NodeJS.ReadWriteStream {
+	return gulp.src(globs, opts).pipe(es.through());
+}
+
+/**
+ * inlineMeta() needs the edited package.json/product.json contents as plain strings,
+ * ahead of when the bootstrap entry point files stream through it. es.merge() does not
+ * guarantee the single-file jsonEditor streams flow before those entry points, so reading
+ * the contents back via a stream side-effect race under gulp 5 (the entry point can arrive
+ * first, leaving the string empty and inlineMeta's JSON.parse throwing). Compute the edited
+ * JSON synchronously instead; the streams below are only used for the packaged output file.
+ */
+function readEditedJson(repoRelativePath: string, edit: Record<string, unknown> | ((json: Record<string, unknown>) => Record<string, unknown>)): string {
+	const json = JSON.parse(fs.readFileSync(path.join(root, repoRelativePath), 'utf8'));
+	if (typeof edit === 'function') {
+		return JSON.stringify(edit(json));
+	}
+	for (const [key, value] of Object.entries(edit)) {
+		if (value === undefined) {
+			delete json[key];
+		} else {
+			json[key] = value;
+		}
+	}
+	return JSON.stringify(json);
+}
+
+function packageTask(platform: string, arch: string, sourceFolderName: string, destinationFolderName: string, _opts?: { stats?: boolean }) {
+	const destination = path.join(path.dirname(root), destinationFolderName);
+	platform = platform || process.platform;
+
+	const task = () => {
+		const out = sourceFolderName;
+		const versionedResourcesFolder = util.getVersionedResourcesFolder(platform, commit!);
+
+		const checksums = computeChecksums(out, [
+			'vs/base/parts/sandbox/electron-browser/preload.js',
+			'vs/workbench/workbench.desktop.main.js',
+			'vs/workbench/workbench.desktop.main.css',
+			'vs/workbench/api/node/extensionHostProcess.js',
+			'vs/code/electron-browser/workbench/workbench.html',
+			'vs/code/electron-browser/workbench/workbench.js',
+			'vs/sessions/sessions.desktop.main.js',
+			'vs/sessions/sessions.desktop.main.css',
+			'vs/sessions/electron-browser/sessions.html',
+			'vs/sessions/electron-browser/sessions.js'
+		]);
+
+		const src = gulp.src(out + '/**', { base: '.' })
+			.pipe(rename(function (path) { path.dirname = path.dirname!.replace(new RegExp('^' + out), 'out'); }))
+			.pipe(util.setExecutableBit(['**/*.sh']));
+
+		const platformSpecificBuiltInExtensionsExclusions = product.builtInExtensions.filter(ext => {
+			if (!(ext as { platforms?: string[] }).platforms) {
+				return false;
+			}
+
+			const set = new Set((ext as { platforms?: string[] }).platforms);
+			return !set.has(platform);
+		}).map(ext => `!.build/extensions/${ext.name}/**`);
+
+		const extensions = esSrc(['.build/extensions/**', '!.build/extensions/copilot/**', ...platformSpecificBuiltInExtensionsExclusions], { base: '.build', dot: true });
+
+		const sourceFilterPattern = stripSourceMapsInPackagingTasks
+			? ['**', '!**/*.{js,css}.map']
+			: ['**'];
+		const sources = es.merge(src, extensions)
+			.pipe(filter(sourceFilterPattern, { dot: true }));
+
+		let version = packageJson.version;
+		const quality = (product as { quality?: string }).quality;
+
+		if (quality && quality !== 'stable') {
+			version += '-' + quality;
+		}
+
+		const name = product.nameShort;
+		const packageJsonUpdates: Record<string, unknown> = { name, version };
+
+		if (platform === 'linux') {
+			packageJsonUpdates.desktopName = `${product.applicationName}.desktop`;
+		}
+
+		const packageJsonContents = readEditedJson('package.json', packageJsonUpdates);
+		const packageJsonStream = gulp.src(['package.json'], { base: '.' })
+			.pipe(jsonEditor(packageJsonUpdates));
+
+		const productJsonEdit = (json: Record<string, unknown>) => {
+			json.commit = commit;
+			json.date = readISODate(out);
+			json.checksums = checksums;
+			json.version = version;
+			json.voidVersion = getVoidVersion(root, json.voidVersion as string);
+			return json;
+		};
+		const productJsonContents = readEditedJson('product.json', productJsonEdit);
+		const productJsonStream = gulp.src(['product.json'], { base: '.' })
+			.pipe(jsonEditor(productJsonEdit));
+
+		const licenseGlobs = [product.licenseFileName, 'ThirdPartyNotices.txt'];
+		if (fs.existsSync('licenses')) {
+			licenseGlobs.push('licenses/**');
+		}
+		const license = esSrc(licenseGlobs, { base: '.', allowEmpty: true });
+
+		// TODO the API should be copied to `out` during compile, not here
+		const api = gulp.src('src/vscode-dts/vscode.d.ts').pipe(rename('out/vscode-dts/vscode.d.ts'));
+
+		// .build/telemetry is produced by an external telemetry-extraction step that
+		// does not run in this build; skip it when absent.
+		const telemetry = optionalSrc('.build/telemetry', '.build/telemetry/**', { base: '.build/telemetry', dot: true });
+
+		const jsFilter = util.filter(data => !data.isDirectory() && /\.js$/.test(data.path));
+		const productionDependencies = getProductionDependencies(root);
+		// Exclude nested node_modules/.bin: the npm shims are relative symlinks
+		// which vinyl-fs 4 (gulp 5) stats against cwd instead of the link's
+		// directory (ENOENT lstat '../uuid/...'), and they are not needed at
+		// runtime anyway.
+		const dependenciesSrc = productionDependencies.map(d => path.relative(root, d)).map(d => [`${d}/**`, `!${d}/**/{test,tests}/**`]).flat().concat(['!**/*.mk', '!**/node_modules/.bin/**']);
+
+		const depFilterPattern = ['**', `!**/${config.version}/**`, '!**/bin/darwin-arm64-87/**', '!**/package-lock.json', '!**/yarn.lock'];
+		if (stripSourceMapsInPackagingTasks) {
+			depFilterPattern.push('!**/*.{js,css}.map');
+		}
+
+		const deps = gulp.src(dependenciesSrc, { base: '.', dot: true })
+			.pipe(filter(depFilterPattern))
+			.pipe(util.cleanNodeModules(path.join(import.meta.dirname, '.moduleignore')))
+			.pipe(util.cleanNodeModules(path.join(import.meta.dirname, `.moduleignore.${process.platform}`)))
+			.pipe(filter(getCopilotExcludeFilter(platform, arch)))
+			.pipe(jsFilter)
+			.pipe(util.rewriteSourceMappingURL(sourceMappingURLBase))
+			.pipe(jsFilter.restore)
+			.pipe(createAsar(path.join(process.cwd(), 'node_modules'), [
+				'**/*.node',
+				'**/@vscode/ripgrep/bin/*',
+				'**/@vscode/ripgrep-*/bin/*',
+				'**/@github/copilot-*/**',
+				'**/node-pty/build/Release/*',
+				'**/node-pty/build/Release/conpty/*',
+				'**/node-pty/lib/worker/conoutSocketWorker.js',
+				'**/node-pty/lib/shared/conout.js',
+				'**/*.wasm',
+				'**/@vscode/vsce-sign/bin/*',
+			], [
+				'**/*.mk',
+				'!node_modules/vsda/**' // stay compatible with extensions that depend on us shipping `vsda` into ASAR
+			], [
+				'node_modules/vsda/**' // retain copy of `vsda` in node_modules for internal use
+			], 'node_modules.asar'));
+
+		const mergeStreams = [
+			packageJsonStream,
+			productJsonStream,
+			license,
+			api,
+			telemetry,
+			sources,
+			deps
+		];
+		let all = es.merge(...mergeStreams);
+
+		if (platform === 'win32') {
+			all = es.merge(all, esSrc([
+				'resources/win32/bower.ico',
+				'resources/win32/c.ico',
+				'resources/win32/code.ico',
+				'resources/win32/config.ico',
+				'resources/win32/cpp.ico',
+				'resources/win32/csharp.ico',
+				'resources/win32/css.ico',
+				'resources/win32/default.ico',
+				'resources/win32/go.ico',
+				'resources/win32/html.ico',
+				'resources/win32/jade.ico',
+				'resources/win32/java.ico',
+				'resources/win32/javascript.ico',
+				'resources/win32/json.ico',
+				'resources/win32/less.ico',
+				'resources/win32/markdown.ico',
+				'resources/win32/php.ico',
+				'resources/win32/powershell.ico',
+				'resources/win32/python.ico',
+				'resources/win32/react.ico',
+				'resources/win32/ruby.ico',
+				'resources/win32/sass.ico',
+				'resources/win32/shell.ico',
+				'resources/win32/sql.ico',
+				'resources/win32/typescript.ico',
+				'resources/win32/vue.ico',
+				'resources/win32/xml.ico',
+				'resources/win32/yaml.ico',
+				'resources/win32/code_70x70.png',
+				'resources/win32/code_150x150.png'
+			], { base: '.' }));
+		} else if (platform === 'linux') {
+			const policyDest = optionalSrc('.build/policies/linux', '.build/policies/linux/**', { base: '.build/policies/linux' })
+				.pipe(rename(f => f.dirname = `policies/${f.dirname}`));
+			all = es.merge(all, esSrc('resources/linux/code.png', { base: '.' }), policyDest);
+		} else if (platform === 'darwin') {
+			const shortcut = gulp.src('resources/darwin/bin/code.sh')
+				.pipe(replace('@@APPNAME@@', product.applicationName))
+				.pipe(replace('@@NAME@@', product.nameShort))
+				.pipe(rename('bin/code'));
+			const policyDest = optionalSrc('.build/policies/darwin', '.build/policies/darwin/**', { base: '.build/policies/darwin' })
+				.pipe(rename(f => f.dirname = `policies/${f.dirname}`));
+			all = es.merge(all, shortcut, policyDest);
+		}
+
+		const electronConfig = {
+			...config,
+			platform,
+			arch: arch === 'armhf' ? 'arm' : arch,
+			ffmpegChromium: false
+		};
+
+		let result: NodeJS.ReadWriteStream = all
+			.pipe(util.skipDirectories())
+			.pipe(util.fixWin32DirectoryPermissions())
+			.pipe(filter(['**', '!**/.github/**'], { dot: true })) // https://github.com/microsoft/vscode/issues/116523
+			.pipe(electron(electronConfig))
+			.pipe(filter([
+				'**',
+				'!LICENSE',
+				'!version',
+				...(platform === 'darwin' ? ['!**/Contents/Applications', '!**/Contents/Applications/**'] : []),
+				...(platform === 'win32' ? ['!**/electron_proxy.exe'] : []),
+			], { dot: true }));
+
+		if (platform === 'linux') {
+			result = es.merge(result, gulp.src('resources/completions/bash/code', { base: '.' })
+				.pipe(replace('@@APPNAME@@', product.applicationName))
+				.pipe(rename(function (f) { f.basename = product.applicationName; })));
+
+			result = es.merge(result, gulp.src('resources/completions/zsh/_code', { base: '.' })
+				.pipe(replace('@@APPNAME@@', product.applicationName))
+				.pipe(rename(function (f) { f.basename = '_' + product.applicationName; })));
+		}
+
+		if (platform === 'win32') {
+			result = es.merge(result, esSrc('resources/win32/bin/code.js', { base: 'resources/win32', allowEmpty: true }));
+
+			if (versionedResourcesFolder) {
+				result = es.merge(result, gulp.src('resources/win32/versioned/bin/code.cmd', { base: 'resources/win32/versioned' })
+					.pipe(replace('@@NAME@@', product.nameShort))
+					.pipe(replace('@@VERSIONFOLDER@@', versionedResourcesFolder))
+					.pipe(rename(function (f) { f.basename = product.applicationName; })));
+
+				result = es.merge(result, gulp.src('resources/win32/versioned/bin/code.sh', { base: 'resources/win32/versioned' })
+					.pipe(replace('@@NAME@@', product.nameShort))
+					.pipe(replace('@@PRODNAME@@', product.nameLong))
+					.pipe(replace('@@VERSION@@', version))
+					.pipe(replace('@@COMMIT@@', String(commit)))
+					.pipe(replace('@@APPNAME@@', product.applicationName))
+					.pipe(replace('@@VERSIONFOLDER@@', versionedResourcesFolder))
+					.pipe(replace('@@SERVERDATAFOLDER@@', product.serverDataFolderName || '.vscode-remote'))
+					.pipe(replace('@@QUALITY@@', quality!))
+					.pipe(rename(function (f) { f.basename = product.applicationName; f.extname = ''; })));
+			} else {
+				result = es.merge(result, gulp.src('resources/win32/bin/code.cmd', { base: 'resources/win32' })
+					.pipe(replace('@@NAME@@', product.nameShort))
+					.pipe(rename(function (f) { f.basename = product.applicationName; })));
+
+				result = es.merge(result, gulp.src('resources/win32/bin/code.sh', { base: 'resources/win32' })
+					.pipe(replace('@@NAME@@', product.nameShort))
+					.pipe(replace('@@PRODNAME@@', product.nameLong))
+					.pipe(replace('@@VERSION@@', version))
+					.pipe(replace('@@COMMIT@@', String(commit)))
+					.pipe(replace('@@APPNAME@@', product.applicationName))
+					.pipe(replace('@@SERVERDATAFOLDER@@', product.serverDataFolderName || '.vscode-remote'))
+					.pipe(replace('@@QUALITY@@', String(quality)))
+					.pipe(rename(function (f) { f.basename = product.applicationName; f.extname = ''; })));
+			}
+
+			result = es.merge(result, gulp.src('resources/win32/VisualElementsManifest.xml', { base: 'resources/win32' })
+				.pipe(replace('@@VERSIONFOLDER@@', versionedResourcesFolder ? `${versionedResourcesFolder}\\` : ''))
+				.pipe(rename(product.nameShort + '.VisualElementsManifest.xml')));
+
+			result = es.merge(result, optionalSrc('.build/policies/win32', '.build/policies/win32/**', { base: '.build/policies/win32' })
+				.pipe(rename(f => f.dirname = `policies/${f.dirname}`)));
+
+			if (quality === 'stable' || quality === 'insider') {
+				result = es.merge(result, optionalSrc('.build/win32/appx', '.build/win32/appx/**', { base: '.build/win32' }));
+				const rawVersion = version.replace(/-\w+$/, '').split('.');
+				const appxVersion = `${rawVersion[0]}.0.${rawVersion[1]}.${rawVersion[2]}`;
+				result = es.merge(result, gulp.src('resources/win32/appx/AppxManifest.xml', { base: '.' })
+					.pipe(replace('@@AppxPackageName@@', product.win32AppUserModelId))
+					.pipe(replace('@@AppxPackageVersion@@', appxVersion))
+					.pipe(replace('@@AppxPackageDisplayName@@', product.nameLong))
+					.pipe(replace('@@AppxPackageDescription@@', product.win32NameVersion))
+					.pipe(replace('@@ApplicationIdShort@@', product.win32RegValueName))
+					.pipe(replace('@@ApplicationExe@@', product.nameShort + '.exe'))
+					.pipe(replace('@@FileExplorerContextMenuID@@', quality === 'stable' ? 'OpenWithCode' : 'OpenWithCodeInsiders'))
+					.pipe(replace('@@FileExplorerContextMenuCLSID@@', (product as { win32ContextMenu?: Record<string, { clsid: string }> }).win32ContextMenu![arch].clsid))
+					.pipe(replace('@@FileExplorerContextMenuDLL@@', `${quality === 'stable' ? 'code' : 'code_insider'}_explorer_command_${arch}.dll`))
+					.pipe(rename(f => f.dirname = `appx/manifest`)));
+			}
+		} else if (platform === 'linux') {
+			result = es.merge(result, gulp.src('resources/linux/bin/code.sh', { base: '.' })
+				.pipe(replace('@@PRODNAME@@', product.nameLong))
+				.pipe(replace('@@APPNAME@@', product.applicationName))
+				.pipe(rename('bin/' + product.applicationName)));
+		}
+
+		result = inlineMeta(result, {
+			targetPaths: bootstrapEntryPoints,
+			packageJsonFn: () => packageJsonContents,
+			productJsonFn: () => productJsonContents
+		});
+
+		return result.pipe(vfs.dest(destination));
+	};
+	task.taskName = `package-${platform}-${arch}`;
+	return task;
+}
+
+// Rebuilds native Node.js modules (@vscode/spdlog) against the bundled Electron
+// version and ensures @vscode/ripgrep/bin exists (for copilot in dev mode and
+// for builds that don't use the new platform-specific ripgrep packages).
+// Must run BEFORE packageTask so the compiled .node file is picked up
+// and placed outside the ASAR by the "**/*.node" exclusion rule.
+function rebuildElectronNativeModulesTask(platform: string, arch: string) {
+	return async () => {
+		const electronVersionFile = path.join(root, '.build', 'electron', 'version');
+		if (!fs.existsSync(electronVersionFile)) {
+			console.warn('[rebuildElectronNativeModules] .build/electron/version not found, skipping native module rebuild');
+			return;
+		}
+		const electronVersion = fs.readFileSync(electronVersionFile, 'utf8').trim();
+
+		const spdlogDir = path.join(root, 'node_modules', '@vscode', 'spdlog');
+		if (!fs.existsSync(spdlogDir)) {
+			console.warn('[rebuildElectronNativeModules] @vscode/spdlog not found in node_modules, skipping');
+		} else {
+			const nodeGypBin = path.join(root, 'build', 'npm', 'gyp', 'node_modules', '.bin', 'node-gyp');
+			const nodeGypCmd = fs.existsSync(nodeGypBin) ? nodeGypBin : 'node-gyp';
+			const nodeArch = arch === 'armhf' ? 'arm' : arch;
+
+			await new Promise<void>((resolve, reject) => {
+				const proc = child_process.spawn(
+					nodeGypCmd,
+					[
+						'rebuild',
+						'--loglevel=silent',
+						`--target=${electronVersion}`,
+						`--arch=${nodeArch}`,
+						'--dist-url=https://electronjs.org/headers',
+						'--runtime=electron',
+					],
+					{ cwd: spdlogDir, stdio: 'pipe', shell: process.platform === 'win32' }
+				);
+				proc.on('close', (code: number) => {
+					if (code === 0) {
+						console.log(`[rebuildElectronNativeModules] spdlog rebuilt for Electron ${electronVersion} (${platform}-${nodeArch})`);
+						resolve();
+					} else {
+						reject(new Error(`[rebuildElectronNativeModules] node-gyp exited with code ${code}`));
+					}
+				});
+				proc.on('error', reject);
+			});
+		}
+
+		// Ensure @vscode/ripgrep/bin exists (new ripgrep uses platform-specific packages)
+		const ripgrepBin = path.join(root, 'node_modules', '@vscode', 'ripgrep', 'bin');
+		if (!fs.existsSync(ripgrepBin)) {
+			const nodeArch = arch === 'armhf' ? 'arm' : arch;
+			const nodePlatform = platform === 'alpine' ? 'linux' : platform;
+			const platformRipgrepBin = path.join(root, 'node_modules', '@vscode', `ripgrep-${nodePlatform}-${nodeArch}`, 'bin');
+			if (fs.existsSync(platformRipgrepBin)) {
+				fs.mkdirSync(ripgrepBin, { recursive: true });
+				for (const file of fs.readdirSync(platformRipgrepBin)) {
+					const src = path.join(platformRipgrepBin, file);
+					const dest = path.join(ripgrepBin, file);
+					fs.copyFileSync(src, dest);
+					fs.chmodSync(dest, 0o755);
+				}
+				console.log(`[rebuildElectronNativeModules] Created @vscode/ripgrep/bin from ${platformRipgrepBin}`);
+			}
+		}
+	};
+}
+
+function patchWin32DependenciesTask(destinationFolderName: string) {
+	const cwd = path.join(path.dirname(root), destinationFolderName);
+
+	return async () => {
+		const versionedResourcesFolder = util.getVersionedResourcesFolder('win32', commit!);
+		const deps = (await Promise.all([
+			glob('**/*.node', { cwd, ignore: 'extensions/node_modules/@parcel/watcher/**' }),
+			glob('**/rg.exe', { cwd }),
+			glob('**/*explorer_command*.dll', { cwd }),
+		])).flatMap(o => o);
+		const packageJson = JSON.parse(await fs.promises.readFile(path.join(cwd, versionedResourcesFolder, 'resources', 'app', 'package.json'), 'utf8'));
+		const product = JSON.parse(await fs.promises.readFile(path.join(cwd, versionedResourcesFolder, 'resources', 'app', 'product.json'), 'utf8'));
+		const baseVersion = packageJson.version.replace(/-.*$/, '');
+
+		const patchPromises = deps.map<Promise<unknown>>(async dep => {
+			const basename = path.basename(dep);
+
+			try {
+				await rcedit(path.join(cwd, dep), {
+					'file-version': baseVersion,
+					'version-string': {
+						'CompanyName': 'Microsoft Corporation',
+						'FileDescription': product.nameLong,
+						'FileVersion': packageJson.version,
+						'InternalName': basename,
+						'LegalCopyright': 'Copyright (C) 2026 Microsoft. All rights reserved',
+						'OriginalFilename': basename,
+						'ProductName': product.nameLong,
+						'ProductVersion': packageJson.version,
+					}
+				});
+			} catch (err) {
+				// Some vendored native binaries (node-pty's conpty*.node, windows-foreground-love, etc.)
+				// are PE files rcedit cannot parse ("Unable to load file"). The version resource patch
+				// is cosmetic only, so skip that file and keep going instead of failing the whole build.
+				console.warn(`[patchWin32Dependencies] Skipping rcedit for ${dep}: ${(err as Error).message}`);
+			}
+		});
+
+		await Promise.all(patchPromises);
+	};
+}
+
+const buildRoot = path.dirname(root);
+
+const BUILD_TARGETS = [
+	{ platform: 'win32', arch: 'x64' },
+	{ platform: 'win32', arch: 'arm64' },
+	{ platform: 'darwin', arch: 'x64', opts: { stats: true } },
+	{ platform: 'darwin', arch: 'arm64', opts: { stats: true } },
+	{ platform: 'linux', arch: 'x64' },
+	{ platform: 'linux', arch: 'armhf' },
+	{ platform: 'linux', arch: 'arm64' },
+];
+BUILD_TARGETS.forEach(buildTarget => {
+	const dashed = (str: string) => (str ? `-${str}` : ``);
+	const platform = buildTarget.platform;
+	const arch = buildTarget.arch;
+	const opts = buildTarget.opts;
+
+	const [vscode, vscodeMin] = ['', 'min'].map(minified => {
+		const sourceFolderName = `out-vscode${dashed(minified)}`;
+		const destinationFolderName = `VSCode${dashed(platform)}${dashed(arch)}`;
+
+		const packageTasks: task.Task[] = [
+			compileNativeExtensionsBuildTask,
+			task.define(`rebuild-electron-native-${platform}-${arch}${dashed(minified)}`, rebuildElectronNativeModulesTask(platform, arch)),
+			util.rimraf(path.join(buildRoot, destinationFolderName)),
+			packageTask(platform, arch, sourceFolderName, destinationFolderName, opts),
+		];
+
+		if (platform === 'win32') {
+			packageTasks.push(patchWin32DependenciesTask(destinationFolderName));
+		}
+
+		const vscodeTaskCI = task.define(`vscode${dashed(platform)}${dashed(arch)}${dashed(minified)}-ci`, task.series(...packageTasks));
+		gulp.task(vscodeTaskCI);
+
+		let vscodeTask: task.Task;
+		if (useEsbuildTranspile) {
+			const esbuildBundleTask = task.define(
+				`esbuild-bundle${dashed(platform)}${dashed(arch)}${dashed(minified)}`,
+				() => runEsbuildBundle(
+					sourceFolderName,
+					!!minified,
+					true,
+					'desktop',
+					minified && useCdnSourceMapsForPackagingTasks ? `${sourceMappingURLBase}/core` : undefined
+				)
+			);
+			vscodeTask = task.define(`vscode${dashed(platform)}${dashed(arch)}${dashed(minified)}`, task.series(
+				copyCodiconsTask,
+				cleanExtensionsBuildTask,
+				compileNonNativeExtensionsBuildTask,
+				compileExtensionMediaBuildTask,
+				writeISODate('out-build'),
+				esbuildBundleTask,
+				vscodeTaskCI
+			));
+		} else {
+			vscodeTask = task.define(`vscode${dashed(platform)}${dashed(arch)}${dashed(minified)}`, task.series(
+				minified ? compileBuildWithManglingTask : compileBuildWithoutManglingTask,
+				cleanExtensionsBuildTask,
+				compileNonNativeExtensionsBuildTask,
+				compileExtensionMediaBuildTask,
+				minified ? minifyVSCodeTask : bundleVSCodeTask,
+				vscodeTaskCI
+			));
+		}
+		gulp.task(vscodeTask);
+
+		return vscodeTask;
+	});
+
+	if (process.platform === platform && process.arch === arch) {
+		gulp.task(task.define('vscode', task.series(vscode)));
+		gulp.task(task.define('vscode-min', task.series(vscodeMin)));
+	}
+});
+
+// #region nls
+
+gulp.task(task.define(
+	'vscode-translations-export',
+	task.series(
+		gulp.task('core-ci') as task.Task,
+		compileAllExtensionsBuildTask,
+		function () {
+			const pathToMetadata = './out-build/nls.metadata.json';
+			const pathToExtensions = '.build/extensions/*';
+			const pathToSetup = 'build/win32/i18n/messages.en.isl';
+
+			return es.merge(
+				gulp.src(pathToMetadata).pipe(i18n.createXlfFilesForCoreBundle()),
+				gulp.src(pathToSetup).pipe(i18n.createXlfFilesForIsl()),
+				gulp.src(pathToExtensions).pipe(i18n.createXlfFilesForExtensions())
+			).pipe(vfs.dest('../vscode-translations-export'));
+		}
+	)
+));
+
+gulp.task('vscode-translations-import', function () {
+	const options = minimist(process.argv.slice(2), {
+		string: 'location',
+		default: {
+			location: '../vscode-translations-import'
+		}
+	});
+	return es.merge([...i18n.defaultLanguages, ...i18n.extraLanguages].map(language => {
+		const id = language.id;
+		return gulp.src(`${options.location}/${id}/vscode-setup/messages.xlf`)
+			.pipe(i18n.prepareIslFiles(language))
+			.pipe(vfs.dest(`./build/win32/i18n`));
+	}));
+});
+
+// #endregion

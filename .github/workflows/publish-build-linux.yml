@@ -1,0 +1,1308 @@
+name: Publish Build — Linux
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      release_id:
+        required: true
+        type: string
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '22'
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Resolve version from package.json (used by all jobs)
+  # ─────────────────────────────────────────────────────────────────────────────
+  resolve-version:
+    name: Resolve Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Determine version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./product.json').loopholeVersion ?? require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Linux x64
+  # Produces: .deb, .rpm, .tar.gz, AppImage (+.zsync), .snap, reh, reh-web, CLI
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-and-upload-linux-x64:
+    name: Build & Upload Linux x64
+    needs: resolve-version
+    runs-on: ubuntu-22.04
+    environment: publish
+    env:
+      VERSION: ${{ inputs.version || needs.resolve-version.outputs.version }}
+      VSCODE_ARCH: x64
+      VSCODE_QUALITY: stable
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── System dependencies ────────────────────────────────────────────────────
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libx11-dev \
+            libxkbfile-dev \
+            libsecret-1-dev \
+            libkrb5-dev \
+            fakeroot \
+            rpm \
+            squashfs-tools \
+            zsync \
+            file \
+            python3-pip \
+            pkg-config \
+            libgtk-3-dev \
+            libnss3-dev \
+            libgbm-dev \
+            libasound2-dev
+
+      # ── Snap environment setup ────────────────────────────────────────────────
+      - name: Wait for snapd to be ready
+        run: sudo snap wait system seed.loaded
+
+      - name: Install appimagetool
+        run: |
+          curl -sL -o appimagetool.AppImage \
+            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool.AppImage
+          # Extract the AppImage to avoid FUSE requirement
+          ./appimagetool.AppImage --appimage-extract
+          sudo mv squashfs-root /opt/appimagetool
+          sudo ln -s /opt/appimagetool/AppRun /usr/local/bin/appimagetool
+
+      # ── Toolchain ─────────────────────────────────────────────────────────────
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Rust (for CLI)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      # ── Caches ────────────────────────────────────────────────────────────────
+      - name: Cache Rust artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: publish-linux-x64-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: publish-linux-x64-cargo-
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: publish-linux-x64-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: publish-linux-x64-electron-
+
+      # ── Install & compile ──────────────────────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+        env:
+          npm_config_arch: x64
+
+      - name: Install React dependencies
+        run: npm install
+        working-directory: src/vs/workbench/contrib/void/browser/react
+
+      - name: Build React UI
+        run: npm run buildreact
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      # compile-build-without-mangling produces out-build/, which bundle-vscode reads from
+      - name: Compile build (produces out-build/)
+        run: npm run gulp compile-build-without-mangling
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Build CLI (Rust, x64)
+        working-directory: cli
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      # ── Bundle into out-vscode (required before the -ci packaging task) ────────
+      - name: Bundle VSCode (produces out-vscode/)
+        run: npm run gulp bundle-vscode
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Verify out-vscode exists
+        run: |
+          if [ ! -d "out-vscode" ]; then
+            echo "::error::out-vscode/ directory not found after bundle-vscode — build-vscode step failed"
+            exit 1
+          fi
+          echo "out-vscode/ present ($(find out-vscode -maxdepth 0 -printf '%s' 2>/dev/null || du -sh out-vscode | cut -f1) total)"
+
+      # ── Package base app (single call — reused for tar.gz + AppImage) ─────────
+      - name: Package Electron app (linux x64)
+        run: npm run gulp vscode-linux-x64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      # ── Debug: Check what gulp actually produced ──────────────────────────────
+      - name: Debug — List parent directory and build outputs
+        run: |
+          echo "=== Contents of parent directory (where gulp writes output) ==="
+          ls -la .. || echo "Cannot list parent directory"
+          echo ""
+          echo "=== Looking for any VSCode-linux directories ==="
+          find .. -maxdepth 1 -type d -name "*linux*" 2>/dev/null || echo "No linux directories found"
+          echo ""
+          echo "=== Contents of .build/ ==="
+          ls -la .build/ 2>/dev/null || echo ".build/ does not exist"
+          find .build/ -name "*.deb" -o -name "*.rpm" 2>/dev/null || echo "No deb/rpm found"
+
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      # ── 1. .deb ───────────────────────────────────────────────────────────────
+      - name: Prepare .deb package
+        run: npm run gulp vscode-linux-x64-prepare-deb
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Build .deb package
+        run: npm run gulp vscode-linux-x64-build-deb
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — .deb
+        run: |
+          src=$(find .build -name "*.deb" | head -1)
+          if [ -n "$src" ] && [ -f "$src" ]; then
+            cp "$src" "dist/loophole_${VERSION}_amd64.deb"
+            echo "Staged: $src"
+          else
+            echo "::warning::No .deb produced — skipping"
+          fi
+
+      # ── 2. .rpm ───────────────────────────────────────────────────────────────
+      - name: Prepare .rpm package
+        run: npm run gulp vscode-linux-x64-prepare-rpm
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Build .rpm package
+        run: npm run gulp vscode-linux-x64-build-rpm
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — .rpm
+        run: |
+          src=$(find .build -name "*.rpm" | head -1)
+          if [ -n "$src" ] && [ -f "$src" ]; then
+            cp "$src" "dist/loophole-${VERSION}-el8.x86_64.rpm"
+            echo "Staged: $src"
+          else
+            echo "::warning::No .rpm produced — skipping"
+          fi
+
+      # ── 3. .tar.gz archive (reuses the package already built above — no rebuild) ─
+      - name: Stage — tar.gz
+        run: |
+          # Find the actual unpacked app directory (might be named VSCode-linux-x64 or similar)
+          app_dir=$(find .. -maxdepth 1 -type d -name "*linux-x64" 2>/dev/null | head -1)
+          if [ -z "$app_dir" ]; then
+            app_dir="../VSCode-linux-x64"  # Fallback to VS Code default
+          fi
+          echo "Looking for app directory at: $app_dir"
+          if [ -d "$app_dir" ]; then
+            tar -czf "dist/Loophole-linux-x64-$VERSION.tar.gz" -C "$(dirname "$app_dir")" "$(basename "$app_dir")"
+            echo "Packed tar.gz from $app_dir"
+          else
+            echo "::warning::No unpacked app directory found — skipping tar.gz"
+          fi
+
+      # ── 4. AppImage (built manually — gulp does not produce one) ──────────────
+      - name: Build AppImage
+        run: |
+          set -e
+          # Find the actual unpacked app directory
+          APP_DIR=$(find .. -maxdepth 1 -type d -name "*linux-x64" 2>/dev/null | head -1)
+          if [ -z "$APP_DIR" ]; then
+            APP_DIR="../VSCode-linux-x64"
+          fi
+          echo "Looking for app directory at: $APP_DIR"
+          if [ ! -d "$APP_DIR" ]; then
+            echo "::warning::No unpacked app directory found — skipping AppImage"
+            exit 0
+          fi
+
+          mkdir -p .appimage/AppDir/usr/bin
+          cp -r "$APP_DIR"/* .appimage/AppDir/usr/bin/
+
+          # Find the actual main executable (product.json applicationName == "loophole").
+          # Do NOT just grab the first executable file found — shared libraries like
+          # libffmpeg.so also carry the executable bit and get picked up by a naive search.
+          EXEC_NAME=$(find .appimage/AppDir/usr/bin -maxdepth 1 -type f -executable ! -name "*.so" ! -name "*.so.*" -printf '%f\n' | grep -x -m1 -e "loophole" -e "code" || true)
+          if [ -z "$EXEC_NAME" ]; then
+            EXEC_NAME="loophole"  # Fallback: product.json applicationName
+          fi
+          echo "Found executable: $EXEC_NAME"
+
+          ICON_SRC=$(find resources -iname "*.png" 2>/dev/null | head -1)
+          if [ -n "$ICON_SRC" ]; then
+            cp "$ICON_SRC" .appimage/AppDir/loophole.png
+          else
+            echo "::warning::No app icon found — AppImage will use a placeholder"
+            convert -size 256x256 xc:blue .appimage/AppDir/loophole.png 2>/dev/null || touch .appimage/AppDir/loophole.png
+          fi
+
+          cat > .appimage/AppDir/loophole.desktop <<EOF
+          [Desktop Entry]
+          Name=Loophole
+          Exec=usr/bin/$EXEC_NAME %F
+          Icon=loophole
+          Type=Application
+          Categories=Development;
+          EOF
+
+          cat > .appimage/AppDir/AppRun <<EOF
+          #!/bin/sh
+          HERE="\$(dirname "\$(readlink -f "\${0}")")"
+          exec "\${HERE}/usr/bin/$EXEC_NAME" "\$@"
+          EOF
+          chmod +x .appimage/AppDir/AppRun
+
+          GLIBC=$(ldd --version | head -1 | grep -oP '\d+\.\d+' | tail -1)
+          GLIBC=${GLIBC:-2.30}
+          ARCH=x86_64 appimagetool .appimage/AppDir "dist/Loophole-$VERSION.glibc${GLIBC}-x86_64.AppImage"
+
+      - name: Stage — AppImage .zsync
+        run: |
+          appimage=$(find dist -name "*.AppImage" | head -1)
+          if [ -n "$appimage" ]; then
+            zsyncmake -o "${appimage}.zsync" "$appimage" || echo "::warning::zsyncmake failed — skipping .zsync"
+          else
+            echo "::warning::No AppImage found — skipping .zsync"
+          fi
+
+      # ── 5. Snap ───────────────────────────────────────────────────────────────
+      - name: Debug — scan for unresolvable ELF dependencies
+        run: |
+          set +e
+          echo "=== Scanning ../VSCode-linux-x64 for CUDA/TensorRT/musl-linked binaries ==="
+          find ../VSCode-linux-x64 -type f -executable 2>/dev/null | while read -r f; do
+            if file "$f" 2>/dev/null | grep -q ELF; then
+              deps=$(readelf -d "$f" 2>/dev/null | grep NEEDED || true)
+              if echo "$deps" | grep -qiE "cublas|cudnn|nvinfer|nvonnxparser|cufft|curand|musl"; then
+                echo "=== $f ==="
+                echo "$deps"
+                echo ""
+              fi
+            fi
+          done
+          echo "=== Scan complete ==="
+
+      - name: Prepare Snap staging files
+        run: npm run gulp vscode-linux-x64-prepare-snap
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Build Snap package (Docker, ghcr.io/canonical/snapcraft:8_core22)
+        id: build-snap
+        continue-on-error: true
+        run: |
+          SNAP_DIR="$(pwd)/.build/linux/snap/x64/loophole-x64"
+          if [ ! -d "$SNAP_DIR/snap" ]; then
+            echo "::warning::Snap staging directory not found — skipping snap build"
+            exit 0
+          fi
+          mkdir -p .build/logs
+          docker run --rm \
+            -v "$SNAP_DIR:/project" \
+            ghcr.io/canonical/snapcraft:8_core22 \
+            pack 2>&1 | tee .build/logs/snapcraft-x64-failure.log
+          # tee swallows the docker exit code — recover it explicitly via PIPESTATUS
+          exit "${PIPESTATUS[0]}"
+
+      - name: Upload — Snapcraft debug log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapcraft-debug-log-x64
+          path: .build/logs/snapcraft-x64-failure.log
+          if-no-files-found: ignore
+
+      - name: Stage — Snap
+        run: |
+          src=$(find .build -name "*.snap" 2>/dev/null | head -1)
+          if [ -n "$src" ] && [ -f "$src" ]; then
+            cp "$src" "dist/loophole_${VERSION}_amd64.snap"
+            echo "✓ Staged snap: $src"
+          else
+            echo "::warning::No .snap file produced — check the 'Build Snap package' step output above, or download the snapcraft-debug-log-x64 artifact for the full log."
+          fi
+
+      # ── 6. Remote Host tarball ─────────────────────────────────────────────────
+      - name: Build Remote Host
+        run: npm run gulp vscode-reh-linux-x64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      # gulpfile.reh.ts writes to BUILD_ROOT (one level above the repo checkout),
+      # NOT to .build/ inside the repo.
+      - name: Stage — Remote Host
+        run: |
+          REH_PATH=$(find .. -maxdepth 1 -type d -name "vscode-reh-linux-x64" 2>/dev/null | head -1)
+          if [ -z "$REH_PATH" ]; then
+            echo "::error::REH directory not found at ../vscode-reh-linux-x64"
+            exit 1
+          fi
+          tar -czf "dist/loophole-reh-linux-x64-$VERSION.tar.gz" \
+            -C "$(dirname "$REH_PATH")" "$(basename "$REH_PATH")"
+
+      # ── 7. Web Host tarball ────────────────────────────────────────────────────
+      - name: Build Web Host
+        run: npm run gulp vscode-reh-web-linux-x64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — Web Host
+        run: |
+          REH_WEB_PATH=$(find .. -maxdepth 1 -type d -name "vscode-reh-web-linux-x64" 2>/dev/null | head -1)
+          if [ -z "$REH_WEB_PATH" ]; then
+            echo "::error::REH-Web directory not found at ../vscode-reh-web-linux-x64"
+            exit 1
+          fi
+          tar -czf "dist/loophole-reh-web-linux-x64-$VERSION.tar.gz" \
+            -C "$(dirname "$REH_WEB_PATH")" "$(basename "$REH_WEB_PATH")"
+
+      # ── 8. CLI tarball ─────────────────────────────────────────────────────────
+      - name: Stage — CLI tarball
+        run: |
+          cli_bin="cli/target/x86_64-unknown-linux-gnu/release/loophole"
+          if [ -f "$cli_bin" ]; then
+            mkdir -p .tmp-cli
+            cp "$cli_bin" .tmp-cli/loophole
+            tar -czf "dist/loophole-cli-linux-x64-$VERSION.tar.gz" \
+              -C ".tmp-cli" loophole
+          else
+            echo "::warning::CLI binary not found — skipping"
+          fi
+
+      # ── Summary & upload ───────────────────────────────────────────────────────
+      - name: List built artifacts
+        run: |
+          echo "=== dist/ artifacts ==="
+          ls -lh dist/ || echo "(dist/ is empty)"
+
+      - name: Compute SHA256 hashes
+        run: |
+          echo "{}" > sha256-hashes.json
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            FILENAME=$(basename "$f")
+            SHA=$(sha256sum "$f" | awk '{print $1}')
+            echo "$FILENAME → $SHA"
+            python3 -c "import json,sys; d=json.load(open('sha256-hashes.json')); d[sys.argv[1]]=sys.argv[2]; json.dump(d,open('sha256-hashes.json','w'),indent=2)" "$FILENAME" "$SHA"
+          done
+          cat sha256-hashes.json
+
+      - name: Upload SHA256 hashes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-hashes-linux-x64
+          path: sha256-hashes.json
+          retention-days: 7
+
+      - name: Upload — .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-linux-x64-${{ env.VERSION }}-deb
+          path: dist/loophole_${{ env.VERSION }}_amd64.deb
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — .rpm
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-linux-x64-${{ env.VERSION }}-rpm
+          path: dist/loophole-${{ env.VERSION }}-el8.x86_64.rpm
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — tar.gz
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loophole-linux-x64-${{ env.VERSION }}-targz
+          path: dist/Loophole-linux-x64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — AppImage + zsync
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loophole-linux-x64-${{ env.VERSION }}-appimage
+          path: |
+            dist/*.AppImage
+            dist/*.AppImage.zsync
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — Snap
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-linux-x64-${{ env.VERSION }}-snap
+          path: dist/loophole_${{ env.VERSION }}_amd64.snap
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload — Remote Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-linux-x64-${{ env.VERSION }}
+          path: dist/loophole-reh-linux-x64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — Web Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-web-linux-x64-${{ env.VERSION }}
+          path: dist/loophole-reh-web-linux-x64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-cli-linux-x64-${{ env.VERSION }}
+          path: dist/loophole-cli-linux-x64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── Upload to Gofile.io and save links ─────────────────────────────────────
+      - name: Upload to Gofile.io
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "  Uploading artifacts to Gofile.io"
+          echo "======================================"
+
+          # Get best available server
+          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
+          if [ -z "$SERVER" ]; then
+            echo "::warning::Failed to get Gofile.io server — skipping upload"
+            echo "[]" > gofile-links-x64.json
+            exit 0
+          fi
+          echo "Using server: $SERVER"
+
+          # Create JSON array to store links
+          echo "[" > gofile-links-x64.json
+          FIRST=true
+
+          for FILE in dist/*; do
+            if [ -f "$FILE" ]; then
+              FILENAME=$(basename "$FILE")
+              echo ""
+              echo "Uploading: $FILENAME"
+              RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
+
+              # Validate response is valid JSON before parsing
+              if ! echo "$RESPONSE" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+                echo "::warning::Invalid response from Gofile.io for $FILENAME"
+                continue
+              fi
+
+              LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data', {}).get('downloadPage', 'N/A'))" 2>/dev/null)
+              if [ -n "$LINK" ] && [ "$LINK" != "N/A" ]; then
+                echo " $FILENAME → $LINK"
+
+                # Add to JSON (handle comma for valid JSON array)
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  echo "," >> gofile-links-x64.json
+                fi
+
+                echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"linux-x64\"}" >> gofile-links-x64.json
+              fi
+            fi
+          done
+
+          echo "]" >> gofile-links-x64.json
+
+      - name: Upload Gofile links artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofile-links-linux-x64
+          path: gofile-links-x64.json
+          retention-days: 7
+
+      # ── Upload to GitHub Release ───────────────────────────────────────────────
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in dist/*; do
+            if [ -f "$f" ]; then
+              echo "Uploading $f..."
+              gh release upload "$VERSION" "$f" --clobber
+            fi
+          done
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Linux ARM64
+  # Produces: .deb, .rpm, .tar.gz, reh, reh-web, CLI
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-and-upload-linux-arm64:
+    name: Build & Upload Linux ARM64
+    needs: resolve-version
+    runs-on: ubuntu-22.04-arm
+    environment: publish
+    env:
+      VERSION: ${{ inputs.version || needs.resolve-version.outputs.version }}
+      VSCODE_ARCH: arm64
+      VSCODE_QUALITY: stable
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential libx11-dev libxkbfile-dev libsecret-1-dev \
+            libkrb5-dev fakeroot rpm python3-pip pkg-config \
+            libgtk-3-dev libnss3-dev libgbm-dev libasound2-dev
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Rust (for CLI)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Cache Rust artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: publish-linux-arm64-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: publish-linux-arm64-cargo-
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: publish-linux-arm64-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: publish-linux-arm64-electron-
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          npm_config_arch: arm64
+
+      - name: Install React dependencies
+        run: npm install
+        working-directory: src/vs/workbench/contrib/void/browser/react
+
+      - name: Build React UI
+        run: npm run buildreact
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      # compile-build-without-mangling produces out-build/, which bundle-vscode reads from
+      - name: Compile build (produces out-build/)
+        run: npm run gulp compile-build-without-mangling
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Build CLI (Rust, arm64)
+        working-directory: cli
+        run: cargo build --release --target aarch64-unknown-linux-gnu
+
+      # ── Bundle into out-vscode (required before the -ci packaging task) ────────
+      - name: Bundle VSCode (produces out-vscode/)
+        run: npm run gulp bundle-vscode
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Verify out-vscode exists
+        run: |
+          if [ ! -d "out-vscode" ]; then
+            echo "::error::out-vscode/ directory not found after bundle-vscode — build-vscode step failed"
+            exit 1
+          fi
+          echo "out-vscode/ present"
+
+      - name: Package Electron app (linux arm64)
+        run: npm run gulp vscode-linux-arm64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      # ── Debug: Check what gulp actually produced ──────────────────────────────
+      - name: Debug — List parent directory and build outputs
+        run: |
+          echo "=== Contents of parent directory ==="
+          ls -la .. || echo "Cannot list parent directory"
+          echo ""
+          echo "=== Looking for any VSCode-linux directories ==="
+          find .. -maxdepth 1 -type d -name "*linux*" 2>/dev/null || echo "No linux directories found"
+          echo ""
+          echo "=== Contents of .build/ ==="
+          ls -la .build/ 2>/dev/null || echo ".build/ does not exist"
+
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      # ── 1. .deb ───────────────────────────────────────────────────────────────
+      - name: Prepare .deb package
+        run: npm run gulp vscode-linux-arm64-prepare-deb
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Build .deb package
+        run: npm run gulp vscode-linux-arm64-build-deb
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — .deb
+        run: |
+          src=$(find .build -name "*.deb" | head -1)
+          if [ -n "$src" ] && [ -f "$src" ]; then
+            cp "$src" "dist/loophole_${VERSION}_arm64.deb"
+          else
+            echo "::warning::No .deb produced — skipping"
+          fi
+
+      # ── 2. .rpm ───────────────────────────────────────────────────────────────
+      - name: Prepare .rpm package
+        run: npm run gulp vscode-linux-arm64-prepare-rpm
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Build .rpm package
+        run: npm run gulp vscode-linux-arm64-build-rpm
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — .rpm
+        run: |
+          src=$(find .build -name "*.rpm" | head -1)
+          if [ -n "$src" ] && [ -f "$src" ]; then
+            cp "$src" "dist/loophole-${VERSION}-el8.aarch64.rpm"
+          else
+            echo "::warning::No .rpm produced — skipping"
+          fi
+
+      # ── 3. tar.gz archive (reuses the package already built — no rebuild) ─────
+      - name: Stage — tar.gz
+        run: |
+          # Find the actual unpacked app directory
+          app_dir=$(find .. -maxdepth 1 -type d -name "*linux-arm64" 2>/dev/null | head -1)
+          if [ -z "$app_dir" ]; then
+            app_dir="../VSCode-linux-arm64"
+          fi
+          echo "Looking for app directory at: $app_dir"
+          if [ -d "$app_dir" ]; then
+            tar -czf "dist/Loophole-linux-arm64-$VERSION.tar.gz" -C "$(dirname "$app_dir")" "$(basename "$app_dir")"
+            echo "Packed tar.gz from $app_dir"
+          else
+            echo "::warning::No unpacked app directory found — skipping tar.gz"
+          fi
+
+      # ── 4. Remote Host tarball ─────────────────────────────────────────────────
+      - name: Build Remote Host
+        run: npm run gulp vscode-reh-linux-arm64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      # gulpfile.reh.ts writes to BUILD_ROOT (one level above the repo checkout),
+      # NOT to .build/ inside the repo.
+      - name: Stage — Remote Host
+        run: |
+          REH_PATH=$(find .. -maxdepth 1 -type d -name "vscode-reh-linux-arm64" 2>/dev/null | head -1)
+          if [ -z "$REH_PATH" ]; then
+            echo "::error::REH directory not found at ../vscode-reh-linux-arm64"
+            exit 1
+          fi
+          tar -czf "dist/loophole-reh-linux-arm64-$VERSION.tar.gz" \
+            -C "$(dirname "$REH_PATH")" "$(basename "$REH_PATH")"
+
+      # ── 5. Web Host tarball ────────────────────────────────────────────────────
+      - name: Build Web Host
+        run: npm run gulp vscode-reh-web-linux-arm64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — Web Host
+        run: |
+          REH_WEB_PATH=$(find .. -maxdepth 1 -type d -name "vscode-reh-web-linux-arm64" 2>/dev/null | head -1)
+          if [ -z "$REH_WEB_PATH" ]; then
+            echo "::error::REH-Web directory not found at ../vscode-reh-web-linux-arm64"
+            exit 1
+          fi
+          tar -czf "dist/loophole-reh-web-linux-arm64-$VERSION.tar.gz" \
+            -C "$(dirname "$REH_WEB_PATH")" "$(basename "$REH_WEB_PATH")"
+
+      # ── 6. CLI tarball ─────────────────────────────────────────────────────────
+      - name: Stage — CLI tarball
+        run: |
+          cli_bin="cli/target/aarch64-unknown-linux-gnu/release/loophole"
+          if [ -f "$cli_bin" ]; then
+            mkdir -p .tmp-cli
+            cp "$cli_bin" .tmp-cli/loophole
+            tar -czf "dist/loophole-cli-linux-arm64-$VERSION.tar.gz" \
+              -C ".tmp-cli" loophole
+          else
+            echo "::warning::CLI binary not found — skipping"
+          fi
+
+      - name: List built artifacts
+        run: |
+          echo "=== dist/ artifacts ==="
+          ls -lh dist/ || echo "(dist/ is empty)"
+
+      - name: Compute SHA256 hashes
+        run: |
+          echo "{}" > sha256-hashes.json
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            FILENAME=$(basename "$f")
+            SHA=$(sha256sum "$f" | awk '{print $1}')
+            echo "$FILENAME → $SHA"
+            python3 -c "import json,sys; d=json.load(open('sha256-hashes.json')); d[sys.argv[1]]=sys.argv[2]; json.dump(d,open('sha256-hashes.json','w'),indent=2)" "$FILENAME" "$SHA"
+          done
+          cat sha256-hashes.json
+
+      - name: Upload SHA256 hashes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-hashes-linux-arm64
+          path: sha256-hashes.json
+          retention-days: 7
+
+      - name: Upload — .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-linux-arm64-${{ env.VERSION }}-deb
+          path: dist/loophole_${{ env.VERSION }}_arm64.deb
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — .rpm
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-linux-arm64-${{ env.VERSION }}-rpm
+          path: dist/loophole-${{ env.VERSION }}-el8.aarch64.rpm
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — tar.gz
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loophole-linux-arm64-${{ env.VERSION }}-targz
+          path: dist/Loophole-linux-arm64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — Remote Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-linux-arm64-${{ env.VERSION }}
+          path: dist/loophole-reh-linux-arm64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — Web Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-web-linux-arm64-${{ env.VERSION }}
+          path: dist/loophole-reh-web-linux-arm64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-cli-linux-arm64-${{ env.VERSION }}
+          path: dist/loophole-cli-linux-arm64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── Upload to GitHub Release ───────────────────────────────────────────────
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in dist/*; do
+            if [ -f "$f" ]; then
+              echo "Uploading $f..."
+              gh release upload "$VERSION" "$f" --clobber
+            fi
+          done
+
+      # ── Upload to Gofile.io and save links ─────────────────────────────────────
+      - name: Upload to Gofile.io
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "  Uploading artifacts to Gofile.io"
+          echo "======================================"
+
+          # Get best available server
+          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
+          if [ -z "$SERVER" ]; then
+            echo "::warning::Failed to get Gofile.io server — skipping upload"
+            echo "[]" > gofile-links-arm64.json
+            exit 0
+          fi
+          echo "Using server: $SERVER"
+
+          # Create JSON array to store links
+          echo "[" > gofile-links-arm64.json
+          FIRST=true
+
+          for FILE in dist/*; do
+            if [ -f "$FILE" ]; then
+              FILENAME=$(basename "$FILE")
+              echo ""
+              echo "Uploading: $FILENAME"
+              RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
+
+              # Validate response is valid JSON before parsing
+              if ! echo "$RESPONSE" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+                echo "::warning::Invalid response from Gofile.io for $FILENAME"
+                continue
+              fi
+
+              LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data', {}).get('downloadPage', 'N/A'))" 2>/dev/null)
+              if [ -n "$LINK" ] && [ "$LINK" != "N/A" ]; then
+                echo " $FILENAME → $LINK"
+
+                # Add to JSON (handle comma for valid JSON array)
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  echo "," >> gofile-links-arm64.json
+                fi
+
+                echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"linux-arm64\"}" >> gofile-links-arm64.json
+              fi
+            fi
+          done
+
+          echo "]" >> gofile-links-arm64.json
+
+      - name: Upload Gofile links artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofile-links-linux-arm64
+          path: gofile-links-arm64.json
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Alpine x64 (musl) — REH + REH-Web only
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-and-upload-alpine-x64:
+    name: Build & Upload Alpine x64 (musl)
+    needs: resolve-version
+    runs-on: ubuntu-22.04
+    environment: publish
+    env:
+      VERSION: ${{ inputs.version || needs.resolve-version.outputs.version }}
+      VSCODE_ARCH: x64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      # The step below runs INSIDE a `docker run node:22-alpine` container to get a musl
+      # build environment. Once inside, gulp's node-linux-alpine task itself needs to
+      # `docker run node:<ver>-alpine` to extract the Alpine node.js binary (nodejs.org
+      # doesn't host raw musl tarballs, only docker images do) — but that inner container
+      # has no docker CLI and no access to the host daemon, so it fails with
+      # "docker: not found". Fix: extract that binary here on the HOST (which has docker)
+      # and place it at the exact path gulp expects, so gulp finds it cached and skips
+      # the docker call entirely once inside the nested container.
+      - name: Prefetch Alpine node.js binary (host docker)
+        run: |
+          NODE_VERSION=$(grep -oP '(?<=target=")[^"]+' remote/.npmrc)
+          echo "Prefetching node.js $NODE_VERSION alpine x64 via host docker"
+          mkdir -p ".build/node/v${NODE_VERSION}/linux-alpine"
+          docker run --rm --platform linux/amd64 "node:${NODE_VERSION}-alpine" \
+            /bin/sh -c 'cat `which node`' > ".build/node/v${NODE_VERSION}/linux-alpine/node"
+          chmod 755 ".build/node/v${NODE_VERSION}/linux-alpine/node"
+          ls -la ".build/node/v${NODE_VERSION}/linux-alpine/"
+
+      # NOTE on task names: per BUILD_TARGETS in build/gulpfile.reh.ts, the musl x64
+      # target is modeled as { platform: 'linux', arch: 'alpine' } — so the real gulp
+      # task is vscode-reh-linux-alpine-ci, NOT vscode-reh-linux-x64-ci (that one builds
+      # the ordinary glibc REH and would silently mislabel it as Alpine).
+      #
+      # NOTE on output location: gulp writes REH output to BUILD_ROOT, one level above
+      # the repo checkout. Inside this container REPO_ROOT is /workspace, so BUILD_ROOT
+      # is "/" — OUTSIDE the /workspace bind mount. We tar it into /workspace/dist
+      # before the container exits, or it's gone the moment `docker run` returns.
+      - name: Build Alpine REH artifacts in Docker (musl)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            --platform linux/amd64 \
+            -e NODE_OPTIONS="--max-old-space-size=8192" \
+            -e VERSION="${VERSION}" \
+            node:22-alpine sh -c "
+              set -e
+
+              apk add --no-cache \
+                bash curl git python3 py3-pip make gcc g++ \
+                libx11-dev libxkbfile-dev libsecret-dev krb5-dev \
+                musl-dev pkgconfig patch perl zlib-dev zlib-static
+
+              curl https://sh.rustup.rs -sSf | sh -s -- -y --target x86_64-unknown-linux-musl
+              export PATH=\"\$HOME/.cargo/bin:\$PATH\"
+
+              # Docker runs as root; git 2.35.2+ rejects dirs owned by another user
+              git config --global safe.directory /workspace
+
+              npm ci
+              cd src/vs/workbench/contrib/void/browser/react && npm install && cd -
+              npm run buildreact
+              npm run gulp compile-build-without-mangling
+              npm run gulp bundle-vscode
+
+              cd cli
+              cargo build --release --target x86_64-unknown-linux-musl
+              cd ..
+
+              npm run gulp vscode-reh-linux-alpine-ci
+              npm run gulp vscode-reh-web-linux-alpine-ci
+
+              mkdir -p /workspace/dist
+              tar -czf \"/workspace/dist/loophole-reh-alpine-x64-\${VERSION}.tar.gz\" -C / vscode-reh-linux-alpine
+              tar -czf \"/workspace/dist/loophole-reh-web-alpine-x64-\${VERSION}.tar.gz\" -C / vscode-reh-web-linux-alpine
+            "
+
+      - name: List built artifacts
+        run: |
+          echo "=== dist/ artifacts ==="
+          ls -lh dist/ || echo "(dist/ is empty)"
+
+      - name: Upload — Remote Host (Alpine x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-alpine-x64-${{ env.VERSION }}
+          path: dist/loophole-reh-alpine-x64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — Web Host (Alpine x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-web-alpine-x64-${{ env.VERSION }}
+          path: dist/loophole-reh-web-alpine-x64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── Upload to GitHub Release ───────────────────────────────────────────────
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in dist/*; do
+            if [ -f "$f" ]; then
+              echo "Uploading $f..."
+              gh release upload "$VERSION" "$f" --clobber
+            fi
+          done
+
+      # ── Upload to Gofile.io and save links ─────────────────────────────────────
+      - name: Upload to Gofile.io
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "  Uploading artifacts to Gofile.io"
+          echo "======================================"
+
+          # Get best available server
+          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
+          if [ -z "$SERVER" ]; then
+            echo "::warning::Failed to get Gofile.io server — skipping upload"
+            echo "[]" > gofile-links-alpine-x64.json
+            exit 0
+          fi
+          echo "Using server: $SERVER"
+
+          # Create JSON array to store links
+          echo "[" > gofile-links-alpine-x64.json
+          FIRST=true
+
+          for FILE in dist/*; do
+            if [ -f "$FILE" ]; then
+              FILENAME=$(basename "$FILE")
+              echo ""
+              echo "Uploading: $FILENAME"
+              RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
+
+              # Validate response is valid JSON before parsing
+              if ! echo "$RESPONSE" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+                echo "::warning::Invalid response from Gofile.io for $FILENAME"
+                continue
+              fi
+
+              LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data', {}).get('downloadPage', 'N/A'))" 2>/dev/null)
+              if [ -n "$LINK" ] && [ "$LINK" != "N/A" ]; then
+                echo " $FILENAME → $LINK"
+
+                # Add to JSON (handle comma for valid JSON array)
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  echo "," >> gofile-links-alpine-x64.json
+                fi
+
+                echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"alpine-x64\"}" >> gofile-links-alpine-x64.json
+              fi
+            fi
+          done
+
+          echo "]" >> gofile-links-alpine-x64.json
+
+      - name: Upload Gofile links artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofile-links-alpine-x64
+          path: gofile-links-alpine-x64.json
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Alpine ARM64 (musl) — REH + REH-Web only
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-and-upload-alpine-arm64:
+    name: Build & Upload Alpine ARM64 (musl)
+    needs: resolve-version
+    runs-on: ubuntu-22.04-arm
+    environment: publish
+    env:
+      VERSION: ${{ inputs.version || needs.resolve-version.outputs.version }}
+      VSCODE_ARCH: arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      # See the equivalent step in build-alpine-x64 for the full explanation: the nested
+      # `docker run node:22-alpine` build container can't itself call `docker run` to
+      # extract the Alpine node.js binary, so we prefetch it here on the host and place
+      # it where gulp expects it (.build/node/v<ver>/alpine-arm64/node), so gulp finds it
+      # already cached once inside the nested container.
+      - name: Prefetch Alpine node.js binary (host docker)
+        run: |
+          NODE_VERSION=$(grep -oP '(?<=target=")[^"]+' remote/.npmrc)
+          echo "Prefetching node.js $NODE_VERSION alpine arm64 via host docker"
+          mkdir -p ".build/node/v${NODE_VERSION}/alpine-arm64"
+          docker run --rm --platform linux/arm64 "arm64v8/node:${NODE_VERSION}-alpine" \
+            /bin/sh -c 'cat `which node`' > ".build/node/v${NODE_VERSION}/alpine-arm64/node"
+          chmod 755 ".build/node/v${NODE_VERSION}/alpine-arm64/node"
+          ls -la ".build/node/v${NODE_VERSION}/alpine-arm64/"
+
+      # NOTE on task names: per BUILD_TARGETS in build/gulpfile.reh.ts, arm64 musl is
+      # modeled as { platform: 'alpine', arch: 'arm64' } — so the real gulp task is
+      # vscode-reh-alpine-arm64-ci, NOT vscode-reh-linux-arm64-ci (that one builds the
+      # ordinary glibc REH and would silently mislabel it as Alpine).
+      #
+      # NOTE on output location: gulp writes REH output to BUILD_ROOT, one level above
+      # the repo checkout. Inside this container REPO_ROOT is /workspace, so BUILD_ROOT
+      # is "/" — OUTSIDE the /workspace bind mount. We tar it into /workspace/dist
+      # before the container exits, or it's gone the moment `docker run` returns.
+      - name: Build Alpine ARM64 REH artifacts in Docker (musl)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            --platform linux/arm64 \
+            -e NODE_OPTIONS="--max-old-space-size=8192" \
+            -e VERSION="${VERSION}" \
+            node:22-alpine sh -c "
+              set -e
+
+              apk add --no-cache \
+                bash curl git python3 py3-pip make gcc g++ \
+                libx11-dev libxkbfile-dev libsecret-dev krb5-dev \
+                musl-dev pkgconfig patch perl zlib-dev zlib-static
+
+              curl https://sh.rustup.rs -sSf | sh -s -- -y --target aarch64-unknown-linux-musl
+              export PATH=\"\$HOME/.cargo/bin:\$PATH\"
+
+              # Docker runs as root; git 2.35.2+ rejects dirs owned by another user
+              git config --global safe.directory /workspace
+
+              npm ci
+              cd src/vs/workbench/contrib/void/browser/react && npm install && cd -
+              npm run buildreact
+              npm run gulp compile-build-without-mangling
+              npm run gulp bundle-vscode
+
+              cd cli
+              cargo build --release --target aarch64-unknown-linux-musl
+              cd ..
+
+              npm run gulp vscode-reh-alpine-arm64-ci
+              npm run gulp vscode-reh-web-alpine-arm64-ci
+
+              mkdir -p /workspace/dist
+              tar -czf \"/workspace/dist/loophole-reh-alpine-arm64-\${VERSION}.tar.gz\" -C / vscode-reh-alpine-arm64
+              tar -czf \"/workspace/dist/loophole-reh-web-alpine-arm64-\${VERSION}.tar.gz\" -C / vscode-reh-web-alpine-arm64
+            "
+
+      - name: List built artifacts
+        run: |
+          echo "=== dist/ artifacts ==="
+          ls -lh dist/ || echo "(dist/ is empty)"
+
+      - name: Upload — Remote Host (Alpine arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-alpine-arm64-${{ env.VERSION }}
+          path: dist/loophole-reh-alpine-arm64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — Web Host (Alpine arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-web-alpine-arm64-${{ env.VERSION }}
+          path: dist/loophole-reh-web-alpine-arm64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── Upload to GitHub Release ───────────────────────────────────────────────
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in dist/*; do
+            if [ -f "$f" ]; then
+              echo "Uploading $f..."
+              gh release upload "$VERSION" "$f" --clobber
+            fi
+          done
+
+      # ── Upload to Gofile.io and save links ─────────────────────────────────────
+      - name: Upload to Gofile.io
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "  Uploading artifacts to Gofile.io"
+          echo "======================================"
+
+          # Get best available server
+          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
+          if [ -z "$SERVER" ]; then
+            echo "::warning::Failed to get Gofile.io server — skipping upload"
+            echo "[]" > gofile-links-alpine-arm64.json
+            exit 0
+          fi
+          echo "Using server: $SERVER"
+
+          # Create JSON array to store links
+          echo "[" > gofile-links-alpine-arm64.json
+          FIRST=true
+
+          for FILE in dist/*; do
+            if [ -f "$FILE" ]; then
+              FILENAME=$(basename "$FILE")
+              echo ""
+              echo "Uploading: $FILENAME"
+              RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
+
+              # Validate response is valid JSON before parsing
+              if ! echo "$RESPONSE" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+                echo "::warning::Invalid response from Gofile.io for $FILENAME"
+                continue
+              fi
+
+              LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data', {}).get('downloadPage', 'N/A'))" 2>/dev/null)
+              if [ -n "$LINK" ] && [ "$LINK" != "N/A" ]; then
+                echo " $FILENAME → $LINK"
+
+                # Add to JSON (handle comma for valid JSON array)
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  echo "," >> gofile-links-alpine-arm64.json
+                fi
+
+                echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"alpine-arm64\"}" >> gofile-links-alpine-arm64.json
+              fi
+            fi
+          done
+
+          echo "]" >> gofile-links-alpine-arm64.json
+
+      - name: Upload Gofile links artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofile-links-alpine-arm64
+          path: gofile-links-alpine-arm64.json
+          retention-days: 7

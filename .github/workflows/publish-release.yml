@@ -1,0 +1,481 @@
+name: Publish Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Step 1: Create the GitHub Release (draft) with the full formatted body.
+  # All platform build jobs upload into this release in parallel.
+  # ─────────────────────────────────────────────────────────────────────────────
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      loophole_version: ${{ steps.meta.outputs.loophole_version }}
+      release_id: ${{ steps.create.outputs.release_id }}
+      upload_url: ${{ steps.create.outputs.upload_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version & metadata
+        id: meta
+        run: |
+          # VSCode-compat version (for internal build tooling only — never shown to users)
+          VERSION=$(node -p "require('./package.json').version")
+          # Loophole brand version — shown everywhere: UI, artifacts, release title
+          LOOPHOLE_VERSION=$(node -p "require('./product.json').loopholeVersion ?? require('./package.json').version")
+
+          # Commits since last tag (for release notes context)
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sed -n '2p' || echo "")
+          if [[ -n "$PREV_TAG" ]]; then
+            COMMIT_COUNT=$(git rev-list ${PREV_TAG}..HEAD --count)
+          else
+            COMMIT_COUNT=$(git rev-list HEAD --count)
+          fi
+
+          echo "version=$VERSION"                   >> "$GITHUB_OUTPUT"
+          echo "loophole_version=$LOOPHOLE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=$PREV_TAG"                 >> "$GITHUB_OUTPUT"
+          echo "commit_count=$COMMIT_COUNT"          >> "$GITHUB_OUTPUT"
+          echo "Loophole $LOOPHOLE_VERSION (VSCode compat: $VERSION), prev tag: $PREV_TAG"
+
+      - name: Build release body
+        id: body
+        run: |
+          LV="${{ steps.meta.outputs.loophole_version }}"
+          PREV_TAG="${{ steps.meta.outputs.prev_tag }}"
+
+          cat > release_body.md << BODY
+          ## Loophole IDE ${LV}
+
+          > The AI IDE that thinks while you code.
+
+          ---
+
+          ### x86 64bits
+
+          #### Windows
+
+          | Type | File |
+          |------|------|
+          | User Installer | [LoopholeUserSetup-x64-${LV}.exe](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/LoopholeUserSetup-x64-${LV}.exe) |
+          | System Installer | [LoopholeSetup-x64-${LV}.exe](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/LoopholeSetup-x64-${LV}.exe) |
+          | .zip | [Loophole-win32-x64-${LV}.zip](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-win32-x64-${LV}.zip) |
+          | .msi — updates enabled | [Loophole-x64-${LV}.msi](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-x64-${LV}.msi) |
+          | .msi — updates disabled | [Loophole-x64-updates-disabled-${LV}.msi](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-x64-updates-disabled-${LV}.msi) |
+          | Remote Host | [loophole-reh-win32-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-win32-x64-${LV}.tar.gz) |
+          | Web Host | [loophole-reh-web-win32-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-win32-x64-${LV}.tar.gz) |
+          | CLI | [loophole-cli-win32-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-cli-win32-x64-${LV}.tar.gz) |
+
+          #### macOS
+
+          | Type | File |
+          |------|------|
+          | .dmg (Intel x64) | [Loophole.x64.${LV}.dmg](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole.x64.${LV}.dmg) |
+          | .zip (Intel x64) | [Loophole-darwin-x64-${LV}.zip](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-darwin-x64-${LV}.zip) |
+          | .dmg (Apple Silicon arm64) | [Loophole.arm64.${LV}.dmg](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole.arm64.${LV}.dmg) |
+          | .zip (Apple Silicon arm64) | [Loophole-darwin-arm64-${LV}.zip](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-darwin-arm64-${LV}.zip) |
+          | Remote Host (x64) | [loophole-reh-darwin-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-darwin-x64-${LV}.tar.gz) |
+          | Web Host (x64) | [loophole-reh-web-darwin-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-darwin-x64-${LV}.tar.gz) |
+          | CLI (x64) | [loophole-cli-darwin-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-cli-darwin-x64-${LV}.tar.gz) |
+          | Remote Host (arm64) | [loophole-reh-darwin-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-darwin-arm64-${LV}.tar.gz) |
+          | Web Host (arm64) | [loophole-reh-web-darwin-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-darwin-arm64-${LV}.tar.gz) |
+          | CLI (arm64) | [loophole-cli-darwin-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-cli-darwin-arm64-${LV}.tar.gz) |
+
+          #### Linux
+
+          | Type | File |
+          |------|------|
+          | .deb (x64) | [loophole_${LV}_amd64.deb](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole_${LV}_amd64.deb) |
+          | .rpm (x64) | [loophole-${LV}-el8.x86_64.rpm](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-${LV}-el8.x86_64.rpm) |
+          | .tar.gz (x64) | [Loophole-linux-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-linux-x64-${LV}.tar.gz) |
+          | AppImage (x64) | [Loophole-${LV}.glibc2.30-x86_64.AppImage](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-${LV}.glibc2.30-x86_64.AppImage) |
+          | AppImage zsync (x64) | [Loophole-${LV}.glibc2.30-x86_64.AppImage.zsync](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-${LV}.glibc2.30-x86_64.AppImage.zsync) |
+          | Snap (x64) | [loophole_${LV}_amd64.snap](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole_${LV}_amd64.snap) |
+          | Remote Host (x64) | [loophole-reh-linux-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-linux-x64-${LV}.tar.gz) |
+          | Web Host (x64) | [loophole-reh-web-linux-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-linux-x64-${LV}.tar.gz) |
+          | CLI (x64) | [loophole-cli-linux-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-cli-linux-x64-${LV}.tar.gz) |
+          | .deb (arm64) | [loophole_${LV}_arm64.deb](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole_${LV}_arm64.deb) |
+          | .rpm (arm64) | [loophole-${LV}-el8.aarch64.rpm](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-${LV}-el8.aarch64.rpm) |
+          | .tar.gz (arm64) | [Loophole-linux-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-linux-arm64-${LV}.tar.gz) |
+          | Remote Host (arm64) | [loophole-reh-linux-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-linux-arm64-${LV}.tar.gz) |
+          | Web Host (arm64) | [loophole-reh-web-linux-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-linux-arm64-${LV}.tar.gz) |
+          | CLI (arm64) | [loophole-cli-linux-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-cli-linux-arm64-${LV}.tar.gz) |
+
+          #### Alpine (musl libc)
+
+          | Type | File |
+          |------|------|
+          | Remote Host (x64) | [loophole-reh-alpine-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-alpine-x64-${LV}.tar.gz) |
+          | Web Host (x64) | [loophole-reh-web-alpine-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-alpine-x64-${LV}.tar.gz) |
+          | Remote Host (arm64) | [loophole-reh-alpine-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-alpine-arm64-${LV}.tar.gz) |
+          | Web Host (arm64) | [loophole-reh-web-alpine-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-alpine-arm64-${LV}.tar.gz) |
+
+          ---
+
+          **Full Changelog:** ${PREV_TAG}...${LV}
+          BODY
+
+          echo "Body written to release_body.md"
+          cat release_body.md
+
+      - name: Create GitHub Release (draft)
+        id: create
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LV="${{ steps.meta.outputs.loophole_version }}"
+
+          # Tag and release both use the Loophole version (e.g. 2.0.0)
+          RELEASE_URL=$(gh release create "$LV" \
+            --title "${LV}" \
+            --notes-file release_body.md \
+            --draft \
+            --verify-tag 2>/dev/null || \
+          gh release create "$LV" \
+            --title "${LV}" \
+            --notes-file release_body.md \
+            --draft)
+
+          RELEASE_ID=$(gh release view "$LV" --json id -q '.id')
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+          echo "upload_url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
+          echo "Created release: $RELEASE_URL (id=$RELEASE_ID)"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Step 2: Trigger all platform builds in parallel.
+  # Each builds its artifacts and uploads them straight into the release.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-windows:
+    name: Windows Builds
+    needs: create-release
+    uses: ./.github/workflows/publish-build-windows.yml
+    with:
+      version: ${{ needs.create-release.outputs.loophole_version }}
+      release_id: ${{ needs.create-release.outputs.release_id }}
+    secrets: inherit
+
+  build-macos:
+    name: macOS Builds
+    needs: create-release
+    uses: ./.github/workflows/publish-build-macos.yml
+    with:
+      version: ${{ needs.create-release.outputs.loophole_version }}
+      release_id: ${{ needs.create-release.outputs.release_id }}
+    secrets: inherit
+
+  build-linux:
+    name: Linux Builds
+    needs: create-release
+    uses: ./.github/workflows/publish-build-linux.yml
+    with:
+      version: ${{ needs.create-release.outputs.loophole_version }}
+      release_id: ${{ needs.create-release.outputs.release_id }}
+    secrets: inherit
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Step 3: Once every platform build has succeeded, publish the draft release.
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-release:
+    name: Publish Release
+    needs: [create-release, build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    environment: publish
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Download all Gofile link artifacts from platform builds
+      # Each platform downloads to its own subdirectory to avoid filename collisions
+      - name: Download Gofile links — Windows x64
+        uses: actions/download-artifact@v4
+        with:
+          name: gofile-links-windows-x64
+          path: gofile-links/windows/
+        continue-on-error: true
+
+      - name: Download Gofile links — Windows ARM64
+        uses: actions/download-artifact@v4
+        with:
+          name: gofile-links-windows-arm64
+          path: gofile-links/windows/
+        continue-on-error: true
+
+      - name: Download Gofile links — macOS x64
+        uses: actions/download-artifact@v4
+        with:
+          name: gofile-links-macos-x64
+          path: gofile-links/macos-x64/
+        continue-on-error: true
+
+      - name: Download Gofile links — macOS ARM64
+        uses: actions/download-artifact@v4
+        with:
+          name: gofile-links-macos-arm64
+          path: gofile-links/macos-arm64/
+        continue-on-error: true
+
+      - name: Download Gofile links — Linux x64
+        uses: actions/download-artifact@v4
+        with:
+          name: gofile-links-linux-x64
+          path: gofile-links/linux-x64/
+        continue-on-error: true
+
+      - name: Download Gofile links — Linux ARM64
+        uses: actions/download-artifact@v4
+        with:
+          name: gofile-links-linux-arm64
+          path: gofile-links/linux-arm64/
+        continue-on-error: true
+
+      - name: Download Gofile links — Alpine x64
+        uses: actions/download-artifact@v4
+        with:
+          name: gofile-links-alpine-x64
+          path: gofile-links/alpine-x64/
+        continue-on-error: true
+
+      - name: Download Gofile links — Alpine ARM64
+        uses: actions/download-artifact@v4
+        with:
+          name: gofile-links-alpine-arm64
+          path: gofile-links/alpine-arm64/
+        continue-on-error: true
+
+      # Generate markdown file with all Gofile download links
+      - name: Generate Gofile links markdown
+        run: |
+          python3 - << 'PYEOF'
+          import json, os, sys
+
+          def read_json(path):
+              if not os.path.isfile(path):
+                  return []
+              try:
+                  with open(path) as f:
+                      data = json.load(f)
+                  return data if isinstance(data, list) else []
+              except Exception:
+                  return []
+
+          def find_json(directory):
+              """Find and merge ALL JSON files in a directory, return [] if missing/empty."""
+              if not os.path.isdir(directory):
+                  return []
+              merged = []
+              for fname in sorted(os.listdir(directory)):
+                  if fname.endswith('.json'):
+                      merged.extend(read_json(os.path.join(directory, fname)))
+              return merged
+
+          def render_links(items, heading, out):
+              if not items:
+                  return
+              out.append(f"\n## {heading}\n")
+              for item in items:
+                  filename = item.get('filename', 'Unknown')
+                  link = item.get('link', '#')
+                  out.append(f"- [{filename}]({link})")
+
+          def render_links_sub(items, subheading, out):
+              if not items:
+                  return
+              out.append(f"\n### {subheading}\n")
+              for item in items:
+                  filename = item.get('filename', 'Unknown')
+                  link = item.get('link', '#')
+                  out.append(f"- [{filename}]({link})")
+
+          lines = [
+              "# Alternative Download Links (Gofile.io)",
+              "",
+              "If you experience slow downloads from GitHub, you can use these alternative Gofile.io links for faster downloads.",
+              "",
+              "---",
+          ]
+
+          render_links(find_json("gofile-links/windows"),    "Windows",                  lines)
+          render_links(find_json("gofile-links/macos-x64"),  "macOS Intel (x64)",        lines)
+          render_links(find_json("gofile-links/macos-arm64"),"macOS Apple Silicon (ARM64)", lines)
+
+          linux_x64    = find_json("gofile-links/linux-x64")
+          linux_arm64  = find_json("gofile-links/linux-arm64")
+          alpine_x64   = find_json("gofile-links/alpine-x64")
+          alpine_arm64 = find_json("gofile-links/alpine-arm64")
+
+          if any([linux_x64, linux_arm64, alpine_x64, alpine_arm64]):
+              lines.append("\n## Linux\n")
+              render_links_sub(linux_x64,   "x64 (AMD64)",      lines)
+              render_links_sub(linux_arm64, "ARM64",            lines)
+              render_links_sub(alpine_x64,  "Alpine x64 (musl)", lines)
+              render_links_sub(alpine_arm64,"Alpine ARM64 (musl)", lines)
+
+          lines += [
+              "",
+              "---",
+              "",
+              "**Note:** Gofile.io links are provided for convenience and faster download speeds. For official releases, please use the GitHub release assets above.",
+          ]
+
+          content = "\n".join(lines) + "\n"
+          with open("GOFILE_DOWNLOADS.md", "w") as f:
+              f.write(content)
+
+          print("Generated GOFILE_DOWNLOADS.md:")
+          print(content)
+          PYEOF
+
+      # Upload the Gofile links markdown to the release
+      - name: Upload Gofile links to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LV: ${{ needs.create-release.outputs.loophole_version }}
+        run: |
+          if [ -f "GOFILE_DOWNLOADS.md" ] && [ -s "GOFILE_DOWNLOADS.md" ]; then
+            gh release upload "$LV" GOFILE_DOWNLOADS.md --clobber --repo "$GITHUB_REPOSITORY"
+            echo "Uploaded GOFILE_DOWNLOADS.md to release"
+          else
+            echo "::warning::GOFILE_DOWNLOADS.md is empty or does not exist — skipping upload"
+          fi
+
+      # Download SHA256 hash artifacts from all platform builds
+      - name: Download SHA256 hashes — macOS x64
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-hashes-macos-x64
+          path: sha256-hashes/macos-x64/
+        continue-on-error: true
+
+      - name: Download SHA256 hashes — macOS arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-hashes-macos-arm64
+          path: sha256-hashes/macos-arm64/
+        continue-on-error: true
+
+      - name: Download SHA256 hashes — Linux x64
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-hashes-linux-x64
+          path: sha256-hashes/linux-x64/
+        continue-on-error: true
+
+      - name: Download SHA256 hashes — Linux arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-hashes-linux-arm64
+          path: sha256-hashes/linux-arm64/
+        continue-on-error: true
+
+      - name: Download SHA256 hashes — Windows x64
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-hashes-windows-x64
+          path: sha256-hashes/windows-x64/
+        continue-on-error: true
+
+      - name: Download SHA256 hashes — Windows arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-hashes-windows-arm64
+          path: sha256-hashes/windows-arm64/
+        continue-on-error: true
+
+      - name: Update versions repo (version, url, timestamp + sha256)
+        env:
+          LV: ${{ needs.create-release.outputs.loophole_version }}
+          VERSIONS_PAT: ${{ secrets.VERSIONS_PAT }}
+        run: |
+          git clone https://x-access-token:${VERSIONS_PAT}@github.com/loophole-ai/versions versions-repo
+
+          python3 - << 'PYEOF'
+          import json, os, time
+
+          def load_hashes(directory):
+              merged = {}
+              if not os.path.isdir(directory):
+                  return merged
+              for fname in os.listdir(directory):
+                  if fname.endswith('.json'):
+                      try:
+                          with open(os.path.join(directory, fname)) as f:
+                              merged.update(json.load(f))
+                      except Exception as e:
+                          print(f"WARNING: could not read {fname}: {e}")
+              return merged
+
+          # Merge hashes from all platforms
+          all_hashes = {}
+          base = 'sha256-hashes'
+          if os.path.isdir(base):
+              for d in os.listdir(base):
+                  all_hashes.update(load_hashes(os.path.join(base, d)))
+
+          print(f"Collected {len(all_hashes)} hashes: {list(all_hashes.keys())}")
+
+          LV = os.environ['LV']
+          BASE = f"https://github.com/loophole-ai/loophole-ide/releases/download/{LV}"
+          TIMESTAMP = int((time.time() - 6 * 24 * 3600) * 1000)
+
+          # Map each latest.json → (artifact name for sha256, download url)
+          mappings = {
+              'versions-repo/oss/darwin/x64/latest.json':        (f'Loophole-darwin-x64-{LV}.zip',     f'{BASE}/Loophole-darwin-x64-{LV}.zip'),
+              'versions-repo/oss/darwin/arm64/latest.json':      (f'Loophole-darwin-arm64-{LV}.zip',   f'{BASE}/Loophole-darwin-arm64-{LV}.zip'),
+              'versions-repo/oss/linux/x64/latest.json':         (f'Loophole-linux-x64-{LV}.tar.gz',   f'{BASE}/Loophole-linux-x64-{LV}.tar.gz'),
+              'versions-repo/oss/linux/arm64/latest.json':       (f'Loophole-linux-arm64-{LV}.tar.gz', f'{BASE}/Loophole-linux-arm64-{LV}.tar.gz'),
+              'versions-repo/oss/win32/x64/user/latest.json':    (f'LoopholeUserSetup-x64-{LV}.exe',   f'{BASE}/LoopholeUserSetup-x64-{LV}.exe'),
+              'versions-repo/oss/win32/x64/system/latest.json':  (f'LoopholeSetup-x64-{LV}.exe',       f'{BASE}/LoopholeSetup-x64-{LV}.exe'),
+              'versions-repo/oss/win32/arm64/user/latest.json':  (f'LoopholeUserSetup-arm64-{LV}.exe', f'{BASE}/LoopholeUserSetup-arm64-{LV}.exe'),
+              'versions-repo/oss/win32/arm64/system/latest.json':(f'LoopholeSetup-arm64-{LV}.exe',     f'{BASE}/LoopholeSetup-arm64-{LV}.exe'),
+          }
+
+          for json_path, (artifact_name, download_url) in mappings.items():
+              sha = all_hashes.get(artifact_name, '')
+              if not sha:
+                  print(f'WARNING: no hash found for {artifact_name} — sha256hash will be empty')
+              if not os.path.isfile(json_path):
+                  print(f'WARNING: {json_path} not found — skipping')
+                  continue
+              with open(json_path) as f:
+                  data = json.load(f)
+              data['version'] = LV
+              data['productVersion'] = LV
+              data['url'] = download_url
+              data['sha256hash'] = sha
+              data['timestamp'] = TIMESTAMP
+              with open(json_path, 'w') as f:
+                  json.dump(data, f, indent=2)
+                  f.write('\n')
+              print(f'✓ {json_path} | url={download_url} | sha={sha[:12] if sha else "MISSING"}...')
+          PYEOF
+
+          cd versions-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "release: v${LV} — bump version, url, sha256, timestamp"
+          git push
+
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LV: ${{ needs.create-release.outputs.loophole_version }}
+        run: |
+          gh release edit "$LV" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --latest
+
+          echo "Release $LV is now live!"
+          gh release view "$LV" --repo "$GITHUB_REPOSITORY"

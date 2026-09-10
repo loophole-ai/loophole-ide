@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question or start a discussion
+    url: https://github.com/loophole-ai/loophole-ide/discussions
+    about: Use discussions for questions, ideas, and general feedback.
+  - name: View the source code
+    url: https://github.com/loophole-ai/loophole-ide
+    about: Browse the Loophole IDE repository.

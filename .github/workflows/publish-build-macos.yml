@@ -1,0 +1,734 @@
+name: Publish Build — macOS
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      release_id:
+        required: true
+        type: string
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '22'
+  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Resolve version from package.json (used by both jobs)
+  # ─────────────────────────────────────────────────────────────────────────────
+  resolve-version:
+    name: Resolve Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Determine version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./product.json').loopholeVersion ?? require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build: macOS x64 (Intel) — cross-compiled from Apple Silicon host
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-macos-x64:
+    name: Build macOS x64 (Intel)
+    needs: resolve-version
+    runs-on: macos-14        # macos-14 = Apple Silicon host, cross-compiles for x64
+    environment: publish
+    env:
+      VERSION: ${{ inputs.version || needs.resolve-version.outputs.version }}
+      VSCODE_ARCH: x64
+      VSCODE_QUALITY: stable
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Toolchain ─────────────────────────────────────────────────────────────
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Rust (for CLI)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      # ── Caches ────────────────────────────────────────────────────────────────
+      - name: Cache Rust artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: publish-macos-x64-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: publish-macos-x64-cargo-
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: publish-macos-x64-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: publish-macos-x64-electron-
+
+      # ── Install & compile ──────────────────────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+        env:
+          npm_config_arch: x64
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install React dependencies
+        run: npm install
+        working-directory: src/vs/workbench/contrib/void/browser/react
+
+      - name: Build React UI
+        run: npm run buildreact
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      # compile-build-without-mangling produces out-build/, which bundle-vscode reads from
+      - name: Compile build (produces out-build/)
+        run: npm run gulp compile-build-without-mangling
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      # ── Bundle into out-vscode (required before the -ci packaging task) ────────
+      - name: Bundle VSCode (produces out-vscode/)
+        run: npm run gulp bundle-vscode
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Verify out-vscode exists
+        run: |
+          if [ ! -d "out-vscode" ]; then
+            echo "::error::out-vscode/ directory not found after bundle-vscode — build-vscode step failed"
+            exit 1
+          fi
+          echo "out-vscode/ present"
+
+      - name: Build CLI (Rust, x64)
+        working-directory: cli
+        run: cargo build --release --target x86_64-apple-darwin
+
+      # ── Package base app (single call — reused below, no rebuilding) ──────────
+      - name: Package Electron app (darwin x64)
+        run: npm run gulp vscode-darwin-x64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      # ── Debug: Check what gulp actually produced ──────────────────────────────
+      - name: Debug — List parent directory contents
+        run: |
+          echo "=== Contents of parent directory (where gulp writes output) ==="
+          ls -la .. || echo "Cannot list parent directory"
+          echo ""
+          echo "=== Looking for any .app bundles ==="
+          find .. -maxdepth 2 -name "*.app" -type d 2>/dev/null || echo "No .app bundles found"
+          echo ""
+          echo "=== Looking for REH output directories ==="
+          find .. -maxdepth 1 -type d -name "vscode-reh-*" 2>/dev/null || echo "No REH directories found"
+
+      # ── Ad-hoc codesign (placeholder until a Developer ID cert is configured) ──
+      - name: Ad-hoc codesign .app bundle
+        run: |
+          APP_PATH=$(find .. -maxdepth 2 -name "*.app" -type d 2>/dev/null | grep -i "darwin-x64" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH="../VSCode-darwin-x64/loophole.app"
+          fi
+          echo "Looking for app bundle at: $APP_PATH"
+          if [ -d "$APP_PATH" ]; then
+            codesign --deep --force --sign - "$APP_PATH" || echo "::warning::Ad-hoc codesign failed"
+          else
+            echo "::warning::No .app bundle found — skipping codesign"
+          fi
+
+      # ── 1. DMG (built with hdiutil — no GUI/Finder dependency, works headless) ─
+      - name: Build DMG
+        run: |
+          set -e
+          APP_PATH=$(find .. -maxdepth 2 -name "*.app" -type d 2>/dev/null | grep -i "darwin-x64" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH="../VSCode-darwin-x64/Visual Studio Code.app"
+          fi
+          echo "Looking for app bundle at: $APP_PATH"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::No .app bundle found — cannot build DMG"
+            exit 1
+          fi
+
+          hdiutil create -volname "Loophole" -srcfolder "$APP_PATH" -ov -format UDZO \
+            "dist/Loophole.x64.$VERSION.dmg"
+
+          if [ ! -f "dist/Loophole.x64.$VERSION.dmg" ]; then
+            echo "::error::hdiutil did not produce a .dmg file"
+            exit 1
+          fi
+
+      # ── 2. ZIP (reuses the package already built above — no rebuild) ──────────
+      - name: Stage — ZIP
+        run: |
+          APP_PATH=$(find .. -maxdepth 2 -name "*.app" -type d 2>/dev/null | grep -i "darwin-x64" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH="../VSCode-darwin-x64/Visual Studio Code.app"
+          fi
+          echo "Looking for app bundle at: $APP_PATH"
+          if [ -d "$APP_PATH" ]; then
+            ditto -c -k --keepParent "$APP_PATH" "dist/Loophole-darwin-x64-$VERSION.zip"
+          else
+            echo "::warning::No .app bundle found — skipping ZIP"
+          fi
+
+      # ── 3. Remote Host tarball ─────────────────────────────────────────────────
+      - name: Build Remote Host
+        run: npm run gulp vscode-reh-darwin-x64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — Remote Host
+        run: |
+          REH_PATH=$(find .. -maxdepth 1 -type d -name "vscode-reh-darwin-x64" 2>/dev/null | head -1)
+          if [ -z "$REH_PATH" ]; then
+            echo "::error::REH directory not found at ../vscode-reh-darwin-x64"
+            exit 1
+          fi
+          tar -czf "dist/loophole-reh-darwin-x64-$VERSION.tar.gz" \
+            -C "$(dirname "$REH_PATH")" "$(basename "$REH_PATH")"
+
+      # ── 4. Web Host tarball ────────────────────────────────────────────────────
+      - name: Build Web Host
+        run: npm run gulp vscode-reh-web-darwin-x64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — Web Host
+        run: |
+          REH_WEB_PATH=$(find .. -maxdepth 1 -type d -name "vscode-reh-web-darwin-x64" 2>/dev/null | head -1)
+          if [ -z "$REH_WEB_PATH" ]; then
+            echo "::error::REH-Web directory not found at ../vscode-reh-web-darwin-x64"
+            exit 1
+          fi
+          tar -czf "dist/loophole-reh-web-darwin-x64-$VERSION.tar.gz" \
+            -C "$(dirname "$REH_WEB_PATH")" "$(basename "$REH_WEB_PATH")"
+
+      # ── 5. CLI tarball ────────────────────────────────────────────────────────
+      - name: Stage — CLI tarball
+        run: |
+          cli_bin="cli/target/x86_64-apple-darwin/release/loophole"
+          if [ -f "$cli_bin" ]; then
+            mkdir -p .tmp-cli
+            cp "$cli_bin" .tmp-cli/loophole
+            tar -czf "dist/loophole-cli-darwin-x64-$VERSION.tar.gz" \
+              -C ".tmp-cli" loophole
+          else
+            echo "::warning::CLI binary not found — skipping"
+          fi
+
+      # ── Summary & upload ────────────────────────────────────────────────────────
+      - name: List built artifacts
+        run: |
+          echo "=== dist/ artifacts ==="
+          ls -lh dist/ || echo "(dist/ is empty)"
+
+      - name: Compute SHA256 hashes
+        run: |
+          echo "{}" > sha256-hashes.json
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            FILENAME=$(basename "$f")
+            SHA=$(shasum -a 256 "$f" | awk '{print $1}')
+            echo "$FILENAME → $SHA"
+            python3 -c "import json,sys; d=json.load(open('sha256-hashes.json')); d[sys.argv[1]]=sys.argv[2]; json.dump(d,open('sha256-hashes.json','w'),indent=2)" "$FILENAME" "$SHA"
+          done
+          cat sha256-hashes.json
+
+      - name: Upload SHA256 hashes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-hashes-macos-x64
+          path: sha256-hashes.json
+          retention-days: 7
+
+      - name: Upload — DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loophole-darwin-x64-${{ env.VERSION }}-dmg
+          path: dist/Loophole.x64.${{ env.VERSION }}.dmg
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loophole-darwin-x64-${{ env.VERSION }}-zip
+          path: dist/Loophole-darwin-x64-${{ env.VERSION }}.zip
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — Remote Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-darwin-x64-${{ env.VERSION }}
+          path: dist/loophole-reh-darwin-x64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — Web Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-web-darwin-x64-${{ env.VERSION }}
+          path: dist/loophole-reh-web-darwin-x64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-cli-darwin-x64-${{ env.VERSION }}
+          path: dist/loophole-cli-darwin-x64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── Upload to Gofile.io and save links ─────────────────────────────────────
+      - name: Upload to Gofile.io
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "  Uploading artifacts to Gofile.io"
+          echo "======================================"
+
+          # Get best available server
+          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
+          if [ -z "$SERVER" ]; then
+            echo "::warning::Failed to get Gofile.io server — skipping upload"
+            echo "[]" > gofile-links-x64.json
+            exit 0
+          fi
+          echo "Using server: $SERVER"
+
+          # Create JSON array to store links
+          echo "[" > gofile-links-x64.json
+          FIRST=true
+
+          for FILE in dist/*; do
+            if [ -f "$FILE" ]; then
+              FILENAME=$(basename "$FILE")
+              echo ""
+              echo "Uploading: $FILENAME"
+              RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
+
+              # Validate response is valid JSON before parsing
+              if ! echo "$RESPONSE" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+                echo "::warning::Invalid response from Gofile.io for $FILENAME"
+                continue
+              fi
+
+              LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data', {}).get('downloadPage', 'N/A'))" 2>/dev/null)
+              if [ -n "$LINK" ] && [ "$LINK" != "N/A" ]; then
+                echo " $FILENAME → $LINK"
+
+                # Add to JSON (handle comma for valid JSON array)
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  echo "," >> gofile-links-x64.json
+                fi
+
+                echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"macos-x64\"}" >> gofile-links-x64.json
+              fi
+            fi
+          done
+
+          echo "]" >> gofile-links-x64.json
+
+      - name: Upload Gofile links artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofile-links-macos-x64
+          path: gofile-links-x64.json
+          retention-days: 7
+
+      # ── Upload to GitHub Release ───────────────────────────────────────────────
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in dist/*; do
+            echo "Uploading $f..."
+            gh release upload "$VERSION" "$f" --clobber
+          done
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build: macOS ARM64 (Apple Silicon) — native build
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-macos-arm64:
+    name: Build macOS ARM64 (Apple Silicon)
+    needs: resolve-version
+    runs-on: macos-14        # macos-14 = Apple Silicon arm64
+    environment: publish
+    env:
+      VERSION: ${{ inputs.version || needs.resolve-version.outputs.version }}
+      VSCODE_ARCH: arm64
+      VSCODE_QUALITY: stable
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Toolchain ─────────────────────────────────────────────────────────────
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Rust (for CLI)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      # ── Caches ────────────────────────────────────────────────────────────────
+      - name: Cache Rust artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            cli/target
+          key: publish-macos-arm64-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: publish-macos-arm64-cargo-
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ELECTRON_CACHE }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: publish-macos-arm64-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: publish-macos-arm64-electron-
+
+      # ── Install & compile ──────────────────────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+        env:
+          npm_config_arch: arm64
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install React dependencies
+        run: npm install
+        working-directory: src/vs/workbench/contrib/void/browser/react
+
+      - name: Build React UI
+        run: npm run buildreact
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      # compile-build-without-mangling produces out-build/, which bundle-vscode reads from
+      - name: Compile build (produces out-build/)
+        run: npm run gulp compile-build-without-mangling
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      # ── Bundle into out-vscode (required before the -ci packaging task) ────────
+      - name: Bundle VSCode (produces out-vscode/)
+        run: npm run gulp bundle-vscode
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Verify out-vscode exists
+        run: |
+          if [ ! -d "out-vscode" ]; then
+            echo "::error::out-vscode/ directory not found after bundle-vscode — build-vscode step failed"
+            exit 1
+          fi
+          echo "out-vscode/ present"
+
+      - name: Build CLI (Rust, arm64)
+        working-directory: cli
+        run: cargo build --release --target aarch64-apple-darwin
+
+      # ── Package base app (single call — reused below, no rebuilding) ──────────
+      - name: Package Electron app (darwin arm64)
+        run: npm run gulp vscode-darwin-arm64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      # ── Debug: Check what gulp actually produced ──────────────────────────────
+      - name: Debug — List parent directory contents
+        run: |
+          echo "=== Contents of parent directory (where gulp writes output) ==="
+          ls -la .. || echo "Cannot list parent directory"
+          echo ""
+          echo "=== Looking for any .app bundles ==="
+          find .. -maxdepth 2 -name "*.app" -type d 2>/dev/null || echo "No .app bundles found"
+          echo ""
+          echo "=== Looking for REH output directories ==="
+          find .. -maxdepth 1 -type d -name "vscode-reh-*" 2>/dev/null || echo "No REH directories found"
+
+      # ── Ad-hoc codesign (placeholder until a Developer ID cert is configured) ──
+      - name: Ad-hoc codesign .app bundle
+        run: |
+          APP_PATH=$(find .. -maxdepth 2 -name "*.app" -type d 2>/dev/null | grep -i "darwin-arm64" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH="../VSCode-darwin-arm64/Visual Studio Code.app"
+          fi
+          echo "Looking for app bundle at: $APP_PATH"
+          if [ -d "$APP_PATH" ]; then
+            codesign --deep --force --sign - "$APP_PATH" || echo "::warning::Ad-hoc codesign failed"
+          else
+            echo "::warning::No .app bundle found — skipping codesign"
+          fi
+
+      # ── 1. DMG (built with hdiutil — no GUI/Finder dependency, works headless) ─
+      - name: Build DMG
+        run: |
+          set -e
+          APP_PATH=$(find .. -maxdepth 2 -name "*.app" -type d 2>/dev/null | grep -i "darwin-arm64" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH="../VSCode-darwin-arm64/Visual Studio Code.app"
+          fi
+          echo "Looking for app bundle at: $APP_PATH"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::No .app bundle found — cannot build DMG"
+            exit 1
+          fi
+
+          hdiutil create -volname "Loophole" -srcfolder "$APP_PATH" -ov -format UDZO \
+            "dist/Loophole.arm64.$VERSION.dmg"
+
+          if [ ! -f "dist/Loophole.arm64.$VERSION.dmg" ]; then
+            echo "::error::hdiutil did not produce a .dmg file"
+            exit 1
+          fi
+
+      # ── 2. ZIP (reuses the package already built above — no rebuild) ──────────
+      - name: Stage — ZIP
+        run: |
+          APP_PATH=$(find .. -maxdepth 2 -name "*.app" -type d 2>/dev/null | grep -i "darwin-arm64" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH="../VSCode-darwin-arm64/Visual Studio Code.app"
+          fi
+          echo "Looking for app bundle at: $APP_PATH"
+          if [ -d "$APP_PATH" ]; then
+            ditto -c -k --keepParent "$APP_PATH" "dist/Loophole-darwin-arm64-$VERSION.zip"
+          else
+            echo "::warning::No .app bundle found — skipping ZIP"
+          fi
+
+      # ── 3. Remote Host tarball ─────────────────────────────────────────────────
+      - name: Build Remote Host
+        run: npm run gulp vscode-reh-darwin-arm64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — Remote Host
+        run: |
+          REH_PATH=$(find .. -maxdepth 1 -type d -name "vscode-reh-darwin-arm64" 2>/dev/null | head -1)
+          if [ -z "$REH_PATH" ]; then
+            echo "::error::REH directory not found at ../vscode-reh-darwin-arm64"
+            exit 1
+          fi
+          tar -czf "dist/loophole-reh-darwin-arm64-$VERSION.tar.gz" \
+            -C "$(dirname "$REH_PATH")" "$(basename "$REH_PATH")"
+
+      # ── 4. Web Host tarball ────────────────────────────────────────────────────
+      - name: Build Web Host
+        run: npm run gulp vscode-reh-web-darwin-arm64-ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Stage — Web Host
+        run: |
+          REH_WEB_PATH=$(find .. -maxdepth 1 -type d -name "vscode-reh-web-darwin-arm64" 2>/dev/null | head -1)
+          if [ -z "$REH_WEB_PATH" ]; then
+            echo "::error::REH-Web directory not found at ../vscode-reh-web-darwin-arm64"
+            exit 1
+          fi
+          tar -czf "dist/loophole-reh-web-darwin-arm64-$VERSION.tar.gz" \
+            -C "$(dirname "$REH_WEB_PATH")" "$(basename "$REH_WEB_PATH")"
+
+      # ── 5. CLI tarball ────────────────────────────────────────────────────────
+      - name: Stage — CLI tarball
+        run: |
+          cli_bin="cli/target/aarch64-apple-darwin/release/loophole"
+          if [ -f "$cli_bin" ]; then
+            mkdir -p .tmp-cli
+            cp "$cli_bin" .tmp-cli/loophole
+            tar -czf "dist/loophole-cli-darwin-arm64-$VERSION.tar.gz" \
+              -C ".tmp-cli" loophole
+          else
+            echo "::warning::CLI binary not found — skipping"
+          fi
+
+      # ── Summary & upload ────────────────────────────────────────────────────────
+      - name: List built artifacts
+        run: |
+          echo "=== dist/ artifacts ==="
+          ls -lh dist/ || echo "(dist/ is empty)"
+
+      - name: Compute SHA256 hashes
+        run: |
+          echo "{}" > sha256-hashes.json
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            FILENAME=$(basename "$f")
+            SHA=$(shasum -a 256 "$f" | awk '{print $1}')
+            echo "$FILENAME → $SHA"
+            python3 -c "import json,sys; d=json.load(open('sha256-hashes.json')); d[sys.argv[1]]=sys.argv[2]; json.dump(d,open('sha256-hashes.json','w'),indent=2)" "$FILENAME" "$SHA"
+          done
+          cat sha256-hashes.json
+
+      - name: Upload SHA256 hashes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-hashes-macos-arm64
+          path: sha256-hashes.json
+          retention-days: 7
+
+      - name: Upload — DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loophole-darwin-arm64-${{ env.VERSION }}-dmg
+          path: dist/Loophole.arm64.${{ env.VERSION }}.dmg
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loophole-darwin-arm64-${{ env.VERSION }}-zip
+          path: dist/Loophole-darwin-arm64-${{ env.VERSION }}.zip
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — Remote Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-darwin-arm64-${{ env.VERSION }}
+          path: dist/loophole-reh-darwin-arm64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — Web Host
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-reh-web-darwin-arm64-${{ env.VERSION }}
+          path: dist/loophole-reh-web-darwin-arm64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: loophole-cli-darwin-arm64-${{ env.VERSION }}
+          path: dist/loophole-cli-darwin-arm64-${{ env.VERSION }}.tar.gz
+          retention-days: 7
+          if-no-files-found: warn
+
+      # ── Upload to Gofile.io and save links ─────────────────────────────────────
+      - name: Upload to Gofile.io
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "  Uploading artifacts to Gofile.io"
+          echo "======================================"
+
+          # Get best available server
+          SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
+          if [ -z "$SERVER" ]; then
+            echo "::warning::Failed to get Gofile.io server — skipping upload"
+            echo "[]" > gofile-links-arm64.json
+            exit 0
+          fi
+          echo "Using server: $SERVER"
+
+          # Create JSON array to store links
+          echo "[" > gofile-links-arm64.json
+          FIRST=true
+
+          for FILE in dist/*; do
+            if [ -f "$FILE" ]; then
+              FILENAME=$(basename "$FILE")
+              echo ""
+              echo "Uploading: $FILENAME"
+              RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
+
+              # Validate response is valid JSON before parsing
+              if ! echo "$RESPONSE" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
+                echo "::warning::Invalid response from Gofile.io for $FILENAME"
+                continue
+              fi
+
+              LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data', {}).get('downloadPage', 'N/A'))" 2>/dev/null)
+              if [ -n "$LINK" ] && [ "$LINK" != "N/A" ]; then
+                echo " $FILENAME → $LINK"
+
+                # Add to JSON (handle comma for valid JSON array)
+                if [ "$FIRST" = true ]; then
+                  FIRST=false
+                else
+                  echo "," >> gofile-links-arm64.json
+                fi
+
+                echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"macos-arm64\"}" >> gofile-links-arm64.json
+              fi
+            fi
+          done
+
+          echo "]" >> gofile-links-arm64.json
+
+      - name: Upload Gofile links artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofile-links-macos-arm64
+          path: gofile-links-arm64.json
+          retention-days: 7
+
+      # ── Upload to GitHub Release ───────────────────────────────────────────────
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for f in dist/*; do
+            echo "Uploading $f..."
+            gh release upload "$VERSION" "$f" --clobber
+          done
