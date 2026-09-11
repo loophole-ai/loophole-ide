@@ -53,6 +53,7 @@ import { ISearchService } from '../../../../../../services/search/common/search.
 import { IExtensionManagementService } from '../../../../../../../platform/extensionManagement/common/extensionManagement.js'
 import { IMCPService } from '../../../../common/mcpService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
+import { ITokenUsageService } from '../../../../common/tokenUsageService.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 
 
@@ -229,6 +230,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IMCPService: accessor.get(IMCPService),
 
 		IStorageService: accessor.get(IStorageService),
+		ITokenUsageService: accessor.get(ITokenUsageService),
 
 	} as const
 	return reactAccessor
