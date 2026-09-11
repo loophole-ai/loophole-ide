@@ -202,3 +202,14 @@
 .void-scrollable-element *::-webkit-scrollbar-corner {
 	background-color: var(--void-bg-3) !important;
 }
+
+/* Loophole logo icon - used in onboarding and watermark */
+.void-void-icon {
+	background-image: url('../../../../workbench/browser/media/void-icon-sm.png');
+	background-size: contain;
+	background-repeat: no-repeat;
+	background-position: center;
+	width: 100%;
+	max-width: 220px;
+	aspect-ratio: 1/1;
+}

@@ -65,7 +65,7 @@ const invalidApiKeyMessage = (providerName: ProviderName) => `Invalid ${displayI
  * availability) rather than something Kodia's request shape controls, so explain instead of showing
  * the raw JSON error.
  */
-const applePCCUnavailableMessage = () => `Kodia: Apple's Private Cloud Compute ("pcc" model) rejected this request. If this persists, check Apple Intelligence & Siri in System Settings, or use the "system" (fully on-device) model instead.`
+const applePCCUnavailableMessage = () => `Loophole: Apple's Private Cloud Compute ("pcc" model) rejected this request. If this persists, check Apple Intelligence & Siri in System Settings, or use the "system" (fully on-device) model instead.`
 const isApplePCCUnavailableError = (providerName: ProviderName, error: unknown): boolean =>
 	providerName === 'appleFoundationModels'
 	&& error instanceof OpenAI.APIError
@@ -537,7 +537,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			}
 			// on final
 			if (!fullTextSoFar && !fullReasoningSoFar && !toolName) {
-				onError({ message: 'Kodia: Response from model was empty.', fullError: null })
+				onError({ message: 'Loophole: Response from model was empty.', fullError: null })
 			}
 			else {
 				const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId)
@@ -985,7 +985,7 @@ const sendGeminiChat = async ({
 
 			// on final
 			if (!fullTextSoFar && !fullReasoningSoFar && !toolName) {
-				onError({ message: 'Kodia: Response from model was empty.', fullError: null })
+				onError({ message: 'Loophole: Response from model was empty.', fullError: null })
 			} else {
 				if (!toolId) toolId = generateUuid() // ids are empty, but other providers might expect an id
 				const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId)

@@ -64,7 +64,7 @@ export const roundRangeToLines = (range: IRange | null | undefined, options: { e
 const VOID_OPEN_SIDEBAR_ACTION_ID = 'void.sidebar.open'
 registerAction2(class extends Action2 {
 	constructor() {
-		super({ id: VOID_OPEN_SIDEBAR_ACTION_ID, title: localize2('voidOpenSidebar', 'Kodia: Open Sidebar'), f1: true });
+		super({ id: VOID_OPEN_SIDEBAR_ACTION_ID, title: localize2('voidOpenSidebar', 'Loophole: Open Sidebar'), f1: true });
 	}
 	async run(accessor: ServicesAccessor): Promise<void> {
 		const viewsService = accessor.get(IViewsService)
@@ -81,7 +81,7 @@ registerAction2(class extends Action2 {
 		super({
 			id: VOID_CTRL_L_ACTION_ID,
 			f1: true,
-			title: localize2('voidCmdL', 'Kodia: Add Selection to Chat'),
+			title: localize2('voidCmdL', 'Loophole: Add Selection to Chat'),
 			keybinding: {
 				primary: KeyMod.CtrlCmd | KeyCode.KeyL,
 				weight: KeybindingWeight.VoidExtension

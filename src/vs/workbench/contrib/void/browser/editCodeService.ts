@@ -997,7 +997,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			else if (lastDiff.type === 'deletion')
 				endLineInLlmTextSoFar = lastDiff.startLine
 			else
-				throw new Error(`Kodia: diff.type not recognized on: ${lastDiff}`)
+				throw new Error(`Loophole: diff.type not recognized on: ${lastDiff}`)
 		}
 
 		// at the start, add a newline between the stream and originalCode to make reasoning easier
@@ -1376,7 +1376,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			startRange = [startLine_, endLine_]
 		}
 		else {
-			throw new Error(`Kodia: diff.type not recognized on: ${from}`)
+			throw new Error(`Loophole: diff.type not recognized on: ${from}`)
 		}
 
 		const { model } = this._voidModelService.getModel(uri)
@@ -1968,7 +1968,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 						const blocks = extractSearchReplaceBlocks(fullText)
 						if (blocks.length === 0) {
-							this._notificationService.info(`Kodia: We ran Fast Apply, but the LLM didn't output any changes.`)
+							this._notificationService.info(`Loophole: We ran Fast Apply, but the LLM didn't output any changes.`)
 						}
 						this._writeURIText(uri, originalFileCode, 'wholeFileRange', { shouldRealignDiffAreas: true })
 
