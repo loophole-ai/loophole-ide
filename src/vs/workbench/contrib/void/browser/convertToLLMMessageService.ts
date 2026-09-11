@@ -281,7 +281,7 @@ const prepareOpenAIOrAnthropicMessages = ({
 	// A COMPLETE HACK: last message is system message for context purposes
 
 	const sysMsgParts: string[] = []
-	if (aiInstructions) sysMsgParts.push(`GUIDELINES AND MEMORY (from the user's settings, .voidrules file, and project memory):\n${aiInstructions}`)
+	if (aiInstructions) sysMsgParts.push(`GUIDELINES AND MEMORY (from the user's settings, .loopholerules file, and project memory):\n${aiInstructions}`)
 	if (systemMessage) sysMsgParts.push(systemMessage)
 	const combinedSystemMessage = sysMsgParts.join('\n\n')
 
@@ -564,13 +564,13 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		super()
 	}
 
-	// Read .voidrules files from workspace folders
+	// Read .loopholerules files from workspace folders
 	private _getVoidRulesFileContents(): string {
 		try {
 			const workspaceFolders = this.workspaceContextService.getWorkspace().folders;
 			let voidRules = '';
 			for (const folder of workspaceFolders) {
-				const uri = URI.joinPath(folder.uri, '.voidrules')
+				const uri = URI.joinPath(folder.uri, '.loopholerules')
 				const { model } = this.voidModelService.getModel(uri)
 				if (!model) continue
 				voidRules += model.getValue(EndOfLinePreference.LF) + '\n\n';
@@ -587,7 +587,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		return this.storageService.get(PROJECT_MEMORY_STORAGE_KEY, StorageScope.WORKSPACE) ?? ''
 	}
 
-	// Get combined AI instructions from settings, .voidrules files, and saved project memory
+	// Get combined AI instructions from settings, .loopholerules files, and saved project memory
 	private _getCombinedAIInstructions(): string {
 		const globalAIInstructions = this.voidSettingsService.state.globalSettings.aiInstructions;
 		const voidRulesFileContent = this._getVoidRulesFileContents();
@@ -789,6 +789,3 @@ gemini response:
 	}
 }
 */
-
-
-
