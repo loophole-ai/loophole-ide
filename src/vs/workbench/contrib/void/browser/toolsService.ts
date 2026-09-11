@@ -8,7 +8,7 @@ import { QueryBuilder } from '../../../services/search/common/queryBuilder.js'
 import { ISearchService } from '../../../services/search/common/search.js'
 import { IEditCodeService } from './editCodeServiceInterface.js'
 import { ITerminalToolService } from './terminalToolService.js'
-import { LintErrorItem, BuiltinToolCallParams, BuiltinToolResultType, BuiltinToolName } from '../common/toolsServiceTypes.js'
+import { LintErrorItem, BuiltinToolCallParams, BuiltinToolResultType, BuiltinToolName, TodoItem } from '../common/toolsServiceTypes.js'
 import { IVoidModelService } from '../common/voidModelService.js'
 import { EndOfLinePreference } from '../../../../editor/common/model.js'
 import { IVoidCommandBarService } from './voidCommandBarServiceInterface.js'
@@ -20,7 +20,7 @@ import { MAX_CHILDREN_URIs_PAGE, MAX_FILE_CHARS_PAGE, MAX_PROJECT_MEMORY_TOKENS,
 import { IVoidSettingsService } from '../common/voidSettingsService.js'
 import { generateUuid } from '../../../../base/common/uuid.js'
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js'
-import { PROJECT_MEMORY_STORAGE_KEY } from '../common/storageKeys.js'
+import { PROJECT_MEMORY_STORAGE_KEY, TODO_STORAGE_KEY } from '../common/storageKeys.js'
 import { estimateTokens } from '../common/tokenizer.js'
 
 
@@ -304,6 +304,16 @@ export class ToolsService implements IToolsService {
 				const persistentTerminalId = validateProposedTerminalId(terminalIdUnknown);
 				return { persistentTerminalId };
 			},
+			todo_write: (params: RawToolParamsObj) => {
+				const { todos: todosUnknown } = params;
+				if (!Array.isArray(todosUnknown)) throw new Error('todo_write: todos must be an array');
+				const todos: TodoItem[] = todosUnknown.map((t: any) => ({
+					content: validateStr('content', t?.content),
+					status: validateStr('status', t?.status) as TodoItem['status'],
+					priority: validateStr('priority', t?.priority) as TodoItem['priority'],
+				}));
+				return { todos };
+			},
 
 		}
 
@@ -489,6 +499,10 @@ export class ToolsService implements IToolsService {
 				await this.terminalToolService.killPersistentTerminal(persistentTerminalId)
 				return { result: {} }
 			},
+			todo_write: async ({ todos }) => {
+				this.storageService.store(TODO_STORAGE_KEY, JSON.stringify(todos), StorageScope.WORKSPACE, StorageTarget.MACHINE)
+				return { result: { todos } }
+			},
 		}
 
 
@@ -597,6 +611,10 @@ export class ToolsService implements IToolsService {
 			},
 			kill_persistent_terminal: (params, _result) => {
 				return `Successfully closed terminal "${params.persistentTerminalId}".`;
+			},
+			todo_write: (_params, result) => {
+				const summary = result.todos.map((t, i) => `${i + 1}. [${t.status}] (${t.priority}) ${t.content}`).join('\n');
+				return `Todos updated:\n${summary}`;
 			},
 		}
 
