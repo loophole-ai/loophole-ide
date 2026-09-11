@@ -42,6 +42,13 @@ export const toolApprovalTypes = new Set<ToolApprovalType>([
 
 
 
+// Todo item type used by the todo_write tool
+export type TodoItem = {
+	content: string;
+	status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+	priority: 'high' | 'medium' | 'low';
+}
+
 // PARAMS OF TOOL CALL
 export type BuiltinToolCallParams = {
 	'read_file': { uri: URI, startLine: number | null, endLine: number | null, pageNumber: number },
@@ -63,6 +70,8 @@ export type BuiltinToolCallParams = {
 	'open_persistent_terminal': { cwd: string | null },
 	'run_persistent_command': { command: string; persistentTerminalId: string },
 	'kill_persistent_terminal': { persistentTerminalId: string },
+	// --- todos ---
+	'todo_write': { todos: TodoItem[] },
 }
 
 // RESULT OF TOOL CALL
@@ -86,6 +95,8 @@ export type BuiltinToolResultType = {
 	'run_persistent_command': { result: string; resolveReason: TerminalResolveReason; },
 	'open_persistent_terminal': { persistentTerminalId: string },
 	'kill_persistent_terminal': {},
+	// --- todos ---
+	'todo_write': { todos: TodoItem[] },
 }
 
 

@@ -10,7 +10,8 @@ import { StagingSelectionItem } from '../chatThreadServiceTypes.js';
 import { os } from '../helpers/systemInfo.js';
 import { RawToolParamsObj } from '../sendLLMMessageTypes.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, BuiltinToolResultType, ToolName } from '../toolsServiceTypes.js';
-import { ChatMode } from '../voidSettingsTypes.js';
+import { ChatMode, ProviderName } from '../voidSettingsTypes.js';
+import { prompt_plan_mode, prompt_plan_reminder_anthropic } from './modelPrompts.js';
 
 // Triple backtick wrapper used throughout the prompts for code blocks
 export const tripleTick = ['```', '```']
@@ -342,6 +343,41 @@ export const builtinTools: {
 
 
 
+	todo_write: {
+		name: 'todo_write',
+		description: `Create and maintain a structured task list for the current coding session. Tracks progress, organizes multi-step work, and surfaces status to the user.
+
+## When to use
+Use proactively when:
+- The task requires 3+ distinct steps or actions
+- The work is non-trivial and benefits from planning
+- The user provides multiple tasks or explicitly asks for a todo list
+- New instructions arrive — capture them as todos
+- You start a task — mark it \`in_progress\` (only one at a time) before working
+- You finish a task — mark it \`completed\` and add any follow-ups discovered
+
+## When NOT to use
+Skip when:
+- The work is a single, straightforward task (or <3 trivial steps)
+- The request is purely informational or conversational
+
+## States
+- \`pending\` — not started
+- \`in_progress\` — actively working (exactly ONE at a time)
+- \`completed\` — finished successfully
+- \`cancelled\` — no longer needed
+
+## Rules
+- Update status in real time; don't batch completions
+- Mark \`completed\` only after the required work is actually done, never based on intent
+- Keep exactly one \`in_progress\` while work remains
+- Items should be specific and actionable; break large work into smaller steps
+- ALWAYS pass the full updated list every time — this replaces the entire previous list`,
+		params: {
+			todos: { description: `The complete updated todo list. Each item has: content (brief description), status (pending | in_progress | completed | cancelled), priority (high | medium | low). ALWAYS pass the full list — this replaces the previous list entirely.` }
+		}
+	},
+
 	open_persistent_terminal: {
 		name: 'open_persistent_terminal',
 		description: `Use this tool when you want to run a terminal command indefinitely, like a dev server (eg \`npm run dev\`), a background listener, etc. Opens a new terminal in the user's environment which will not awaited for or killed.`,
@@ -444,7 +480,7 @@ const systemToolsXMLPrompt = (chatMode: ChatMode, mcpTools: InternalToolInfo[] |
 // ======================================================== chat (normal, gather, agent) ========================================================
 
 
-export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, includeXMLToolDefinitions }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, includeXMLToolDefinitions: boolean }) => {
+export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, includeXMLToolDefinitions, providerName }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, includeXMLToolDefinitions: boolean, providerName?: ProviderName | null }) => {
 	const header = (`You are an expert coding ${mode === 'agent' ? 'agent' : 'assistant'} whose job is \
 ${mode === 'agent' ? `to help the user develop, run, and make changes to their codebase.`
 			: mode === 'gather' ? `to search, understand, and reference files in the user's codebase.`
@@ -479,6 +515,10 @@ ${directoryStr}
 
 
 	const toolDefinitions = includeXMLToolDefinitions ? systemToolsXMLPrompt(mode, mcpTools) : null
+
+	const taskManagement = mode === 'agent' ? `Use todo_write for any task with 3 or more steps. Break it down before starting. Mark each todo completed immediately when done — don't batch them. For simple one-step tasks, skip the todo and just do it.` : ''
+
+	const planModePrompt = (mode === 'plan' && providerName === 'anthropic') ? prompt_plan_reminder_anthropic : (mode === 'plan' ? prompt_plan_mode : null)
 
 	const details: string[] = []
 
@@ -536,8 +576,10 @@ ${details.map((d, i) => `${i + 1}. ${d}`).join('\n\n')}`)
 	ansStrs.push(header)
 	ansStrs.push(sysInfo)
 	if (toolDefinitions) ansStrs.push(toolDefinitions)
+	if (taskManagement) ansStrs.push(taskManagement)
 	ansStrs.push(importantDetails)
 	ansStrs.push(fsInfo)
+	if (planModePrompt) ansStrs.push(planModePrompt)
 
 	const fullSystemMsgStr = ansStrs
 		.join('\n\n\n')
