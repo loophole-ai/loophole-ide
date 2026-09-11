@@ -1,6 +1,6 @@
 {
-    "version": "1.121.0",
-    "commit": "release",
+	"version": "1.121.0",
+	"commit": "release",
 	"nameShort": "Loophole",
 	"nameLong": "Loophole Editor",
 	"loopholeVersion": "2.2.0",
@@ -25,14 +25,14 @@
 	"win32x64UserAppId": "{{8BED5DC1-6C55-46E6-9FE6-18F7E6F7C7F1}",
 	"win32arm64UserAppId": "{{F6C87466-BC82-4A8F-B0FF-18CA366BA4D8}",
 	"win32AppUserModelId": "Loophole.Editor",
-    "win32ContextMenu": {
-        "x64": {
-            "clsid": "00a95dc5-df32-4682-b5a3-f057708a7c09"
-        },
-        "arm64": {
-            "clsid": "8f8181af-0130-4554-8bc2-8a2cccbdcbcb"
-        }
-    },
+	"win32ContextMenu": {
+		"x64": {
+			"clsid": "00a95dc5-df32-4682-b5a3-f057708a7c09"
+		},
+		"arm64": {
+			"clsid": "8f8181af-0130-4554-8bc2-8a2cccbdcbcb"
+		}
+	},
 	"win32ShellNameShort": "Loophole",
 	"win32TunnelServiceMutex": "loophole-tunnelservice",
 	"win32TunnelMutex": "loophole-tunnel",
@@ -43,13 +43,10 @@
 	"nodejsRepository": "https://nodejs.org",
 	"urlProtocol": "loophole",
 	"extensionsGallery": {
-		"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery",
-		"itemUrl": "https://marketplace.visualstudio.com/items",
-		"publisherUrl": "https://marketplace.visualstudio.com/publishers",
-		"resourceUrlTemplate": "https://{publisher}.vscode-unpkg.net/{publisher}/{name}/{version}/{path}",
-		"controlUrl": "https://az764295.vo.msecnd.net/extensions/marketplace.json",
-		"nlsBaseUrl": "https://download.visualstudio.microsoft.com/download/pr/",
-		"extensionUrlTemplate": "https://marketplace.visualstudio.com/items?itemName={publisher}.{name}"
+		"serviceUrl": "https://open-vsx.org/vscode/gallery",
+		"itemUrl": "https://open-vsx.org/vscode/item",
+		"latestUrlTemplate": "https://open-vsx.org/vscode/gallery/{publisher}/{name}/latest",
+		"controlUrl": "https://raw.githubusercontent.com/EclipseFdn/publish-extensions/refs/heads/master/extension-control/extensions.json"
 	},
 	"builtInExtensions": [],
 	"linkProtectionTrustedDomains": [
