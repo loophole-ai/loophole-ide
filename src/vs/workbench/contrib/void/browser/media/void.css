@@ -205,7 +205,7 @@
 
 /* Loophole logo icon - used in onboarding and watermark */
 .void-void-icon {
-	background-image: url('../../../../workbench/browser/media/void-icon-sm.png');
+	background-image: url('../../../../browser/media/void-icon-sm.png');
 	background-size: contain;
 	background-repeat: no-repeat;
 	background-position: center;
