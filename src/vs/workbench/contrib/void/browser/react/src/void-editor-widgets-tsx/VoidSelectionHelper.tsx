@@ -20,7 +20,7 @@ export const VoidSelectionHelperMain = (props: VoidSelectionHelperProps) => {
 	const isDark = useIsDark()
 
 	return <div
-		className={`@@void-scope ${isDark ? 'dark' : ''}`}
+		className={`@@loophole-scope ${isDark ? 'dark' : ''}`}
 	>
 		<VoidSelectionHelper {...props} />
 	</div>
