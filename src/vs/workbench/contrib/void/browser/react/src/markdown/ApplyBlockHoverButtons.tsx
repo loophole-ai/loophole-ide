@@ -33,12 +33,12 @@ export const IconShell1 = ({ onClick, Icon, disabled, className, ...props }: Ico
 			e.stopPropagation();
 			onClick?.(e);
 		}}
-		// border border-void-border-1 rounded
+		// border border-loophole-border-1 rounded
 		className={`
 		size-[18px]
 		p-[2px]
 		flex items-center justify-center
-		text-sm text-void-fg-3
+		text-sm text-loophole-fg-3
 		hover:brightness-110
 		disabled:opacity-50 disabled:cursor-not-allowed
 		${className}
@@ -173,15 +173,15 @@ export const useApplyStreamState = ({ applyBoxId }: { applyBoxId: string }) => {
 type IndicatorColor = 'green' | 'orange' | 'dark' | 'yellow' | null
 export const StatusIndicator = ({ indicatorColor, title, className, ...props }: { indicatorColor: IndicatorColor, title?: React.ReactNode, className?: string } & React.HTMLAttributes<HTMLDivElement>) => {
 	return (
-		<div className={`flex flex-row text-void-fg-3 text-xs items-center gap-1.5 ${className}`} {...props}>
+		<div className={`flex flex-row text-loophole-fg-3 text-xs items-center gap-1.5 ${className}`} {...props}>
 			{title && <span className='opacity-80'>{title}</span>}
 			<div
 				className={` size-1.5 rounded-full border
-					${indicatorColor === 'dark' ? 'bg-[rgba(0,0,0,0)] border-void-border-1' :
+					${indicatorColor === 'dark' ? 'bg-[rgba(0,0,0,0)] border-loophole-border-1' :
 						indicatorColor === 'orange' ? 'bg-orange-500 border-orange-500 shadow-[0_0_4px_0px_rgba(234,88,12,0.6)]' :
 							indicatorColor === 'green' ? 'bg-green-500 border-green-500 shadow-[0_0_4px_0px_rgba(22,163,74,0.6)]' :
 								indicatorColor === 'yellow' ? 'bg-yellow-500 border-yellow-500 shadow-[0_0_4px_0px_rgba(22,163,74,0.6)]' :
-									'bg-void-border-1 border-void-border-1'
+									'bg-loophole-border-1 border-loophole-border-1'
 					}
 				`}
 			/>
@@ -190,7 +190,7 @@ export const StatusIndicator = ({ indicatorColor, title, className, ...props }: 
 };
 
 const tooltipPropsForApplyBlock = ({ tooltipName, color = undefined, position = 'top', offset = undefined }: { tooltipName: string, color?: IndicatorColor, position?: PlacesType, offset?: number }) => ({
-	'data-tooltip-id': color === 'orange' ? `void-tooltip-orange` : color === 'green' ? 'void-tooltip-green' : 'void-tooltip',
+	'data-tooltip-id': color === 'orange' ? `loophole-tooltip-orange` : color === 'green' ? 'loophole-tooltip-green' : 'loophole-tooltip',
 	'data-tooltip-place': position as PlacesType,
 	'data-tooltip-content': `${tooltipName}`,
 	'data-tooltip-offset': offset,
@@ -535,12 +535,12 @@ export const BlockCodeApplyWrapper = ({
 		: <span>{language}</span>
 
 
-	return <div className='border border-void-border-3 rounded overflow-hidden bg-void-bg-3 my-1'>
+	return <div className='border border-loophole-border-3 rounded overflow-hidden bg-loophole-bg-3 my-1'>
 		{/* header */}
-		<div className=" select-none flex justify-between items-center py-1 px-2 border-b border-void-border-3 cursor-default">
+		<div className=" select-none flex justify-between items-center py-1 px-2 border-b border-loophole-border-3 cursor-default">
 			<div className="flex items-center">
 				<StatusIndicatorForApplyButton uri={uri} applyBoxId={applyBoxId} />
-				<span className="text-[13px] font-light text-void-fg-3">
+				<span className="text-[13px] font-light text-loophole-fg-3">
 					{name}
 				</span>
 			</div>

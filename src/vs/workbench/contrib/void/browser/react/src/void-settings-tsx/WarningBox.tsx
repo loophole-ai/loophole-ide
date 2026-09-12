@@ -5,7 +5,7 @@ export const WarningBox = ({ text, onClick, className }: { text: string; onClick
 
 	return <div
 		className={`
-			text-void-warning brightness-90 opacity-90 w-fit
+			text-loophole-warning brightness-90 opacity-90 w-fit
 			text-xs text-ellipsis
 			${onClick ? `hover:brightness-75 transition-all duration-200 cursor-pointer` : ''}
 			flex items-center flex-nowrap

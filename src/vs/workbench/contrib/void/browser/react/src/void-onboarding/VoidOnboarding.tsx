@@ -26,7 +26,7 @@ export const LoopholeOnboarding = () => {
 		<div className={`@@loophole-scope ${isDark ? 'dark' : ''}`}>
 			<div
 				className={`
-					bg-void-bg-3 fixed top-0 right-0 bottom-0 left-0 width-full z-[99999]
+					bg-loophole-bg-3 fixed top-0 right-0 bottom-0 left-0 width-full z-[99999]
 					transition-all duration-1000 ${isOnboardingComplete ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'}
 				`}
 				style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -159,7 +159,7 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 
 	return (<div className="flex flex-col md:flex-row w-full h-[80vh] gap-6 max-w-[900px] mx-auto relative">
 		{/* Left Column */}
-		<div className="md:w-1/4 w-full flex flex-col gap-6 p-6 border-none border-void-border-2 h-full overflow-y-auto">
+		<div className="md:w-1/4 w-full flex flex-col gap-6 p-6 border-none border-loophole-border-2 h-full overflow-y-auto">
 			{/* Tab Selector */}
 			<div className="flex md:flex-col gap-2">
 				{[...tabNames, 'Cloud/Other'].map(tab => (
@@ -167,7 +167,7 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 						key={tab}
 						className={`py-2 px-4 rounded-md text-left ${currentTab === tab
 							? 'bg-[#0e70c0]/80 text-white font-medium shadow-sm'
-							: 'bg-void-bg-2 hover:bg-void-bg-2/80 text-void-fg-1'
+							: 'bg-loophole-bg-2 hover:bg-loophole-bg-2/80 text-loophole-fg-1'
 							} transition-all duration-200`}
 						onClick={() => {
 							setCurrentTab(tab as TabName);
@@ -205,7 +205,7 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 
 			<div className="w-full max-w-xl mt-4 mb-10">
 				<div className="text-4xl font-light my-4 w-full">{currentTab}</div>
-				<div className="text-sm opacity-80 text-void-fg-3 my-4 w-full">{descriptionOfTab[currentTab]}</div>
+				<div className="text-sm opacity-80 text-loophole-fg-3 my-4 w-full">{descriptionOfTab[currentTab]}</div>
 			</div>
 
 			{currentTab === 'Local' && (
@@ -215,7 +215,7 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 							key={sub}
 							className={`py-1.5 px-3 rounded-md text-sm ${localSubTab === sub
 								? 'bg-[#0e70c0]/80 text-white'
-								: 'bg-void-bg-2 hover:bg-void-bg-2/80 text-void-fg-1'
+								: 'bg-loophole-bg-2 hover:bg-loophole-bg-2/80 text-loophole-fg-1'
 								}`}
 							onClick={() => setLocalSubTab(sub)}
 						>
@@ -231,7 +231,7 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 						Add {displayInfoOfProviderName(providerName).title}
 						{providerName === 'gemini' && (
 							<span
-								data-tooltip-id="void-tooltip-provider-info"
+								data-tooltip-id="loophole-tooltip-provider-info"
 								data-tooltip-content="Gemini 2.5 Pro offers 25 free messages a day, and Gemini 2.5 Flash offers 500. We recommend using models down the line as you run out of free credits."
 								data-tooltip-place="right"
 								className="ml-1 text-xs align-top text-blue-400"
@@ -239,7 +239,7 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 						)}
 						{providerName === 'openRouter' && (
 							<span
-								data-tooltip-id="void-tooltip-provider-info"
+								data-tooltip-id="loophole-tooltip-provider-info"
 								data-tooltip-content="OpenRouter offers 50 free messages a day, and 1000 if you deposit $10. Only applies to models labeled ':free'."
 								data-tooltip-place="right"
 								className="ml-1 text-xs align-top text-blue-400"
@@ -256,12 +256,12 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 			))}
 
 			{(currentTab === 'Local' || currentTab === 'Cloud/Other') && (
-				<div className="w-full max-w-xl mt-8 bg-void-bg-2/50 rounded-lg p-6 border border-void-border-4">
+				<div className="w-full max-w-xl mt-8 bg-loophole-bg-2/50 rounded-lg p-6 border border-loophole-border-4">
 					<div className="flex items-center gap-2 mb-4">
 						<div className="text-xl font-medium">Models</div>
 					</div>
 					{currentTab === 'Local' && (
-						<div className="text-sm opacity-80 text-void-fg-3 my-4 w-full">Local models should be detected automatically. You can add custom models below.</div>
+						<div className="text-sm opacity-80 text-loophole-fg-3 my-4 w-full">Local models should be detected automatically. You can add custom models below.</div>
 					)}
 					{currentTab === 'Local' && <ModelDump filteredProviders={[...providerNamesOfLocalSubTab[localSubTab]]} />}
 					{currentTab === 'Cloud/Other' && <ModelDump filteredProviders={cloudProviders} />}
@@ -304,7 +304,7 @@ const NextButton = ({ onClick, ...props }: { onClick: () => void } & React.Butto
 				} rounded text-black duration-600 transition-all
 			`}
 			{...disabled && {
-				'data-tooltip-id': 'void-tooltip',
+				'data-tooltip-id': 'loophole-tooltip',
 				"data-tooltip-content": 'Please enter all required fields or choose another provider',
 				"data-tooltip-place": 'top',
 			}}
@@ -319,7 +319,7 @@ const PreviousButton = ({ onClick, ...props }: { onClick: () => void } & React.B
 	return (
 		<button
 			onClick={onClick}
-			className="px-6 py-2 rounded text-void-fg-3 opacity-80 hover:brightness-115 duration-600 transition-all"
+			className="px-6 py-2 rounded text-loophole-fg-3 opacity-80 hover:brightness-115 duration-600 transition-all"
 			{...props}
 		>
 			Back
@@ -348,7 +348,7 @@ const OllamaDownloadOrRemoveModelButton = ({ modelName, isModelInstalled, sizeGb
 		href={`https://ollama.com/library/${modelName}`}
 		target="_blank"
 		rel="noopener noreferrer"
-		className="flex items-center justify-center text-void-fg-2 hover:text-void-fg-1"
+		className="flex items-center justify-center text-loophole-fg-2 hover:text-loophole-fg-1"
 	>
 		<ExternalLink className="w-3.5 h-3.5" />
 	</a>
@@ -453,8 +453,8 @@ const ThemePickerPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setPa
 								className={`
 									relative cursor-pointer rounded-xl p-4 border-2 transition-all duration-200
 									${selectedThemeId === theme.id
-										? 'border-void-fg-1 bg-void-bg-2'
-										: 'border-void-border-2 hover:border-void-border-1'
+										? 'border-loophole-fg-1 bg-loophole-bg-2'
+										: 'border-loophole-border-2 hover:border-loophole-border-1'
 									}
 								`}
 								onClick={() => {
@@ -529,13 +529,13 @@ const ThemePickerPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setPa
 									</div>
 								</div>
 
-								<div className="text-center text-sm font-medium text-void-fg-1">
+								<div className="text-center text-sm font-medium text-loophole-fg-1">
 									{theme.name}
 								</div>
 
 								{selectedThemeId === theme.id && (
 									<div className="absolute top-3 right-3">
-										<Check className="w-5 h-5 text-void-fg-1" />
+										<Check className="w-5 h-5 text-loophole-fg-1" />
 									</div>
 								)}
 							</div>
@@ -687,7 +687,7 @@ const LoopholeOnboardingContent = () => {
 				<div>
 					<div className="text-5xl font-light text-center">Settings and Themes</div>
 					<div className="mt-8 text-center flex flex-col items-center gap-4 w-full max-w-md mx-auto">
-						<h4 className="text-void-fg-3 mb-4">Transfer your settings from an existing editor?</h4>
+						<h4 className="text-loophole-fg-3 mb-4">Transfer your settings from an existing editor?</h4>
 						<OneClickSwitchButton className='w-full px-4 py-2' fromEditor="VS Code" />
 						<OneClickSwitchButton className='w-full px-4 py-2' fromEditor="Cursor" />
 						<OneClickSwitchButton className='w-full px-4 py-2' fromEditor="Windsurf" />

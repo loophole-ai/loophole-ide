@@ -196,7 +196,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 	if (currFileIdx === null) {
 		return (
 			<div className="pointer-events-auto">
-				<div className="flex bg-void-bg-2 shadow-md border border-void-border-2 [&>*:first-child]:pl-3 [&>*:last-child]:pr-3 [&>*]:border-r [&>*]:border-void-border-2 [&>*:last-child]:border-r-0">
+				<div className="flex bg-loophole-bg-2 shadow-md border border-loophole-border-2 [&>*:first-child]:pl-3 [&>*:last-child]:pr-3 [&>*]:border-r [&>*]:border-loophole-border-2 [&>*:last-child]:border-r-0">
 					<div className="flex items-center px-3">
 						<span className="text-xs whitespace-nowrap">
 							{`${sortedCommandBarURIs.length} file${sortedCommandBarURIs.length === 1 ? '' : 's'} changed`}
@@ -226,12 +226,12 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 			{/* Accept All / Reject All buttons that appear when the vertical ellipsis is clicked */}
 			{showAcceptRejectAllButtons && showAcceptRejectAll && (
 				<div className="flex justify-end mb-1">
-					<div className="inline-flex bg-void-bg-2 rounded shadow-md border border-void-border-2 overflow-hidden">
-						<div className="flex items-center [&>*]:border-r [&>*]:border-void-border-2 [&>*:last-child]:border-r-0">
+					<div className="inline-flex bg-loophole-bg-2 rounded shadow-md border border-loophole-border-2 overflow-hidden">
+						<div className="flex items-center [&>*]:border-r [&>*]:border-loophole-border-2 [&>*:last-child]:border-r-0">
 							<AcceptAllButtonWrapper
 								// text={`Accept All${acceptAllKeybindLabel ? ` ${acceptAllKeybindLabel}` : ''}`}
 								text={`Accept All`}
-								data-tooltip-id='void-tooltip'
+								data-tooltip-id='loophole-tooltip'
 								data-tooltip-content={acceptAllKeybindLabel}
 								data-tooltip-delay-show={500}
 								onClick={onAcceptAll}
@@ -239,7 +239,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 							<RejectAllButtonWrapper
 								// text={`Reject All${rejectAllKeybindLabel ? ` ${rejectAllKeybindLabel}` : ''}`}
 								text={`Reject All`}
-								data-tooltip-id='void-tooltip'
+								data-tooltip-id='loophole-tooltip'
 								data-tooltip-content={rejectAllKeybindLabel}
 								data-tooltip-delay-show={500}
 								onClick={onRejectAll}
@@ -249,7 +249,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 				</div>
 			)}
 
-			<div className="flex items-center bg-void-bg-2 rounded shadow-md border border-void-border-2 [&>*:first-child]:pl-3 [&>*:last-child]:pr-3 [&>*]:px-3 [&>*]:border-r [&>*]:border-void-border-2 [&>*:last-child]:border-r-0">
+			<div className="flex items-center bg-loophole-bg-2 rounded shadow-md border border-loophole-border-2 [&>*:first-child]:pl-3 [&>*:last-child]:pr-3 [&>*]:px-3 [&>*]:border-r [&>*]:border-loophole-border-2 [&>*:last-child]:border-r-0">
 
 				{/* Diff Navigation Group */}
 				<div className="flex items-center py-0.5">
@@ -263,7 +263,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 								commandBarService.goToDiffIdx(prevDiffIdx);
 							}
 						}}
-						data-tooltip-id="void-tooltip"
+						data-tooltip-id="loophole-tooltip"
 						data-tooltip-content={`${upKeybindLabel ? `${upKeybindLabel}` : ''}`}
 						data-tooltip-delay-show={500}
 					>
@@ -288,7 +288,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 								commandBarService.goToDiffIdx(nextDiffIdx);
 							}
 						}}
-						data-tooltip-id="void-tooltip"
+						data-tooltip-id="loophole-tooltip"
 						data-tooltip-content={`${downKeybindLabel ? `${downKeybindLabel}` : ''}`}
 						data-tooltip-delay-show={500}
 					>
@@ -310,7 +310,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 								commandBarService.goToURIIdx(prevURIIdx);
 							}
 						}}
-						data-tooltip-id="void-tooltip"
+						data-tooltip-id="loophole-tooltip"
 						data-tooltip-content={`${leftKeybindLabel ? `${leftKeybindLabel}` : ''}`}
 						data-tooltip-delay-show={500}
 					>
@@ -332,7 +332,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 								commandBarService.goToURIIdx(nextURIIdx);
 							}
 						}}
-						data-tooltip-id="void-tooltip"
+						data-tooltip-id="loophole-tooltip"
 						data-tooltip-content={`${rightKeybindLabel ? `${rightKeybindLabel}` : ''}`}
 						data-tooltip-delay-show={500}
 					>
@@ -347,7 +347,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 						<AcceptAllButtonWrapper
 							// text={`Accept File${acceptFileKeybindLabel ? ` ${acceptFileKeybindLabel}` : ''}`}
 							text={`Accept File`}
-							data-tooltip-id='void-tooltip'
+							data-tooltip-id='loophole-tooltip'
 							data-tooltip-content={acceptFileKeybindLabel}
 							data-tooltip-delay-show={500}
 							onClick={onAcceptFile}
@@ -355,7 +355,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 						<RejectAllButtonWrapper
 							// text={`Reject File${rejectFileKeybindLabel ? ` ${rejectFileKeybindLabel}` : ''}`}
 							text={`Reject File`}
-							data-tooltip-id='void-tooltip'
+							data-tooltip-id='loophole-tooltip'
 							data-tooltip-content={rejectFileKeybindLabel}
 							data-tooltip-delay-show={500}
 							onClick={onRejectFile}

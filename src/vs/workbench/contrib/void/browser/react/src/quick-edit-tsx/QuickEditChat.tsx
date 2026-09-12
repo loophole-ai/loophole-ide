@@ -57,7 +57,7 @@ export const QuickEditChat = ({
 	}, [diffareaid, setIsStreamingRef]))
 
 	const loadingIcon = <div
-		className="@@codicon @@codicon-loading @@codicon-modifier-spin @@codicon-no-default-spin text-void-fg-3"
+		className="@@codicon @@codicon-loading @@codicon-modifier-spin @@codicon-no-default-spin text-loophole-fg-3"
 	/>
 
 	const onSubmit = useCallback(async () => {

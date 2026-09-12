@@ -753,7 +753,7 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 
 			disabled={!isEnabled}
 
-			className={`w-full resize-none max-h-[500px] overflow-y-auto text-void-fg-1 placeholder:text-void-fg-3 ${className}`}
+			className={`w-full resize-none max-h-[500px] overflow-y-auto text-loophole-fg-1 placeholder:text-loophole-fg-3 ${className}`}
 			style={{
 				// defaultInputBoxStyles
 				background: asCssVariable(inputBackground),
@@ -809,7 +809,7 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 		{isMenuOpen && (
 			<div
 				ref={refs.setFloating}
-				className="z-[100] border-void-border-3 bg-void-bg-2-alt border rounded shadow-lg flex flex-col overflow-hidden"
+				className="z-[100] border-loophole-border-3 bg-loophole-bg-2-alt border rounded shadow-lg flex flex-col overflow-hidden"
 				style={{
 					position: strategy,
 					top: y ?? 0,
@@ -819,7 +819,7 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 				onWheel={(e) => e.stopPropagation()}
 			>
 				{/* Breadcrumbs Header */}
-				{isBreadcrumbsShowing && <div className="px-2 py-1 text-void-fg-1 bg-void-bg-2-alt border-b border-void-border-3 sticky top-0 bg-void-bg-1 z-10 select-none pointer-events-none">
+				{isBreadcrumbsShowing && <div className="px-2 py-1 text-loophole-fg-1 bg-loophole-bg-2-alt border-b border-loophole-border-3 sticky top-0 bg-loophole-bg-1 z-10 select-none pointer-events-none">
 					{optionText ?
 						<div className="flex items-center">
 							{/* {optionPath.map((path, index) => (
@@ -839,7 +839,7 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 				<div className='max-h-[400px] w-full max-w-full overflow-y-auto overflow-x-auto'>
 					<div className="w-max min-w-full flex flex-col gap-0 text-nowrap flex-nowrap">
 						{options.length === 0 ?
-							<div className="text-void-fg-3 px-3 py-0.5">No results found</div>
+							<div className="text-loophole-fg-3 px-3 py-0.5">No results found</div>
 							: options.map((o, oIdx) => {
 
 								return (
@@ -850,7 +850,7 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 										className={`
 											flex items-center gap-2
 											px-3 py-1 cursor-pointer
-											${oIdx === optionIdx ? 'bg-blue-500 text-white/80' : 'bg-void-bg-2-alt text-void-fg-1'}
+											${oIdx === optionIdx ? 'bg-blue-500 text-white/80' : 'bg-loophole-bg-2-alt text-loophole-fg-1'}
 										`}
 										onClick={() => { onSelectOption(); }}
 										onMouseMove={() => { setOptionIdx(oIdx) }}
@@ -925,7 +925,7 @@ export const VoidSimpleInputBox = ({ value, onChangeValue, placeholder, classNam
 			onChange={handleChange}
 			placeholder={placeholder}
 			disabled={disabled}
-			className={`w-full resize-none bg-void-bg-1 text-void-fg-1 placeholder:text-void-fg-3 border border-void-border-2 focus:border-void-border-1
+			className={`w-full resize-none bg-loophole-bg-1 text-loophole-fg-1 placeholder:text-loophole-fg-3 border border-loophole-border-2 focus:border-loophole-border-1
 				${compact ? 'py-1 px-2' : 'py-2 px-4 '}
 				rounded
 				${disabled ? 'opacity-50 cursor-not-allowed' : ''}
@@ -957,7 +957,7 @@ export const VoidInputBox = ({ onChangeText, onCreateInstance, inputBoxRef, plac
 	const contextViewProvider = accessor.get('IContextViewService')
 	return <WidgetComponent
 		className='
-			bg-void-bg-1
+			bg-loophole-bg-1
 			@@void-force-child-placeholder-void-fg-1
 		'
 		ctor={InputBox}
@@ -1108,7 +1108,7 @@ export const VoidSlider = ({
 							size === 'xs' ? 'h-1' :
 								size === 'sm' ? 'h-1.5' :
 									size === 'sm+' ? 'h-2' : 'h-2.5'
-							} bg-void-bg-2 rounded-full cursor-pointer`}
+							} bg-loophole-bg-2 rounded-full cursor-pointer`}
 						onClick={handleTrackClick}
 					>
 						{/* Filled part of track */}
@@ -1117,7 +1117,7 @@ export const VoidSlider = ({
 								size === 'xs' ? 'h-1' :
 									size === 'sm' ? 'h-1.5' :
 										size === 'sm+' ? 'h-2' : 'h-2.5'
-								} bg-void-fg-1 rounded-full`}
+								} bg-loophole-fg-1 rounded-full`}
 							style={{ width: `${percentage}%` }}
 						/>
 					</div>
@@ -1130,8 +1130,8 @@ export const VoidSlider = ({
 									size === 'sm' ? 'h-3 w-3' :
 										size === 'sm+' ? 'h-3.5 w-3.5' : 'h-4 w-4'
 							}
-							bg-void-fg-1 rounded-full shadow-md ${disabled ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}
-							border border-void-fg-1`}
+							bg-loophole-fg-1 rounded-full shadow-md ${disabled ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}
+							border border-loophole-fg-1`}
 						style={{ left: `${percentage}%`, zIndex: 2 }}  // Ensure thumb is above the invisible clickable area
 						onMouseDown={(e) => {
 							if (disabled) return;
@@ -1416,7 +1416,7 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 			{isOpen && (
 				<div
 					ref={refs.setFloating}
-					className="z-[100] bg-void-bg-1 border-void-border-3 border rounded shadow-lg"
+					className="z-[100] bg-loophole-bg-1 border-loophole-border-3 border rounded shadow-lg"
 					style={{
 						position: strategy,
 						top: y ?? 0,
@@ -1493,9 +1493,9 @@ export const _VoidSelectBox = <T,>({ onChangeSelection, onCreateInstance, select
 	return <WidgetComponent
 		className={`
 			@@select-child-restyle
-			@@[&_select]:!void-text-void-fg-3
+			@@[&_select]:!void-text-loophole-fg-3
 			@@[&_select]:!void-text-xs
-			!text-void-fg-3
+			!text-loophole-fg-3
 			${className ?? ''}
 		`}
 		ctor={SelectBox}
@@ -1615,7 +1615,7 @@ export const BlockCode = ({ initValue, language, maxHeight, showScrollbars }: Bl
 		if (language) modelRef.current?.setLanguage(language)
 	}, [language])
 
-	return <div ref={divRef} className='relative z-0 px-2 py-1 bg-void-bg-3'>
+	return <div ref={divRef} className='relative z-0 px-2 py-1 bg-loophole-bg-3'>
 		<WidgetComponent
 			className='@@bg-editor-style-override' // text-sm
 			ctor={useCallback((container) => {
@@ -1945,7 +1945,7 @@ const SingleDiffEditor = ({ block, lang }: { block: ExtractedSearchReplaceBlock,
 	}, [originalModel, modifiedModel, instantiationService]);
 
 	return (
-		<div className="w-full bg-void-bg-3 @@bg-editor-style-override" ref={divRef} />
+		<div className="w-full bg-loophole-bg-3 @@bg-editor-style-override" ref={divRef} />
 	);
 };
 
@@ -1975,7 +1975,7 @@ export const VoidDiffEditor = ({ uri, searchReplaceBlocks, language }: { uri?: a
 
 	// If no blocks, show empty state
 	if (blocks.length === 0) {
-		return <div className="w-full p-4 text-void-fg-4 text-sm">No changes found</div>;
+		return <div className="w-full p-4 text-loophole-fg-4 text-sm">No changes found</div>;
 	}
 
 	// Display all blocks
@@ -1984,7 +1984,7 @@ export const VoidDiffEditor = ({ uri, searchReplaceBlocks, language }: { uri?: a
 			{blocks.map((block, index) => (
 				<div key={index} className="w-full">
 					{blocks.length > 1 && (
-						<div className="text-void-fg-4 text-xs mb-1 px-1">
+						<div className="text-loophole-fg-4 text-xs mb-1 px-1">
 							Change {index + 1} of {blocks.length}
 						</div>
 					)}

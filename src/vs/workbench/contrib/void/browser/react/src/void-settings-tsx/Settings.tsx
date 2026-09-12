@@ -39,7 +39,7 @@ type Tab =
 
 const ButtonLeftTextRightOption = ({ text, leftButton }: { text: string, leftButton?: React.ReactNode }) => {
 
-	return <div className='flex items-center text-void-fg-3 px-3 py-0.5 rounded-sm overflow-hidden gap-2'>
+	return <div className='flex items-center text-loophole-fg-3 px-3 py-0.5 rounded-sm overflow-hidden gap-2'>
 		{leftButton ? leftButton : null}
 		<span>
 			{text}
@@ -303,7 +303,7 @@ const SimpleModelSettingsDialog = ({
 		>
 			{/* MODAL */}
 			<div
-				className="bg-void-bg-1 rounded-md p-4 max-w-xl w-full shadow-xl overflow-y-auto max-h-[90vh]"
+				className="bg-loophole-bg-1 rounded-md p-4 max-w-xl w-full shadow-xl overflow-y-auto max-h-[90vh]"
 				onClick={(e) => e.stopPropagation()} // Keep stopping propagation for normal clicks inside
 				onMouseDown={(e) => {
 					mouseDownInsideModal.current = true;
@@ -316,14 +316,14 @@ const SimpleModelSettingsDialog = ({
 					</h3>
 					<button
 						onClick={onClose}
-						className="text-void-fg-3 hover:text-void-fg-1"
+						className="text-loophole-fg-3 hover:text-loophole-fg-1"
 					>
 						<X className="size-5" />
 					</button>
 				</div>
 
 				{/* Display model recognition status */}
-				<div className="text-sm text-void-fg-3 mb-4">
+				<div className="text-sm text-loophole-fg-3 mb-4">
 					{type === 'default' ? `${modelName} comes packaged with Loophole, so you shouldn't need to change these settings.`
 						: isUnrecognizedModel
 							? `Model not recognized by Loophole.`
@@ -334,18 +334,18 @@ const SimpleModelSettingsDialog = ({
 				{/* override toggle */}
 				<div className="flex items-center gap-2 mb-4">
 					<VoidSwitch size='xs' value={overrideEnabled} onChange={setOverrideEnabled} />
-					<span className="text-void-fg-3 text-sm">Override model defaults</span>
+					<span className="text-loophole-fg-3 text-sm">Override model defaults</span>
 				</div>
 
 				{/* Informational link */}
-				{overrideEnabled && <div className="text-sm text-void-fg-3 mb-4">
+				{overrideEnabled && <div className="text-sm text-loophole-fg-3 mb-4">
 					<ChatMarkdownRender string={`See the [sourcecode](${sourcecodeOverridesLink}) for a reference on how to set this JSON (advanced).`} chatMessageLocation={undefined} />
 				</div>}
 
 				<textarea
 					key={overrideEnabled + ''}
 					ref={textAreaRef}
-					className={`w-full min-h-[200px] p-2 rounded-sm border border-void-border-2 bg-void-bg-2 resize-none font-mono text-sm ${!overrideEnabled ? 'text-void-fg-3' : ''}`}
+					className={`w-full min-h-[200px] p-2 rounded-sm border border-loophole-border-2 bg-loophole-bg-2 resize-none font-mono text-sm ${!overrideEnabled ? 'text-loophole-fg-3' : ''}`}
 					defaultValue={overrideEnabled && currentOverrides ? JSON.stringify(currentOverrides, null, 2) : placeholder}
 					placeholder={placeholder}
 					readOnly={!overrideEnabled}
@@ -457,9 +457,9 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 
 
 			const detailAboutModel = type === 'autodetected' ?
-				<Asterisk size={14} className="inline-block align-text-top brightness-115 stroke-[2] text-[#0e70c0]" data-tooltip-id='void-tooltip' data-tooltip-place='right' data-tooltip-content='Detected locally' />
+				<Asterisk size={14} className="inline-block align-text-top brightness-115 stroke-[2] text-[#0e70c0]" data-tooltip-id='loophole-tooltip' data-tooltip-place='right' data-tooltip-content='Detected locally' />
 				: type === 'custom' ?
-					<Asterisk size={14} className="inline-block align-text-top brightness-115 stroke-[2] text-[#0e70c0]" data-tooltip-id='void-tooltip' data-tooltip-place='right' data-tooltip-content='Custom model' />
+					<Asterisk size={14} className="inline-block align-text-top brightness-115 stroke-[2] text-[#0e70c0]" data-tooltip-id='loophole-tooltip' data-tooltip-place='right' data-tooltip-content='Custom model' />
 					: undefined
 
 			const hasOverrides = !!settingsState.overridesOfModel?.[providerName]?.[modelName]
@@ -482,12 +482,12 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 						<div className="w-5 flex items-center justify-center">
 							<button
 								onClick={() => { setOpenSettingsModel({ modelName, providerName, type }) }}
-								data-tooltip-id='void-tooltip'
+								data-tooltip-id='loophole-tooltip'
 								data-tooltip-place='right'
 								data-tooltip-content='Advanced Settings'
 								className={`${hasOverrides ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
 							>
-								<Plus size={12} className="text-void-fg-3 opacity-50" />
+								<Plus size={12} className="text-loophole-fg-3 opacity-50" />
 							</button>
 						</div>
 					)}
@@ -503,7 +503,7 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 						disabled={disabled}
 						size='sm'
 
-						data-tooltip-id='void-tooltip'
+						data-tooltip-id='loophole-tooltip'
 						data-tooltip-place='right'
 						data-tooltip-content={tooltipName}
 					/>
@@ -512,12 +512,12 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 					<div className={`w-5 flex items-center justify-center`}>
 						{type === 'default' || type === 'autodetected' ? null : <button
 							onClick={() => { settingsStateService.deleteModel(providerName, modelName); }}
-							data-tooltip-id='void-tooltip'
+							data-tooltip-id='loophole-tooltip'
 							data-tooltip-place='right'
 							data-tooltip-content='Delete'
 							className={`${hasOverrides ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
 						>
-							<X size={12} className="text-void-fg-3 opacity-50" />
+							<X size={12} className="text-loophole-fg-3 opacity-50" />
 						</button>}
 					</div>
 				</div>
@@ -542,7 +542,7 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 							getOptionDisplayName={(pn) => pn ? displayInfoOfProviderName(pn).title : 'Provider Name'}
 							getOptionDropdownName={(pn) => pn ? displayInfoOfProviderName(pn).title : 'Provider Name'}
 							getOptionsEqual={(a, b) => a === b}
-							className="max-w-32 mx-2 w-full resize-none bg-void-bg-1 text-void-fg-1 placeholder:text-void-fg-3 border border-void-border-2 focus:border-void-border-1 py-1 px-2 rounded"
+							className="max-w-32 mx-2 w-full resize-none bg-loophole-bg-1 text-loophole-fg-1 placeholder:text-loophole-fg-3 border border-loophole-border-2 focus:border-loophole-border-1 py-1 px-2 rounded"
 							arrowTouchesText={false}
 						/>
 					</ErrorBoundary>
@@ -576,7 +576,7 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 							setModelName('');
 							setUserChosenProviderName(null);
 						}}
-						className='text-void-fg-4'
+						className='text-loophole-fg-4'
 					>
 						<X className='size-4' />
 					</button>
@@ -590,7 +590,7 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 			</div>
 		) : (
 			<div
-				className="text-void-fg-4 flex flex-nowrap text-nowrap items-center hover:brightness-110 cursor-pointer mt-4"
+				className="text-loophole-fg-4 flex flex-nowrap text-nowrap items-center hover:brightness-110 cursor-pointer mt-4"
 				onClick={() => setIsAddModelOpen(true)}
 			>
 				<div className="flex items-center gap-1">
@@ -768,7 +768,7 @@ const LocalProviderSection = ({ title, description, instructions, providerNames,
 }) => (
 	<div className='flex flex-col gap-4 mb-12'>
 		<h2 className='text-3xl mb-1'>{title}</h2>
-		{description && <h3 className='text-void-fg-3 mb-2'>{description}</h3>}
+		{description && <h3 className='text-loophole-fg-3 mb-2'>{description}</h3>}
 		{instructions && <div className='opacity-80 mb-2'>{instructions}</div>}
 		{autoSetup}
 		{refreshable && <RefreshableModels providerNamesFilter={providerNames} />}
@@ -776,7 +776,7 @@ const LocalProviderSection = ({ title, description, instructions, providerNames,
 		{modelFilter && (
 			<>
 				<div className='w-full h-[1px] my-2' />
-				<h3 className='text-lg text-void-fg-3 mb-2'>Models for {title}</h3>
+				<h3 className='text-lg text-loophole-fg-3 mb-2'>Models for {title}</h3>
 				<ModelDump filteredProviders={[...modelFilter]} />
 			</>
 		)}
@@ -888,7 +888,7 @@ const FastApplyMethodDropdown = () => {
 	}, [voidSettingsService])
 
 	return <VoidCustomDropdownBox
-		className='text-xs text-void-fg-3 bg-void-bg-1 border border-void-border-1 rounded p-0.5 px-1'
+		className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1'
 		options={options}
 		selectedOption={voidSettingsService.state.globalSettings.enableFastApply}
 		onChangeOption={onChangeOption}
@@ -902,13 +902,13 @@ const FastApplyMethodDropdown = () => {
 
 
 export const OllamaSetupInstructions = ({ sayWeAutoDetect }: { sayWeAutoDetect?: boolean }) => {
-	return <div className='prose-p:my-0 prose-ol:list-decimal prose-p:py-0 prose-ol:my-0 prose-ol:py-0 prose-span:my-0 prose-span:py-0 text-void-fg-3 text-sm list-decimal select-text'>
+	return <div className='prose-p:my-0 prose-ol:list-decimal prose-p:py-0 prose-ol:my-0 prose-ol:py-0 prose-span:my-0 prose-span:py-0 text-loophole-fg-3 text-sm list-decimal select-text'>
 		<div className=''><ChatMarkdownRender string={`Ollama Setup Instructions`} chatMessageLocation={undefined} /></div>
 		<div className=' pl-6'><ChatMarkdownRender string={`1. Download [Ollama](https://ollama.com/download).`} chatMessageLocation={undefined} /></div>
 		<div className=' pl-6'><ChatMarkdownRender string={`2. Open your terminal.`} chatMessageLocation={undefined} /></div>
 		<div
 			className='pl-6 flex items-center w-fit'
-			data-tooltip-id='void-tooltip-ollama-settings'
+			data-tooltip-id='loophole-tooltip-ollama-settings'
 		>
 			<ChatMarkdownRender string={`3. Run \`ollama pull your_model\` to install a model.`} chatMessageLocation={undefined} />
 		</div>
@@ -917,7 +917,7 @@ export const OllamaSetupInstructions = ({ sayWeAutoDetect }: { sayWeAutoDetect?:
 }
 
 export const MlxSetupInstructions = () => {
-	return <div className='prose-p:my-0 prose-ol:list-decimal prose-p:py-0 prose-ol:my-0 prose-ol:py-0 text-void-fg-3 text-sm list-decimal select-text mb-4'>
+	return <div className='prose-p:my-0 prose-ol:list-decimal prose-p:py-0 prose-ol:my-0 prose-ol:py-0 text-loophole-fg-3 text-sm list-decimal select-text mb-4'>
 		<div><ChatMarkdownRender string={`MLX (one model at a time)`} chatMessageLocation={undefined} /></div>
 		<div className='pl-6'><ChatMarkdownRender string={`1. Loophole can run \`pip install mlx-lm\` and start \`mlx_lm.server\` for you (toggle in Settings → Models). Default model: \`mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit\` on port 8080.`} chatMessageLocation={undefined} /></div>
 		<div className='pl-6'><ChatMarkdownRender string={`2. Loophole shows only **one** autodetected entry: the model currently loaded by the server.`} chatMessageLocation={undefined} /></div>
@@ -928,7 +928,7 @@ export const MlxSetupInstructions = () => {
 
 export const AppleFoundationModelsSetupInstructions = () => {
 	if (os !== 'mac') return null
-	return <div className='prose-p:my-0 prose-ol:list-decimal prose-p:py-0 prose-ol:my-0 prose-ol:py-0 text-void-fg-3 text-sm list-decimal select-text mb-4'>
+	return <div className='prose-p:my-0 prose-ol:list-decimal prose-p:py-0 prose-ol:my-0 prose-ol:py-0 text-loophole-fg-3 text-sm list-decimal select-text mb-4'>
 		<div><ChatMarkdownRender string={`Apple — [maclocal-api](https://github.com/scouzi1966/maclocal-api) (\`afm\`)`} chatMessageLocation={undefined} /></div>
 		<div className='pl-6'><ChatMarkdownRender string={`1. Requires macOS 26+, Apple Silicon, and Apple Intelligence. Loophole auto-installs \`afm\` (Homebrew: \`brew tap scouzi1966/afm && brew install scouzi1966/afm/afm\`, or pip: \`pip install macafm\`).`} chatMessageLocation={undefined} /></div>
 		<div className='pl-6'><ChatMarkdownRender string={`2. Default server: \`afm -p 9999\` → endpoint \`http://127.0.0.1:9999/v1\`, model id \`foundation\`.`} chatMessageLocation={undefined} /></div>
@@ -942,7 +942,7 @@ const RedoOnboardingButton = ({ className }: { className?: string }) => {
 	const accessor = useAccessor()
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	return <div
-		className={`text-void-fg-4 flex flex-nowrap text-nowrap items-center hover:brightness-110 cursor-pointer ${className}`}
+		className={`text-loophole-fg-4 flex flex-nowrap text-nowrap items-center hover:brightness-110 cursor-pointer ${className}`}
 		onClick={() => { voidSettingsService.setGlobalSetting('isOnboardingComplete', false) }}
 	>
 		See onboarding screen?
@@ -976,7 +976,7 @@ export const ToolApprovalTypeSwitch = ({ approvalType, size, desc }: { approvalT
 			value={voidSettingsState.globalSettings.autoApprove[approvalType] ?? false}
 			onChange={(newVal) => onToggleAutoApprove(approvalType, newVal)}
 		/>
-		<span className="text-void-fg-3 text-xs">{desc}</span>
+		<span className="text-loophole-fg-3 text-xs">{desc}</span>
 	</>
 }
 
@@ -1034,7 +1034,7 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 	const removeUniquePrefix = (name: string) => name.split('_').slice(1).join('_')
 
 	return (
-		<div className="border border-void-border-2 bg-void-bg-1 py-3 px-4 rounded-sm my-2">
+		<div className="border border-loophole-border-2 bg-loophole-bg-1 py-3 px-4 rounded-sm my-2">
 			<div className="flex items-center justify-between">
 				{/* Left side - status and name */}
 				<div className="flex items-center gap-2">
@@ -1043,12 +1043,12 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 						${server.status === 'success' ? 'bg-green-500'
 							: server.status === 'error' ? 'bg-red-500'
 								: server.status === 'loading' ? 'bg-yellow-500'
-									: server.status === 'offline' ? 'bg-void-fg-3'
+									: server.status === 'offline' ? 'bg-loophole-fg-3'
 										: ''}
 					`}></div>
 
 					{/* Server name */}
-					<div className="text-sm font-medium text-void-fg-1">{name}</div>
+					<div className="text-sm font-medium text-loophole-fg-1">{name}</div>
 				</div>
 
 				{/* Right side - power toggle switch */}
@@ -1068,17 +1068,17 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 							(server.tools ?? []).map((tool: { name: string; description?: string }) => (
 								<span
 									key={tool.name}
-									className="px-2 py-0.5 bg-void-bg-2 text-void-fg-3 rounded-sm text-xs"
+									className="px-2 py-0.5 bg-loophole-bg-2 text-loophole-fg-3 rounded-sm text-xs"
 
-									data-tooltip-id='void-tooltip'
+									data-tooltip-id='loophole-tooltip'
 									data-tooltip-content={tool.description || ''}
-									data-tooltip-class-name='void-max-w-[300px]'
+									data-tooltip-class-name='loophole-max-w-[300px]'
 								>
 									{removeUniquePrefix(tool.name)}
 								</span>
 							))
 						) : (
-							<span className="text-xs text-void-fg-3">No tools available</span>
+							<span className="text-xs text-loophole-fg-3">No tools available</span>
 						)}
 					</div>
 				</div>
@@ -1087,8 +1087,8 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 			{/* Command badge */}
 			{isOn && server.command && (
 				<div className="mt-3">
-					<div className="text-xs text-void-fg-3 mb-1">Command:</div>
-					<div className="px-2 py-1 bg-void-bg-2 text-xs font-mono overflow-x-auto whitespace-nowrap text-void-fg-2 rounded-sm">
+					<div className="text-xs text-loophole-fg-3 mb-1">Command:</div>
+					<div className="px-2 py-1 bg-loophole-bg-2 text-xs font-mono overflow-x-auto whitespace-nowrap text-loophole-fg-2 rounded-sm">
 						{server.command}
 					</div>
 				</div>
@@ -1110,14 +1110,14 @@ const MCPServersList = () => {
 
 	let content: React.ReactNode
 	if (mcpServiceState.error) {
-		content = <div className="text-void-fg-3 text-sm mt-2">
+		content = <div className="text-loophole-fg-3 text-sm mt-2">
 			{mcpServiceState.error}
 		</div>
 	}
 	else {
 		const entries = Object.entries(mcpServiceState.mcpServerOfName)
 		if (entries.length === 0) {
-			content = <div className="text-void-fg-3 text-sm mt-2">
+			content = <div className="text-loophole-fg-3 text-sm mt-2">
 				No servers found
 			</div>
 		}
@@ -1256,7 +1256,7 @@ export const Settings = () => {
           py-2 px-4 rounded-md text-left transition-all duration-200
           ${selectedSection === tab
 										? 'bg-[#0e70c0]/80 text-white font-medium shadow-sm'
-										: 'bg-void-bg-2 hover:bg-void-bg-2/80 text-void-fg-1'}
+										: 'bg-loophole-bg-2 hover:bg-loophole-bg-2/80 text-loophole-fg-1'}
         `}
 							>
 								{label}
@@ -1293,7 +1293,7 @@ export const Settings = () => {
 									<div className='w-full h-[1px] my-4' />
 									<AutoDetectLocalModelsToggle />
 									<div className='w-full h-[1px] my-4' />
-									<p className='text-void-fg-3 text-sm mb-4'>Per-provider setup and refresh are under <strong>Ollama</strong>, <strong>MLX</strong>, and <strong>Apple</strong> in the sidebar.</p>
+									<p className='text-loophole-fg-3 text-sm mb-4'>Per-provider setup and refresh are under <strong>Ollama</strong>, <strong>MLX</strong>, and <strong>Apple</strong> in the sidebar.</p>
 								</ErrorBoundary>
 							</div>
 
@@ -1358,7 +1358,7 @@ export const Settings = () => {
 							<div className={shouldShowTab('providers') ? `` : 'hidden'}>
 								<ErrorBoundary>
 									<h2 className={`text-3xl mb-2`}>Main Providers</h2>
-									<h3 className={`text-void-fg-3 mb-2`}>{`Loophole can access models from Anthropic, OpenAI, OpenRouter, and more.`}</h3>
+									<h3 className={`text-loophole-fg-3 mb-2`}>{`Loophole can access models from Anthropic, OpenAI, OpenRouter, and more.`}</h3>
 
 									<VoidProviderSettings providerNames={nonlocalProviderNames} />
 								</ErrorBoundary>
@@ -1374,15 +1374,15 @@ export const Settings = () => {
 											{/* FIM */}
 											<div>
 												<h4 className={`text-base`}>{displayInfoOfFeatureName('Autocomplete')}</h4>
-												<div className='text-sm text-void-fg-3 mt-1'>
+												<div className='text-sm text-loophole-fg-3 mt-1'>
 													<span>
 														Experimental.{' '}
 													</span>
 													<span
 														className='hover:brightness-110'
-														data-tooltip-id='void-tooltip'
+														data-tooltip-id='loophole-tooltip'
 														data-tooltip-content='We recommend using the largest qwen2.5-coder model you can with Ollama (try qwen2.5-coder:3b).'
-														data-tooltip-class-name='void-max-w-[20px]'
+														data-tooltip-class-name='loophole-max-w-[20px]'
 													>
 														Only works with FIM models.*
 													</span>
@@ -1397,14 +1397,14 @@ export const Settings = () => {
 																value={settingsState.globalSettings.enableAutocomplete}
 																onChange={(newVal) => voidSettingsService.setGlobalSetting('enableAutocomplete', newVal)}
 															/>
-															<span className='text-void-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.enableAutocomplete ? 'Enabled' : 'Disabled'}</span>
+															<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.enableAutocomplete ? 'Enabled' : 'Disabled'}</span>
 														</div>
 													</ErrorBoundary>
 
 													{/* Model Dropdown */}
 													<ErrorBoundary>
 														<div className={`my-2 ${!settingsState.globalSettings.enableAutocomplete ? 'hidden' : ''}`}>
-															<ModelDropdown featureName={'Autocomplete'} className='text-xs text-void-fg-3 bg-void-bg-1 border border-void-border-1 rounded p-0.5 px-1' />
+															<ModelDropdown featureName={'Autocomplete'} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1' />
 														</div>
 													</ErrorBoundary>
 
@@ -1418,7 +1418,7 @@ export const Settings = () => {
 
 											<div className='w-full'>
 												<h4 className={`text-base`}>{displayInfoOfFeatureName('Apply')}</h4>
-												<div className='text-sm text-void-fg-3 mt-1'>Settings that control the behavior of the Apply button.</div>
+												<div className='text-sm text-loophole-fg-3 mt-1'>Settings that control the behavior of the Apply button.</div>
 
 												<div className='my-2'>
 													{/* Sync to Chat Switch */}
@@ -1428,12 +1428,12 @@ export const Settings = () => {
 															value={settingsState.globalSettings.syncApplyToChat}
 															onChange={(newVal) => voidSettingsService.setGlobalSetting('syncApplyToChat', newVal)}
 														/>
-														<span className='text-void-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.syncApplyToChat ? 'Same as Chat model' : 'Different model'}</span>
+														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.syncApplyToChat ? 'Same as Chat model' : 'Different model'}</span>
 													</div>
 
 													{/* Model Dropdown */}
 													<div className={`my-2 ${settingsState.globalSettings.syncApplyToChat ? 'hidden' : ''}`}>
-														<ModelDropdown featureName={'Apply'} className='text-xs text-void-fg-3 bg-void-bg-1 border border-void-border-1 rounded p-0.5 px-1' />
+														<ModelDropdown featureName={'Apply'} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1' />
 													</div>
 												</div>
 
@@ -1454,7 +1454,7 @@ export const Settings = () => {
 										{/* Tools Section */}
 										<div>
 											<h4 className={`text-base`}>Tools</h4>
-											<div className='text-sm text-void-fg-3 mt-1'>{`Tools are functions that LLMs can call. Some tools require user approval.`}</div>
+											<div className='text-sm text-loophole-fg-3 mt-1'>{`Tools are functions that LLMs can call. Some tools require user approval.`}</div>
 
 											<div className='my-2'>
 												{/* Auto Accept Switch */}
@@ -1476,7 +1476,7 @@ export const Settings = () => {
 															value={settingsState.globalSettings.includeToolLintErrors}
 															onChange={(newVal) => voidSettingsService.setGlobalSetting('includeToolLintErrors', newVal)}
 														/>
-														<span className='text-void-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.includeToolLintErrors ? 'Fix lint errors' : `Fix lint errors`}</span>
+														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.includeToolLintErrors ? 'Fix lint errors' : `Fix lint errors`}</span>
 													</div>
 												</ErrorBoundary>
 
@@ -1488,7 +1488,7 @@ export const Settings = () => {
 															value={settingsState.globalSettings.autoAcceptLLMChanges}
 															onChange={(newVal) => voidSettingsService.setGlobalSetting('autoAcceptLLMChanges', newVal)}
 														/>
-														<span className='text-void-fg-3 text-xs pointer-events-none'>Auto-accept LLM changes</span>
+														<span className='text-loophole-fg-3 text-xs pointer-events-none'>Auto-accept LLM changes</span>
 													</div>
 												</ErrorBoundary>
 											</div>
@@ -1498,7 +1498,7 @@ export const Settings = () => {
 
 										<div className='w-full'>
 											<h4 className={`text-base`}>Editor</h4>
-											<div className='text-sm text-void-fg-3 mt-1'>{`Settings that control the visibility of Loophole suggestions in the code editor.`}</div>
+											<div className='text-sm text-loophole-fg-3 mt-1'>{`Settings that control the visibility of Loophole suggestions in the code editor.`}</div>
 
 											<div className='my-2'>
 												{/* Auto Accept Switch */}
@@ -1509,7 +1509,7 @@ export const Settings = () => {
 															value={settingsState.globalSettings.showInlineSuggestions}
 															onChange={(newVal) => voidSettingsService.setGlobalSetting('showInlineSuggestions', newVal)}
 														/>
-														<span className='text-void-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.showInlineSuggestions ? 'Show suggestions on select' : 'Show suggestions on select'}</span>
+														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.showInlineSuggestions ? 'Show suggestions on select' : 'Show suggestions on select'}</span>
 													</div>
 												</ErrorBoundary>
 											</div>
@@ -1520,7 +1520,7 @@ export const Settings = () => {
 
 											<div className='w-full'>
 												<h4 className={`text-base`}>{displayInfoOfFeatureName('SCM')}</h4>
-												<div className='text-sm text-void-fg-3 mt-1'>Settings that control the behavior of the commit message generator.</div>
+												<div className='text-sm text-loophole-fg-3 mt-1'>Settings that control the behavior of the commit message generator.</div>
 
 												<div className='my-2'>
 													{/* Sync to Chat Switch */}
@@ -1530,12 +1530,12 @@ export const Settings = () => {
 															value={settingsState.globalSettings.syncSCMToChat}
 															onChange={(newVal) => voidSettingsService.setGlobalSetting('syncSCMToChat', newVal)}
 														/>
-														<span className='text-void-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.syncSCMToChat ? 'Same as Chat model' : 'Different model'}</span>
+														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.syncSCMToChat ? 'Same as Chat model' : 'Different model'}</span>
 													</div>
 
 													{/* Model Dropdown */}
 													<div className={`my-2 ${settingsState.globalSettings.syncSCMToChat ? 'hidden' : ''}`}>
-														<ModelDropdown featureName={'SCM'} className='text-xs text-void-fg-3 bg-void-bg-1 border border-void-border-1 rounded p-0.5 px-1' />
+														<ModelDropdown featureName={'SCM'} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1' />
 													</div>
 												</div>
 
@@ -1551,7 +1551,7 @@ export const Settings = () => {
 								<div>
 									<ErrorBoundary>
 										<h2 className='text-3xl mb-2'>One-Click Switch</h2>
-										<h4 className='text-void-fg-3 mb-4'>{`Transfer your editor settings into Loophole.`}</h4>
+										<h4 className='text-loophole-fg-3 mb-4'>{`Transfer your editor settings into Loophole.`}</h4>
 
 										<div className='flex flex-col gap-2'>
 											<OneClickSwitchButton className='w-48' fromEditor="VS Code" />
@@ -1564,7 +1564,7 @@ export const Settings = () => {
 								{/* Import/Export section */}
 								<div>
 									<h2 className='text-3xl mb-2'>Import/Export</h2>
-									<h4 className='text-void-fg-3 mb-4'>{`Transfer Loophole's settings and chats in and out of Loophole.`}</h4>
+									<h4 className='text-loophole-fg-3 mb-4'>{`Transfer Loophole's settings and chats in and out of Loophole.`}</h4>
 									<div className='flex flex-col gap-8'>
 										{/* Settings Subcategory */}
 										<div className='flex flex-col gap-2 max-w-48 w-full'>
@@ -1601,7 +1601,7 @@ export const Settings = () => {
 								{/* Built-in Settings section */}
 								<div>
 									<h2 className={`text-3xl mb-2`}>Built-in Settings</h2>
-									<h4 className={`text-void-fg-3 mb-4`}>{`IDE settings, keyboard settings, and theme customization.`}</h4>
+									<h4 className={`text-loophole-fg-3 mb-4`}>{`IDE settings, keyboard settings, and theme customization.`}</h4>
 
 									<ErrorBoundary>
 										<div className='flex flex-col gap-2 justify-center max-w-48 w-full'>
@@ -1625,7 +1625,7 @@ export const Settings = () => {
 								{/* Metrics section */}
 								<div className='max-w-[600px]'>
 									<h2 className={`text-3xl mb-2`}>Metrics</h2>
-									<h4 className={`text-void-fg-3 mb-4`}>Very basic anonymous usage tracking helps us keep Loophole running smoothly. You may opt out below. Regardless of this setting, Loophole never sees your code, messages, or API keys.</h4>
+									<h4 className={`text-loophole-fg-3 mb-4`}>Very basic anonymous usage tracking helps us keep Loophole running smoothly. You may opt out below. Regardless of this setting, Loophole never sees your code, messages, or API keys.</h4>
 
 									<div className='my-2'>
 										{/* Disable All Metrics Switch */}
@@ -1639,7 +1639,7 @@ export const Settings = () => {
 														metricsService.capture(`Set metrics opt-out to ${newVal}`, {}) // this only fires if it's enabled, so it's fine to have here
 													}}
 												/>
-												<span className='text-void-fg-3 text-xs pointer-events-none'>{'Opt-out (requires restart)'}</span>
+												<span className='text-loophole-fg-3 text-xs pointer-events-none'>{'Opt-out (requires restart)'}</span>
 											</div>
 										</ErrorBoundary>
 									</div>
@@ -1648,7 +1648,7 @@ export const Settings = () => {
 								{/* AI Instructions section */}
 								<div className='max-w-[600px]'>
 									<h2 className={`text-3xl mb-2`}>AI Instructions</h2>
-									<h4 className={`text-void-fg-3 mb-4`}>
+									<h4 className={`text-loophole-fg-3 mb-4`}>
 										<ChatMarkdownRender inPTag={true} string={`
 System instructions to include with all AI requests.
 Alternatively, place a \`.loopholerules\` file in the root of your workspace.
@@ -1668,12 +1668,12 @@ Alternatively, place a \`.loopholerules\` file in the root of your workspace.
 														voidSettingsService.setGlobalSetting('disableSystemMessage', newValue);
 													}}
 												/>
-												<span className='text-void-fg-3 text-xs pointer-events-none'>
+												<span className='text-loophole-fg-3 text-xs pointer-events-none'>
 													{'Disable system message'}
 												</span>
 											</div>
 										</ErrorBoundary>
-										<div className='text-void-fg-3 text-xs mt-1'>
+										<div className='text-loophole-fg-3 text-xs mt-1'>
 											{`When disabled, Loophole will not include anything in the system message except for content you specified above.`}
 										</div>
 									</div>
@@ -1682,10 +1682,10 @@ Alternatively, place a \`.loopholerules\` file in the root of your workspace.
 								{/* Project Memory section */}
 								<div className='max-w-[600px]'>
 									<h2 className='text-3xl mb-2'>Project Memory</h2>
-									<h4 className='text-void-fg-3 mb-4'>
+									<h4 className='text-loophole-fg-3 mb-4'>
 										{`Durable notes the agent has saved across sessions (via write_project_memory), stored locally on this machine.`}
 									</h4>
-									<div className='text-void-fg-3 text-xs mb-4'>
+									<div className='text-loophole-fg-3 text-xs mb-4'>
 										{`Showing memory for the currently open project only: ${workspaceName ? `"${workspaceName}"` : 'this workspace'}. Each project keeps its own separate memory — open a different project to view or manage its memory instead.`}
 									</div>
 									<ErrorBoundary>
@@ -1723,7 +1723,7 @@ Alternatively, place a \`.loopholerules\` file in the root of your workspace.
 							<div className={shouldShowTab('mcp') ? `` : 'hidden'}>
 								<ErrorBoundary>
 									<h2 className='text-3xl mb-2'>MCP</h2>
-									<h4 className={`text-void-fg-3 mb-4`}>
+									<h4 className={`text-loophole-fg-3 mb-4`}>
 										<ChatMarkdownRender inPTag={true} string={`
 Use Model Context Protocol to provide Agent mode with more tools.
 							`} chatMessageLocation={undefined} />

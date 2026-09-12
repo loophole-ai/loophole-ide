@@ -171,7 +171,7 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 
 	if (canTurnOffReasoning && !reasoningBudgetSlider) { // if it's just a on/off toggle without a power slider
 		return <div className='flex items-center gap-x-2'>
-			<span className='text-void-fg-3 text-xs pointer-events-none inline-block w-10 pr-1'>Thinking</span>
+			<span className='text-loophole-fg-3 text-xs pointer-events-none inline-block w-10 pr-1'>Thinking</span>
 			<VoidSwitch
 				size='xxs'
 				value={isReasoningEnabled}
@@ -195,7 +195,7 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 			: valueIfOff
 
 		return <div className='flex items-center gap-x-2'>
-			<span className='text-void-fg-3 text-xs pointer-events-none inline-block w-10 pr-1'>Thinking</span>
+			<span className='text-loophole-fg-3 text-xs pointer-events-none inline-block w-10 pr-1'>Thinking</span>
 			<VoidSlider
 				width={50}
 				size='xs'
@@ -208,7 +208,7 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 					voidSettingsService.setOptionsOfModelSelection(featureName, modelSelection.providerName, modelSelection.modelName, { reasoningEnabled: !isOff, reasoningBudget: newVal })
 				}}
 			/>
-			<span className='text-void-fg-3 text-xs pointer-events-none'>{isReasoningEnabled ? `${value} tokens` : 'Thinking disabled'}</span>
+			<span className='text-loophole-fg-3 text-xs pointer-events-none'>{isReasoningEnabled ? `${value} tokens` : 'Thinking disabled'}</span>
 		</div>
 	}
 
@@ -230,7 +230,7 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 		const currentEffortCapitalized = currentEffort.charAt(0).toUpperCase() + currentEffort.slice(1, Infinity)
 
 		return <div className='flex items-center gap-x-2'>
-			<span className='text-void-fg-3 text-xs pointer-events-none inline-block w-10 pr-1'>Thinking</span>
+			<span className='text-loophole-fg-3 text-xs pointer-events-none inline-block w-10 pr-1'>Thinking</span>
 			<VoidSlider
 				width={30}
 				size='xs'
@@ -243,7 +243,7 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 					voidSettingsService.setOptionsOfModelSelection(featureName, modelSelection.providerName, modelSelection.modelName, { reasoningEnabled: !isOff, reasoningEffort: values[newVal] ?? undefined })
 				}}
 			/>
-			<span className='text-void-fg-3 text-xs pointer-events-none'>{isReasoningEnabled ? `${currentEffortCapitalized}` : 'Thinking disabled'}</span>
+			<span className='text-loophole-fg-3 text-xs pointer-events-none'>{isReasoningEnabled ? `${currentEffortCapitalized}` : 'Thinking disabled'}</span>
 		</div>
 	}
 
@@ -361,9 +361,9 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 				gap-x-1
                 flex flex-col p-2 relative input text-left shrink-0
                 rounded-md
-                bg-void-bg-1
+                bg-loophole-bg-1
 				transition-all duration-200
-				border border-void-border-3 focus-within:border-void-border-1 hover:border-void-border-1
+				border border-loophole-border-3 focus-within:border-loophole-border-1 hover:border-loophole-border-1
 				max-h-[80vh] overflow-y-auto
                 ${className}
             `}
@@ -390,7 +390,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 					<div className='absolute -top-1 -right-1 cursor-pointer z-1'>
 						<IconX
 							size={12}
-							className="stroke-[2] opacity-80 text-void-fg-3 hover:brightness-95"
+							className="stroke-[2] opacity-80 text-loophole-fg-3 hover:brightness-95"
 							onClick={onClose}
 						/>
 					</div>
@@ -404,8 +404,8 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 						<ReasoningOptionSlider featureName={featureName} />
 
 						<div className='flex items-center flex-wrap gap-x-2 gap-y-1 text-nowrap '>
-							{featureName === 'Chat' && <ChatModeDropdown className='text-xs text-void-fg-3 bg-void-bg-1 border border-void-border-2 rounded py-0.5 px-1' />}
-							<ModelDropdown featureName={featureName} className='text-xs text-void-fg-3 bg-void-bg-1 rounded' />
+							{featureName === 'Chat' && <ChatModeDropdown className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-2 rounded py-0.5 px-1' />}
+							<ModelDropdown featureName={featureName} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 rounded' />
 						</div>
 					</div>
 				)}
@@ -413,7 +413,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 				<div className="flex flex-col items-end gap-y-1">
 
 					{tokenCount !== undefined && tokenCount > 0 && (
-						<span className='text-void-fg-3 text-[10px] leading-none select-none pointer-events-none'>
+						<span className='text-loophole-fg-3 text-[10px] leading-none select-none pointer-events-none'>
 							{contextWindow ? `${formatTokenCount(tokenCount)} / ${formatTokenCount(contextWindow)}` : `${formatTokenCount(tokenCount)} tokens`}
 						</span>
 					)}
@@ -451,7 +451,7 @@ export const ButtonSubmit = ({ className, disabled, ...props }: ButtonProps & Re
 			${disabled ? 'bg-vscode-disabled-fg cursor-default' : 'bg-white cursor-pointer'}
 			${className}
 		`}
-		// data-tooltip-id='void-tooltip'
+		// data-tooltip-id='loophole-tooltip'
 		// data-tooltip-content={'Send'}
 		// data-tooltip-place='left'
 		{...props}
@@ -692,7 +692,7 @@ export const SelectedFiles = (
 				>
 					{/* tooltip for file path */}
 					<span className="truncate overflow-hidden text-ellipsis"
-						data-tooltip-id='void-tooltip'
+						data-tooltip-id='loophole-tooltip'
 						data-tooltip-content={getRelative(selection.uri, accessor)}
 						data-tooltip-place='top'
 						data-tooltip-delay-show={3000}
@@ -706,12 +706,12 @@ export const SelectedFiles = (
 								select-none
 								text-xs text-nowrap
 								border rounded-sm
-								${isThisSelectionProspective ? 'bg-void-bg-1 text-void-fg-3 opacity-80' : 'bg-void-bg-1 hover:brightness-95 text-void-fg-1'}
+								${isThisSelectionProspective ? 'bg-loophole-bg-1 text-loophole-fg-3 opacity-80' : 'bg-loophole-bg-1 hover:brightness-95 text-loophole-fg-1'}
 								${isThisSelectionProspective
-									? 'border-void-border-2'
-									: 'border-void-border-1'
+									? 'border-loophole-border-2'
+									: 'border-loophole-border-1'
 								}
-								hover:border-void-border-1
+								hover:border-loophole-border-1
 								transition-all duration-150
 							`}
 							onClick={() => {
@@ -749,7 +749,7 @@ export const SelectedFiles = (
 							}
 
 							{selection.type === 'File' && selection.state.wasAddedAsCurrentFile && messageIdx === undefined && currentURI?.fsPath === selection.uri.fsPath ?
-								<span className={`text-[8px] 'void-opacity-60 text-void-fg-4`}>
+								<span className={`text-[8px] 'loophole-opacity-60 text-loophole-fg-4`}>
 									{`(Current File)`}
 								</span>
 								: null
@@ -833,12 +833,12 @@ const ToolHeaderWrapper = ({
 	const isDesc1Clickable = !!desc1OnClick
 
 	const desc1HTML = <span
-		className={`text-void-fg-4 text-xs italic truncate ml-2
+		className={`text-loophole-fg-4 text-xs italic truncate ml-2
 			${isDesc1Clickable ? 'cursor-pointer hover:brightness-125 transition-all duration-150' : ''}
 		`}
 		onClick={desc1OnClick}
 		{...desc1Info ? {
-			'data-tooltip-id': 'void-tooltip',
+			'data-tooltip-id': 'loophole-tooltip',
 			'data-tooltip-content': desc1Info,
 			'data-tooltip-place': 'top',
 			'data-tooltip-delay-show': 1000,
@@ -846,7 +846,7 @@ const ToolHeaderWrapper = ({
 	>{desc1}</span>
 
 	return (<div className=''>
-		<div className={`w-full border border-void-border-3 rounded px-2 py-1 bg-void-bg-3 overflow-hidden ${className}`}>
+		<div className={`w-full border border-loophole-border-3 rounded px-2 py-1 bg-loophole-bg-3 overflow-hidden ${className}`}>
 			{/* header */}
 			<div className={`select-none flex items-center min-h-[24px]`}>
 				<div className={`flex items-center w-full gap-x-2 overflow-hidden justify-between ${isRejected ? 'line-through' : ''}`}>
@@ -866,11 +866,11 @@ const ToolHeaderWrapper = ({
 						>
 							{isDropdown && (<ChevronRight
 								className={`
-								text-void-fg-3 mr-0.5 h-4 w-4 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)]
+								text-loophole-fg-3 mr-0.5 h-4 w-4 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)]
 								${isExpanded ? 'rotate-90' : ''}
 							`}
 							/>)}
-							<span className="text-void-fg-3 flex-shrink-0">{title}</span>
+							<span className="text-loophole-fg-3 flex-shrink-0">{title}</span>
 
 							{!isDesc1Clickable && desc1HTML}
 						</div>
@@ -881,32 +881,32 @@ const ToolHeaderWrapper = ({
 					<div className="flex items-center gap-x-2 flex-shrink-0">
 
 						{info && <CircleEllipsis
-							className='ml-2 text-void-fg-4 opacity-60 flex-shrink-0'
+							className='ml-2 text-loophole-fg-4 opacity-60 flex-shrink-0'
 							size={14}
-							data-tooltip-id='void-tooltip'
+							data-tooltip-id='loophole-tooltip'
 							data-tooltip-content={info}
 							data-tooltip-place='top-end'
 						/>}
 
 						{isError && <AlertTriangle
-							className='text-void-warning opacity-90 flex-shrink-0'
+							className='text-loophole-warning opacity-90 flex-shrink-0'
 							size={14}
-							data-tooltip-id='void-tooltip'
+							data-tooltip-id='loophole-tooltip'
 							data-tooltip-content={'Error running tool'}
 							data-tooltip-place='top'
 						/>}
 						{isRejected && <Ban
-							className='text-void-fg-4 opacity-90 flex-shrink-0'
+							className='text-loophole-fg-4 opacity-90 flex-shrink-0'
 							size={14}
-							data-tooltip-id='void-tooltip'
+							data-tooltip-id='loophole-tooltip'
 							data-tooltip-content={'Canceled'}
 							data-tooltip-place='top'
 						/>}
-						{desc2 && <span className="text-void-fg-4 text-xs" onClick={desc2OnClick}>
+						{desc2 && <span className="text-loophole-fg-4 text-xs" onClick={desc2OnClick}>
 							{desc2}
 						</span>}
 						{numResults !== undefined && (
-							<span className="text-void-fg-4 text-xs ml-auto mr-1">
+							<span className="text-loophole-fg-4 text-xs ml-auto mr-1">
 								{`${numResults}${hasNextPage ? '+' : ''} result${numResults !== 1 ? 's' : ''}`}
 							</span>
 						)}
@@ -916,9 +916,9 @@ const ToolHeaderWrapper = ({
 			{/* children */}
 			{<div
 				className={`overflow-hidden transition-all duration-200 ease-in-out ${isExpanded ? 'opacity-100 py-1' : 'max-h-0 opacity-0'}
-					text-void-fg-4 rounded-sm overflow-x-auto
+					text-loophole-fg-4 rounded-sm overflow-x-auto
 				  `}
-			//    bg-black bg-opacity-10 border border-void-border-4 border-opacity-50
+			//    bg-black bg-opacity-10 border border-loophole-border-4 border-opacity-50
 			>
 				{children}
 			</div>}
@@ -946,7 +946,7 @@ const EditTool = ({ toolMessage, threadId, messageIdx, content }: Parameters<Res
 
 	const editToolType = toolMessage.name === 'edit_file' ? 'diff' : 'rewrite'
 	if (toolMessage.type === 'running_now' || toolMessage.type === 'tool_request') {
-		componentParams.children = <ToolChildrenWrapper className='bg-void-bg-3'>
+		componentParams.children = <ToolChildrenWrapper className='bg-loophole-bg-3'>
 			<EditToolChildren
 				uri={params.uri}
 				code={content}
@@ -971,7 +971,7 @@ const EditTool = ({ toolMessage, threadId, messageIdx, content }: Parameters<Res
 		/>
 
 		// add children
-		componentParams.children = <ToolChildrenWrapper className='bg-void-bg-3'>
+		componentParams.children = <ToolChildrenWrapper className='bg-loophole-bg-3'>
 			<EditToolChildren
 				uri={params.uri}
 				code={content}
@@ -1022,16 +1022,16 @@ const SimplifiedToolHeader = ({
 				>
 					{isDropdown && (
 						<ChevronRight
-							className={`text-void-fg-3 mr-0.5 h-4 w-4 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'rotate-90' : ''}`}
+							className={`text-loophole-fg-3 mr-0.5 h-4 w-4 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'rotate-90' : ''}`}
 						/>
 					)}
 					<div className="flex items-center w-full overflow-hidden">
-						<span className="text-void-fg-3">{title}</span>
+						<span className="text-loophole-fg-3">{title}</span>
 					</div>
 				</div>
 				{/* children */}
 				{<div
-					className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'opacity-100' : 'max-h-0 opacity-0'} text-void-fg-4`}
+					className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'opacity-100' : 'max-h-0 opacity-0'} text-loophole-fg-4`}
 				>
 					{children}
 				</div>}
@@ -1215,7 +1215,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 			className={`
             text-left rounded-lg max-w-full
             ${mode === 'edit' ? ''
-					: mode === 'display' ? 'p-2 flex flex-col bg-void-bg-1 text-void-fg-1 overflow-x-auto cursor-pointer' : ''
+					: mode === 'display' ? 'p-2 flex flex-col bg-loophole-bg-1 text-loophole-fg-1 overflow-x-auto cursor-pointer' : ''
 				}
         `}
 			onClick={() => { if (mode === 'display') { onOpenEdit() } }}
@@ -1227,7 +1227,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 
 		<div
 			className="absolute -top-1 -right-1 translate-x-0 -translate-y-0 z-1"
-		// data-tooltip-id='void-tooltip'
+		// data-tooltip-id='loophole-tooltip'
 		// data-tooltip-content='Edit message'
 		// data-tooltip-place='left'
 		>
@@ -1236,7 +1236,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 				className={`
                     cursor-pointer
                     p-[2px]
-                    bg-void-bg-1 border border-void-border-1 rounded-md
+                    bg-loophole-bg-1 border border-loophole-border-1 rounded-md
                     transition-opacity duration-200 ease-in-out
                     ${isHovered || (isFocused && mode === 'edit') ? 'opacity-100' : 'opacity-0'}
                 `}
@@ -1257,7 +1257,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 
 const SmallProseWrapper = ({ children }: { children: React.ReactNode }) => {
 	return <div className='
-text-void-fg-4
+text-loophole-fg-4
 prose
 prose-sm
 break-words
@@ -1302,7 +1302,7 @@ marker:text-inherit
 prose-blockquote:pl-2
 prose-blockquote:my-2
 
-prose-code:text-void-fg-3
+prose-code:text-loophole-fg-3
 prose-code:text-[12px]
 prose-code:before:content-none
 prose-code:after:content-none
@@ -1319,7 +1319,7 @@ prose-table:text-[13px]
 
 const ProseWrapper = ({ children }: { children: React.ReactNode }) => {
 	return <div className='
-text-void-fg-2
+text-loophole-fg-2
 prose
 prose-sm
 break-words
@@ -1697,7 +1697,7 @@ export const ListableToolItem = ({ name, onClick, isSmall, className, showDot }:
 		onClick={onClick}
 	>
 		{showDot === false ? null : <div className="flex-shrink-0"><svg className="w-1 h-1 opacity-60 mr-1.5 fill-current" viewBox="0 0 100 40"><rect x="0" y="15" width="100" height="10" /></svg></div>}
-		<div className={`${isSmall ? 'italic text-void-fg-4 flex items-center' : ''}`}>{name}</div>
+		<div className={`${isSmall ? 'italic text-loophole-fg-4 flex items-center' : ''}`}>{name}</div>
 	</div>
 }
 
@@ -1719,7 +1719,7 @@ const EditToolChildren = ({ uri, code, type }: { uri: URI | undefined, code: str
 
 
 const LintErrorChildren = ({ lintErrors }: { lintErrors: LintErrorItem[] }) => {
-	return <div className="text-xs text-void-fg-4 opacity-80 border-l-2 border-void-warning px-2 py-0.5 flex flex-col gap-0.5 overflow-x-auto whitespace-nowrap">
+	return <div className="text-xs text-loophole-fg-4 opacity-80 border-l-2 border-loophole-warning px-2 py-0.5 flex flex-col gap-0.5 overflow-x-auto whitespace-nowrap">
 		{lintErrors.map((error, i) => (
 			<div key={i}>Lines {error.startLineNumber}-{error.endLineNumber}: {error.message}</div>
 		))}
@@ -1737,14 +1737,14 @@ const BottomChildren = ({ children, title }: { children: React.ReactNode, title:
 				style={{ background: 'none' }}
 			>
 				<ChevronRight
-					className={`mr-1 h-3 w-3 flex-shrink-0 transition-transform duration-100 text-void-fg-4 group-hover:text-void-fg-3 ${isOpen ? 'rotate-90' : ''}`}
+					className={`mr-1 h-3 w-3 flex-shrink-0 transition-transform duration-100 text-loophole-fg-4 group-hover:text-loophole-fg-3 ${isOpen ? 'rotate-90' : ''}`}
 				/>
-				<span className="font-medium text-void-fg-4 group-hover:text-void-fg-3 text-xs">{title}</span>
+				<span className="font-medium text-loophole-fg-4 group-hover:text-loophole-fg-3 text-xs">{title}</span>
 			</div>
 			<div
 				className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'opacity-100' : 'max-h-0 opacity-0'} text-xs pl-4`}
 			>
-				<div className="overflow-x-auto text-void-fg-4 opacity-90 border-l-2 border-void-warning px-2 py-0.5">
+				<div className="overflow-x-auto text-loophole-fg-4 opacity-90 border-l-2 border-loophole-warning px-2 py-0.5">
 					{children}
 				</div>
 			</div>
@@ -1774,7 +1774,7 @@ const InvalidTool = ({ toolName, message, mcpServerName }: { toolName: ToolName,
 	const componentParams: ToolHeaderParams = { title, desc1, isError, icon }
 
 	componentParams.children = <ToolChildrenWrapper>
-		<CodeChildren className='bg-void-bg-3'>
+		<CodeChildren className='bg-loophole-bg-3'>
 			{message}
 		</CodeChildren>
 	</ToolChildrenWrapper>
@@ -2231,7 +2231,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 				componentParams.numResults = result.lines.length;
 				componentParams.children = result.lines.length === 0 ? undefined :
 					<ToolChildrenWrapper>
-						<CodeChildren className='bg-void-bg-3'>
+						<CodeChildren className='bg-loophole-bg-3'>
 							<pre className='font-mono whitespace-pre'>
 								{toolsService.stringOfResult['search_in_file'](params, result)}
 							</pre>
@@ -2499,7 +2499,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 				const { result } = toolMessage
 				componentParams.children = result.content
 					? <ToolChildrenWrapper>
-						<CodeChildren className='bg-void-bg-3'>
+						<CodeChildren className='bg-loophole-bg-3'>
 							<pre className='font-mono whitespace-pre-wrap'>{result.content}</pre>
 						</CodeChildren>
 					</ToolChildrenWrapper>
@@ -2568,7 +2568,7 @@ const Checkpoint = ({ message, threadId, messageIdx, isCheckpointGhost, threadIs
 		<div
 			className={`
                     text-xs
-                    text-void-fg-3
+                    text-loophole-fg-3
                     select-none
                     ${isCheckpointGhost ? 'opacity-50' : 'opacity-100'}
 					${isDisabled ? 'cursor-default' : 'cursor-pointer'}
@@ -2584,7 +2584,7 @@ const Checkpoint = ({ message, threadId, messageIdx, isCheckpointGhost, threadIs
 				})
 			}}
 			{...isDisabled ? {
-				'data-tooltip-id': 'void-tooltip',
+				'data-tooltip-id': 'loophole-tooltip',
 				'data-tooltip-content': `Disabled ${isRunning ? 'when running' : 'because another thread is running'}`,
 				'data-tooltip-place': 'top',
 			} : {}}
@@ -2697,7 +2697,7 @@ const CommandBarInChat = () => {
 	// 	<IconShell1
 	// 		Icon={CopyIcon}
 	// 		onClick={copyChatToClipboard}
-	// 		data-tooltip-id='void-tooltip'
+	// 		data-tooltip-id='loophole-tooltip'
 	// 		data-tooltip-place='top'
 	// 		data-tooltip-content='Copy chat JSON'
 	// 	/>
@@ -2775,7 +2775,7 @@ const CommandBarInChat = () => {
 					});
 				});
 			}}
-			data-tooltip-id='void-tooltip'
+			data-tooltip-id='loophole-tooltip'
 			data-tooltip-place='top'
 			data-tooltip-content='Reject all'
 		/>
@@ -2794,7 +2794,7 @@ const CommandBarInChat = () => {
 					});
 				});
 			}}
-			data-tooltip-id='void-tooltip'
+			data-tooltip-id='loophole-tooltip'
 			data-tooltip-place='top'
 			data-tooltip-content='Accept all'
 		/>
@@ -2820,18 +2820,18 @@ const CommandBarInChat = () => {
 			)
 
 			const fileNameHTML = <div
-				className="flex items-center gap-1.5 text-void-fg-3 hover:brightness-125 transition-all duration-200 cursor-pointer"
+				className="flex items-center gap-1.5 text-loophole-fg-3 hover:brightness-125 transition-all duration-200 cursor-pointer"
 				onClick={() => voidOpenFileFn(uri, accessor)}
 			>
-				{/* <FileIcon size={14} className="text-void-fg-3" /> */}
-				<span className="text-void-fg-3">{basename}</span>
+				{/* <FileIcon size={14} className="text-loophole-fg-3" /> */}
+				<span className="text-loophole-fg-3">{basename}</span>
 			</div>
 
 
 
 
 			const detailsContent = <div className='flex px-4'>
-				<span className="text-void-fg-3 opacity-80">{numDiffs} diff{numDiffs !== 1 ? 's' : ''}</span>
+				<span className="text-loophole-fg-3 opacity-80">{numDiffs} diff{numDiffs !== 1 ? 's' : ''}</span>
 			</div>
 
 			const acceptRejectButtons = <div
@@ -2842,14 +2842,14 @@ const CommandBarInChat = () => {
 			>
 				{/* <JumpToFileButton
 					uri={uri}
-					data-tooltip-id='void-tooltip'
+					data-tooltip-id='loophole-tooltip'
 					data-tooltip-place='top'
 					data-tooltip-content='Go to file'
 				/> */}
 				<IconShell1 // RejectAllButtonWrapper
 					Icon={X}
 					onClick={() => { editCodeService.acceptOrRejectAllDiffAreas({ uri, removeCtrlKs: true, behavior: "reject", _addToHistory: true, }); }}
-					data-tooltip-id='void-tooltip'
+					data-tooltip-id='loophole-tooltip'
 					data-tooltip-place='top'
 					data-tooltip-content='Reject file'
 
@@ -2857,7 +2857,7 @@ const CommandBarInChat = () => {
 				<IconShell1 // AcceptAllButtonWrapper
 					Icon={Check}
 					onClick={() => { editCodeService.acceptOrRejectAllDiffAreas({ uri, removeCtrlKs: true, behavior: "accept", _addToHistory: true, }); }}
-					data-tooltip-id='void-tooltip'
+					data-tooltip-id='loophole-tooltip'
 					data-tooltip-place='top'
 					data-tooltip-content='Accept file'
 				/>
@@ -2908,8 +2908,8 @@ const CommandBarInChat = () => {
 				<div
 					className={`
 						select-none
-						flex w-full rounded-t-lg bg-void-bg-3
-						text-void-fg-3 text-xs text-nowrap
+						flex w-full rounded-t-lg bg-loophole-bg-3
+						text-loophole-fg-3 text-xs text-nowrap
 
 						overflow-hidden transition-all duration-200 ease-in-out
 						${isFileDetailsOpened ? 'max-h-24' : 'max-h-0'}
@@ -2922,8 +2922,8 @@ const CommandBarInChat = () => {
 			<div
 				className={`
 					select-none
-					flex w-full rounded-t-lg bg-void-bg-3
-					text-void-fg-3 text-xs text-nowrap
+					flex w-full rounded-t-lg bg-loophole-bg-3
+					text-loophole-fg-3 text-xs text-nowrap
 					border-t border-l border-r border-zinc-300/10
 
 					px-2 py-1
@@ -3205,7 +3205,7 @@ export const SidebarChat = () => {
 	const isLandingPage = previousMessages.length === 0
 
 
-	const initiallySuggestedPromptsHTML = <div className='flex flex-col gap-2 w-full text-nowrap text-void-fg-3 select-none'>
+	const initiallySuggestedPromptsHTML = <div className='flex flex-col gap-2 w-full text-nowrap text-loophole-fg-3 select-none'>
 		{[
 			'Summarize my codebase',
 			'How do types work in Rust?',
@@ -3248,12 +3248,12 @@ export const SidebarChat = () => {
 
 		{Object.keys(chatThreadsState.allThreads).length > 1 ? // show if there are threads
 			<ErrorBoundary>
-				<div className='pt-8 mb-2 text-void-fg-3 text-root select-none pointer-events-none'>Previous Threads</div>
+				<div className='pt-8 mb-2 text-loophole-fg-3 text-root select-none pointer-events-none'>Previous Threads</div>
 				<PastThreadsList />
 			</ErrorBoundary>
 			:
 			<ErrorBoundary>
-				<div className='pt-8 mb-2 text-void-fg-3 text-root select-none pointer-events-none'>Suggestions</div>
+				<div className='pt-8 mb-2 text-loophole-fg-3 text-root select-none pointer-events-none'>Suggestions</div>
 				{initiallySuggestedPromptsHTML}
 			</ErrorBoundary>
 		}

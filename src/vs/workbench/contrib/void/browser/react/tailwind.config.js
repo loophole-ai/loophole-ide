@@ -12,22 +12,22 @@ module.exports = {
 			typography: theme => ({
 				DEFAULT: {
 					css: {
-						'--tw-prose-body': 'var(--void-fg-1)',
-						'--tw-prose-headings': 'var(--void-fg-1)',
-						'--tw-prose-lead': 'var(--void-fg-2)',
-						'--tw-prose-links': 'var(--void-link-color)',
-						'--tw-prose-bold': 'var(--void-fg-1)',
-						'--tw-prose-counters': 'var(--void-fg-3)',
-						'--tw-prose-bullets': 'var(--void-fg-3)',
-						'--tw-prose-hr': 'var(--void-border-4)',
-						'--tw-prose-quotes': 'var(--void-fg-1)',
-						'--tw-prose-quote-borders': 'var(--void-border-2)',
-						'--tw-prose-captions': 'var(--void-fg-3)',
-						'--tw-prose-code': 'var(--void-fg-0)',
-						'--tw-prose-pre-code': 'var(--void-fg-0)',
-						'--tw-prose-pre-bg': 'var(--void-bg-1)',
-						'--tw-prose-th-borders': 'var(--void-border-4)',
-						'--tw-prose-td-borders': 'var(--void-border-4)',
+						'--tw-prose-body': 'var(--loophole-fg-1)',
+						'--tw-prose-headings': 'var(--loophole-fg-1)',
+						'--tw-prose-lead': 'var(--loophole-fg-2)',
+						'--tw-prose-links': 'var(--loophole-link-color)',
+						'--tw-prose-bold': 'var(--loophole-fg-1)',
+						'--tw-prose-counters': 'var(--loophole-fg-3)',
+						'--tw-prose-bullets': 'var(--loophole-fg-3)',
+						'--tw-prose-hr': 'var(--loophole-border-4)',
+						'--tw-prose-quotes': 'var(--loophole-fg-1)',
+						'--tw-prose-quote-borders': 'var(--loophole-border-2)',
+						'--tw-prose-captions': 'var(--loophole-fg-3)',
+						'--tw-prose-code': 'var(--loophole-fg-0)',
+						'--tw-prose-pre-code': 'var(--loophole-fg-0)',
+						'--tw-prose-pre-bg': 'var(--loophole-bg-1)',
+						'--tw-prose-th-borders': 'var(--loophole-border-4)',
+						'--tw-prose-td-borders': 'var(--loophole-border-4)',
 					},
 				},
 			}),
@@ -49,30 +49,30 @@ module.exports = {
 			// common colors to use, ordered light to dark
 
 			colors: {
-				'void-bg-1': 'var(--void-bg-1)',
-				'void-bg-1-alt': 'var(--void-bg-1-alt)',
-				'void-bg-2': 'var(--void-bg-2)',
-				'void-bg-2-alt': 'var(--void-bg-2-alt)',
-				'void-bg-2-hover': 'var(--void-bg-2-hover)',
-				'void-bg-3': 'var(--void-bg-3)',
+				'loophole-bg-1': 'var(--loophole-bg-1)',
+				'loophole-bg-1-alt': 'var(--loophole-bg-1-alt)',
+				'loophole-bg-2': 'var(--loophole-bg-2)',
+				'loophole-bg-2-alt': 'var(--loophole-bg-2-alt)',
+				'loophole-bg-2-hover': 'var(--loophole-bg-2-hover)',
+				'loophole-bg-3': 'var(--loophole-bg-3)',
 
 
-				'void-fg-0': 'var(--void-fg-0)',
-				'void-fg-1': 'var(--void-fg-1)',
-				'void-fg-2': 'var(--void-fg-2)',
-				'void-fg-3': 'var(--void-fg-3)',
-				// 'void-fg-4': 'var(--vscode-tab-inactiveForeground)',
-				'void-fg-4': 'var(--void-fg-4)',
+				'loophole-fg-0': 'var(--loophole-fg-0)',
+				'loophole-fg-1': 'var(--loophole-fg-1)',
+				'loophole-fg-2': 'var(--loophole-fg-2)',
+				'loophole-fg-3': 'var(--loophole-fg-3)',
+				// 'loophole-fg-4': 'var(--vscode-tab-inactiveForeground)',
+				'loophole-fg-4': 'var(--loophole-fg-4)',
 
-				'void-warning': 'var(--void-warning)',
+				'loophole-warning': 'var(--loophole-warning)',
 
-				'void-border-1': 'var(--void-border-1)',
-				'void-border-2': 'var(--void-border-2)',
-				'void-border-3': 'var(--void-border-3)',
-				'void-border-4': 'var(--void-border-4)',
+				'loophole-border-1': 'var(--loophole-border-1)',
+				'loophole-border-2': 'var(--loophole-border-2)',
+				'loophole-border-3': 'var(--loophole-border-3)',
+				'loophole-border-4': 'var(--loophole-border-4)',
 
-				'void-ring-color': 'var(--void-ring-color)',
-				'void-link-color': 'var(--void-link-color)',
+				'loophole-ring-color': 'var(--loophole-ring-color)',
+				'loophole-link-color': 'var(--loophole-link-color)',
 
 				vscode: {
 					// see: https://code.visualstudio.com/api/extension-guides/webview#theming-webview-content
@@ -194,6 +194,6 @@ module.exports = {
 	plugins: [
 		require('@tailwindcss/typography')
 	],
-	prefix: 'void-'
+	prefix: 'loophole-'
 }
 

@@ -38,7 +38,7 @@ const VoidSelectionHelper = ({ rerenderKey }: VoidSelectionHelperProps) => {
 	const ctrlLKeybind = keybindingService.lookupKeybinding(VOID_CTRL_L_ACTION_ID)
 	const ctrlKKeybind = keybindingService.lookupKeybinding(VOID_CTRL_K_ACTION_ID)
 
-	const dividerHTML = <div className='w-[0.5px] bg-void-border-3'></div>
+	const dividerHTML = <div className='w-[0.5px] bg-loophole-border-3'></div>
 
 	const [reactRerenderCount, setReactRerenderKey] = useState(rerenderKey)
 	const [clickState, setClickState] = useState<'init' | 'clickedOption' | 'clickedMore'>('init')
@@ -159,7 +159,7 @@ const VoidSelectionHelper = ({ rerenderKey }: VoidSelectionHelperProps) => {
 		pointer-events-auto select-none
 		z-[1000]
 		rounded-sm shadow-md flex flex-nowrap text-nowrap
-		border border-void-border-3 bg-void-bg-2
+		border border-loophole-border-3 bg-loophole-bg-2
 		transition-all duration-200
 	'>
 		{clickState === 'init' ? defaultHTML
