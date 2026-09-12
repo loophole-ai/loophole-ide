@@ -59,10 +59,10 @@ const invalidApiKeyMessage = (providerName: ProviderName) => `Invalid ${displayI
 
 /**
  * `fm serve` lists "pcc" in /v1/models but 503s on it with "PCC inference is not available in this
- * context" when `fm serve` was spawned detached (setsid) from Kodia's own session — see the spawn
+ * context" when `fm serve` was spawned detached (setsid) from Loophole's own session — see the spawn
  * fix in appleFoundationModelsMainService.ts. If this still surfaces after that fix, it's a genuine
  * Apple-side condition (Apple Intelligence/PCC eligibility, quota, or transient PCC node
- * availability) rather than something Kodia's request shape controls, so explain instead of showing
+ * availability) rather than something Loophole's request shape controls, so explain instead of showing
  * the raw JSON error.
  */
 const applePCCUnavailableMessage = () => `Loophole: Apple's Private Cloud Compute ("pcc" model) rejected this request. If this persists, check Apple Intelligence & Siri in System Settings, or use the "system" (fully on-device) model instead.`
@@ -173,7 +173,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName }: { se
 			apiKey: thisConfig.apiKey,
 			defaultHeaders: {
 				'HTTP-Referer': 'https://voideditor.com', // Optional, for including your app on openrouter.ai rankings.
-				'X-Title': 'Kodia', // Optional. Shows in rankings on openrouter.ai.
+				'X-Title': 'Loophole', // Optional. Shows in rankings on openrouter.ai.
 			},
 			...commonPayloadOpts,
 		})
@@ -240,7 +240,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName }: { se
 		return new OpenAI({ baseURL: 'https://api.mistral.ai/v1', apiKey: thisConfig.apiKey, ...commonPayloadOpts })
 	}
 
-	else throw new Error(`Kodia providerName was invalid: ${providerName}.`)
+	else throw new Error(`Loophole providerName was invalid: ${providerName}.`)
 }
 
 
@@ -786,7 +786,7 @@ const sendMistralFIM = ({ messages, onFinalMessage, onError, settingsOfProvider,
 // ------------ OLLAMA ------------
 const newOllamaSDK = ({ endpoint }: { endpoint: string }) => {
 	// if endpoint is empty, normally ollama will send to 11434, but we want it to fail - the user should type it in
-	if (!endpoint) throw new Error(`Ollama Endpoint was empty (please enter ${defaultProviderSettings.ollama.endpoint} in Kodia if you want the default url).`)
+	if (!endpoint) throw new Error(`Ollama Endpoint was empty (please enter ${defaultProviderSettings.ollama.endpoint} in Loophole if you want the default url).`)
 	const ollama = new Ollama({ host: endpoint })
 	return ollama
 }

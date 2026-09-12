@@ -139,12 +139,12 @@ export class DefaultAccountService extends Disposable implements IDefaultAccount
 		if (productService.defaultChatAgent && productService.defaultChatAgent.provider.default.id !== 'void') {
 			this.defaultAccountConfig = toDefaultAccountConfig(productService.defaultChatAgent);
 		} else {
-			// Kodia: no GitHub/Copilot account integration
+			// Loophole: no GitHub/Copilot account integration
 			this.defaultAccountConfig = {
 				preferredExtensions: [],
 				authenticationProvider: {
-					default: { id: 'void', name: 'Kodia' },
-					enterprise: { id: 'void', name: 'Kodia' },
+					default: { id: 'void', name: 'Loophole' },
+					enterprise: { id: 'void', name: 'Loophole' },
 					enterpriseProviderConfig: '',
 					enterpriseProviderUriSetting: '',
 					scopes: [],
@@ -970,7 +970,7 @@ class DefaultAccountProviderContribution extends Disposable implements IWorkbenc
 	) {
 		super();
 		if (!productService.defaultChatAgent || productService.defaultChatAgent.provider.default.id === 'void') {
-			return; // Kodia: no GitHub/Copilot sign-in provider
+			return; // Loophole: no GitHub/Copilot sign-in provider
 		}
 		const defaultAccountProvider = this._register(instantiationService.createInstance(DefaultAccountProvider, toDefaultAccountConfig(productService.defaultChatAgent)));
 		defaultAccountService.setDefaultAccountProvider(defaultAccountProvider);

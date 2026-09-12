@@ -279,12 +279,12 @@ class EditCodeService extends Disposable implements IEditCodeService {
 	// 	const details = errorDetails(e.fullError)
 	// 	this._notificationService.notify({
 	// 		severity: Severity.Warning,
-	// 		message: `Kodia Error: ${e.message}`,
+	// 		message: `Loophole Error: ${e.message}`,
 	// 		actions: {
 	// 			secondary: [{
 	// 				id: 'void.onerror.opensettings',
 	// 				enabled: true,
-	// 				label: `Open Kodia's settings`,
+	// 				label: `Open Loophole's settings`,
 	// 				tooltip: '',
 	// 				class: undefined,
 	// 				run: () => { this._commandService.executeCommand(VOID_OPEN_SETTINGS_ACTION_ID) }
@@ -585,7 +585,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 							offsetLines = 1
 						}
 					}
-					else { throw new Error('Kodia 1') }
+					else { throw new Error('Loophole 1') }
 
 					const buttonsWidget = this._instantiationService.createInstance(AcceptRejectInlineWidget, {
 						editor,
@@ -743,7 +743,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		const elt: IUndoRedoElement = {
 			type: UndoRedoElementType.Resource,
 			resource: uri,
-			label: 'Kodia Agent',
+			label: 'Loophole Agent',
 			code: 'undoredo.editCode',
 			undo: async () => { opts?.onWillUndo?.(); await this._restoreVoidFileSnapshot(uri, beforeSnapshot) },
 			redo: async () => { if (afterSnapshot) await this._restoreVoidFileSnapshot(uri, afterSnapshot) }
@@ -1480,7 +1480,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			else if (from === 'ClickApply') {
 				return extractCodeFromRegular({ text: fullText, recentlyAddedTextLen })
 			}
-			throw new Error('Kodia 1')
+			throw new Error('Loophole 1')
 		}
 
 		// refresh now in case onText takes a while to get 1st message
@@ -2158,7 +2158,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			].join('\n')
 		}
 		else {
-			throw new Error(`Kodia error: ${diff}.type not recognized`)
+			throw new Error(`Loophole error: ${diff}.type not recognized`)
 		}
 
 		// console.log('DIFF', diff)
@@ -2250,7 +2250,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			toRange = { startLineNumber: diff.startLine, startColumn: 1, endLineNumber: diff.endLine, endColumn: Number.MAX_SAFE_INTEGER } // 1-indexed
 		}
 		else {
-			throw new Error(`Kodia error: ${diff}.type not recognized`)
+			throw new Error(`Loophole error: ${diff}.type not recognized`)
 		}
 
 		// update the file

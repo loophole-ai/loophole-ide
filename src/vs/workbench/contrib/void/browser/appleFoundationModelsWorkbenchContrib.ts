@@ -66,7 +66,7 @@ export class AppleFoundationModelsWorkbenchContrib extends Disposable {
 		this.notificationService.notify({
 			severity: Severity.Warning,
 			message,
-			source: 'Kodia',
+			source: 'Loophole',
 		});
 	}
 }

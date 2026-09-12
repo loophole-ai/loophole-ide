@@ -130,7 +130,7 @@ export function findDiffs(oldStr: string, newStr: string) {
 // 	let keys = new Set([...Object.keys(a), ...Object.keys(b)])
 // 	for (let k of keys) {
 // 		if (a[k] !== b[k]) {
-// 			console.error('Kodia Test Error:', name_, '\n', `${k}=`, `${JSON.stringify(a[k])}, ${JSON.stringify(b[k])}`)
+// 			console.error('Loophole Test Error:', name_, '\n', `${k}=`, `${JSON.stringify(a[k])}, ${JSON.stringify(b[k])}`)
 // 			// console.error(JSON.stringify(a, null, 4))
 // 			// console.error(JSON.stringify(b, null, 4))
 // 			testsFailed += 1
@@ -244,8 +244,8 @@ export function findDiffs(oldStr: string, newStr: string) {
 
 
 // if (testsFailed === 0) {
-// 	console.log('✅ Kodia - All tests passed')
+// 	console.log('✅ Loophole - All tests passed')
 // }
 // else {
-// 	console.log('❌ Kodia - At least one test failed')
+// 	console.log('❌ Loophole - At least one test failed')
 // }

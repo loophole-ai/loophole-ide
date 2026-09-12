@@ -219,7 +219,7 @@ export class AppleFoundationModelsMainService implements IAppleFoundationModelsM
 	// returns a getter for the crash message (exit code + captured output) if `fm` has already exited, or null while it's still running
 	private async _startFmServer(fmPath: string, port: number, log: string[]): Promise<() => string | null> {
 		if (this._child?.isAlive()) {
-			log.push('Kodia fm process already running.');
+			log.push('Loophole fm process already running.');
 			return () => null;
 		}
 
@@ -227,7 +227,7 @@ export class AppleFoundationModelsMainService implements IAppleFoundationModelsM
 		// request for the "pcc" (Private Cloud Compute) model with "PCC inference is not available in
 		// this context" when it has no TTY attached — confirmed by testing the same command, from the
 		// same Terminal session, both attached to a TTY (works) and with stdio redirected to files
-		// (fails identically to Kodia's old plain-pipe spawn). The on-device `system` model is
+		// (fails identically to Loophole's old plain-pipe spawn). The on-device `system` model is
 		// unaffected either way. node-pty is already a dependency here (used for the integrated
 		// terminal).
 		log.push(`Starting fm: fm serve --port ${port} --host 127.0.0.1…`);
@@ -420,7 +420,7 @@ export class AppleFoundationModelsMainService implements IAppleFoundationModelsM
 
 	private async _startServer(afmPath: string, port: number, log: string[]): Promise<void> {
 		if (this._child?.isAlive()) {
-			log.push('Kodia afm process already running.');
+			log.push('Loophole afm process already running.');
 			return;
 		}
 

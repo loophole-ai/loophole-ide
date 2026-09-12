@@ -21,7 +21,7 @@ import { IAction } from '../../../../base/common/actions.js';
 
 
 const notifyUpdate = (res: VoidCheckUpdateRespose & { message: string }, notifService: INotificationService, updateService: IUpdateService): INotificationHandle => {
-	const message = res?.message || 'This is a very old version of Kodia, please download the latest version! [Kodia Editor](https://voideditor.com/download-beta)!'
+	const message = res?.message || 'This is a very old version of Loophole, please download the latest version! [Loophole Editor](https://voideditor.com/download-beta)!'
 
 	let actions: INotificationActions | undefined
 
@@ -85,7 +85,7 @@ const notifyUpdate = (res: VoidCheckUpdateRespose & { message: string }, notifSe
 		primary.push({
 			id: 'void.updater.site',
 			enabled: true,
-			label: `Kodia Site`,
+			label: `Loophole Site`,
 			tooltip: '',
 			class: undefined,
 			run: () => {
@@ -127,7 +127,7 @@ const notifyUpdate = (res: VoidCheckUpdateRespose & { message: string }, notifSe
 	// })
 }
 const notifyErrChecking = (notifService: INotificationService): INotificationHandle => {
-	const message = `Kodia Error: There was an error checking for updates. If this persists, please get in touch or reinstall Kodia [here](https://voideditor.com/download-beta)!`
+	const message = `Loophole Error: There was an error checking for updates. If this persists, please get in touch or reinstall Loophole [here](https://voideditor.com/download-beta)!`
 	const notifController = notifService.notify({
 		severity: Severity.Info,
 		message: message,
@@ -147,21 +147,21 @@ const performVoidCheck = async (
 
 	const metricsTag = explicit ? 'Manual' : 'Auto'
 
-	metricsService.capture(`Kodia Update ${metricsTag}: Checking...`, {})
+	metricsService.capture(`Loophole Update ${metricsTag}: Checking...`, {})
 	const res = await voidUpdateService.check(explicit)
 	if (!res) {
 		const notifController = notifyErrChecking(notifService);
-		metricsService.capture(`Kodia Update ${metricsTag}: Error`, { res })
+		metricsService.capture(`Loophole Update ${metricsTag}: Error`, { res })
 		return notifController
 	}
 	else {
 		if (res.message) {
 			const notifController = notifyUpdate(res, notifService, updateService)
-			metricsService.capture(`Kodia Update ${metricsTag}: Yes`, { res })
+			metricsService.capture(`Loophole Update ${metricsTag}: Yes`, { res })
 			return notifController
 		}
 		else {
-			metricsService.capture(`Kodia Update ${metricsTag}: No`, { res })
+			metricsService.capture(`Loophole Update ${metricsTag}: No`, { res })
 			return null
 		}
 	}

@@ -1244,7 +1244,7 @@ export class GettingStartedPage extends EditorPane {
 			this.updateCategoryProgress();
 		});
 
-		gettingStartedList.setEntries([]); // Kodia: hide walkthroughs section on welcome page
+		gettingStartedList.setEntries([]); // Loophole: hide walkthroughs section on welcome page
 
 		return gettingStartedList;
 	}

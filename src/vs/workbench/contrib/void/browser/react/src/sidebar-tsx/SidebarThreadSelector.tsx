@@ -204,7 +204,7 @@ const PastThreadElement = ({ pastThread, idx, hoveredIdx, setHoveredIdx, isRunni
 	// 	codeStr={async () => {
 	// 		return JSON.stringify(currentThread.messages, null, 2)
 	// 	}}
-	// 	toolTipName={`Copy As Kodia Chat`}
+	// 	toolTipName={`Copy As Loophole Chat`}
 	// />
 
 	let firstMsg = null;

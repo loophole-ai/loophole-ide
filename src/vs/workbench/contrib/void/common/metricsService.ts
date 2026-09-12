@@ -68,6 +68,6 @@ registerAction2(class extends Action2 {
 
 		const debugProperties = await metricsService.getDebuggingProperties()
 		console.log('Metrics:', debugProperties)
-		notifService.info(`Kodia Debug info:\n${JSON.stringify(debugProperties, null, 2)}`)
+		notifService.info(`Loophole Debug info:\n${JSON.stringify(debugProperties, null, 2)}`)
 	}
 })

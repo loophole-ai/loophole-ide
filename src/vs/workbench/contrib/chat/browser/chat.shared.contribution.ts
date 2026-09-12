@@ -1648,7 +1648,7 @@ configurationRegistry.registerConfiguration({
 		[ChatConfiguration.AIDisabled]: {
 			type: 'boolean',
 			description: nls.localize('chat.disableAIFeatures', "Disable and hide built-in AI features provided by GitHub Copilot, including chat and inline suggestions."),
-			default: true, // Kodia: Copilot disabled by default
+			default: true, // Loophole: Copilot disabled by default
 			scope: ConfigurationScope.WINDOW,
 		},
 		[ChatConfiguration.OfflineByok]: {
@@ -1661,7 +1661,7 @@ configurationRegistry.registerConfiguration({
 		[ChatConfiguration.TitleBarSignInEnabled]: {
 			type: 'boolean',
 			description: nls.localize('chat.titleBar.signIn.enabled', "Controls whether the Copilot Sign In button is shown in the title bar when signed out. When disabled, the Sign In affordance falls back to the status bar."),
-			default: false, // Kodia: hide Copilot Sign In in title bar
+			default: false, // Loophole: hide Copilot Sign In in title bar
 		},
 		'chat.approvedAccountOrganizations': {
 			type: 'array',

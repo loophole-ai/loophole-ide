@@ -677,12 +677,12 @@ for (const menuId of [MenuId.EmptyEditorGroupContext, MenuId.EditorTabsBarContex
 // File menu
 
 
-// Kodia added this:
+// Loophole added this:
 MenuRegistry.appendMenuItem(MenuId.MenubarFileMenu, {
 	group: '0_void',
 	command: {
 		id: VOID_OPEN_SETTINGS_ACTION_ID,
-		title: nls.localize({ key: 'openVoid', comment: ['&& denotes a mnemonic'] }, "&&Open Kodia Settings"),
+		title: nls.localize({ key: 'openVoid', comment: ['&& denotes a mnemonic'] }, "&&Open Loophole Settings"),
 	},
 	order: 1
 });

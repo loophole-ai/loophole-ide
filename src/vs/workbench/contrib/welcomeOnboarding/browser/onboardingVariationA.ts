@@ -157,7 +157,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 
 	show(): void {
 		if (!defaultChat || defaultChat.provider.default.id === 'void') {
-			return; // Kodia: use built-in Kodia onboarding instead of Microsoft Copilot onboarding
+			return; // Loophole: use built-in Loophole onboarding instead of Microsoft Copilot onboarding
 		}
 
 		if (this.overlay) {
