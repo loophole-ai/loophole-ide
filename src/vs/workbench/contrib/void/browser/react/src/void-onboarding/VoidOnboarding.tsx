@@ -23,7 +23,7 @@ export const LoopholeOnboarding = () => {
 	const isDark = useIsDark()
 
 	return (
-		<div className={`@@void-scope ${isDark ? 'dark' : ''}`}>
+		<div className={`@@loophole-scope ${isDark ? 'dark' : ''}`}>
 			<div
 				className={`
 					bg-void-bg-3 fixed top-0 right-0 bottom-0 left-0 width-full z-[99999]
@@ -61,7 +61,7 @@ const LoopholeIcon = () => {
 		return () => d.dispose()
 	}, [])
 
-	return <div ref={divRef} className='@@void-void-icon' />
+	return <div ref={divRef} className='@@loophole-void-icon' />
 }
 
 const FADE_DURATION_MS = 2000
