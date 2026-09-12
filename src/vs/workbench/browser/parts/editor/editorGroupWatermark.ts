@@ -104,7 +104,7 @@ export class EditorGroupWatermark extends Disposable {
 		super();
 
 		const elements = h('.editor-group-watermark', [
-			h('.letterpress@icon'),
+			h('.loophole-loophole-icon@icon'),
 			h('.shortcuts@shortcuts'),
 		]);
 
@@ -195,7 +195,7 @@ export class EditorGroupWatermark extends Disposable {
 
 				// Open a folder
 				const openFolderButton = h('button')
-				openFolderButton.root.classList.add('void-openfolder-button')
+				openFolderButton.root.classList.add('loophole-openfolder-button')
 				openFolderButton.root.style.display = 'block'
 				openFolderButton.root.style.width = '124px' // Set width to 124px as requested
 				openFolderButton.root.textContent = 'Open Folder'
@@ -211,7 +211,7 @@ export class EditorGroupWatermark extends Disposable {
 
 				// Open SSH button
 				const openSSHButton = h('button')
-				openSSHButton.root.classList.add('void-openssh-button')
+				openSSHButton.root.classList.add('loophole-openssh-button')
 				openSSHButton.root.style.display = 'block'
 				openSSHButton.root.style.backgroundColor = '#5a5a5a' // Made darker than the default gray
 				openSSHButton.root.style.width = '124px' // Set width to 124px as requested
@@ -244,7 +244,7 @@ export class EditorGroupWatermark extends Disposable {
 							const { name, parentPath } = splitRecentLabel(fullPath);
 
 							const linkSpan = $('span');
-							linkSpan.classList.add('void-link')
+							linkSpan.classList.add('loophole-link')
 							linkSpan.style.display = 'flex'
 							linkSpan.style.gap = '4px'
 							linkSpan.style.padding = '8px'
