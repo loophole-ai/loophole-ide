@@ -8,8 +8,7 @@ import { localize } from '../../../nls.js';
 import { IProductService } from '../../product/common/productService.js';
 
 export function createNativeAboutDialogDetails(productService: IProductService): { title: string; details: string; detailsToCopy: string } {
-	// Use the Kodia version from productService
-	const voidVersion = productService.voidVersion || '1.5.0';
+	const loopholeVersion = productService.loopholeVersion || productService.version;
 	let version = productService.version;
 	if (productService.target) {
 		version = `${version} (${productService.target} setup)`;
@@ -19,9 +18,9 @@ export function createNativeAboutDialogDetails(productService: IProductService):
 
 	const getDetails = (useAgo: boolean): string => {
 		return localize('aboutDetail',
-			"Version: {0}\nKodia Version: {1}\nCommit: {2}\nDate: {3}",
+			"Version: {0}\nLoophole Version: {1}\nCommit: {2}\nDate: {3}",
 			version,
-			voidVersion,
+			loopholeVersion,
 			productService.commit || 'Unknown',
 			productService.date ? `${productService.date}${useAgo ? ' (' + fromNow(new Date(productService.date), true) + ')' : ''}` : 'Unknown'
 		);
