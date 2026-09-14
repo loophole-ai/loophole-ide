@@ -958,7 +958,7 @@ export const VoidInputBox = ({ onChangeText, onCreateInstance, inputBoxRef, plac
 	return <WidgetComponent
 		className='
 			bg-loophole-bg-1
-			@@void-force-child-placeholder-void-fg-1
+			@@loophole-force-child-placeholder-loophole-fg-1
 		'
 		ctor={InputBox}
 		propsFn={useCallback((container) => [
@@ -1493,8 +1493,8 @@ export const _VoidSelectBox = <T,>({ onChangeSelection, onCreateInstance, select
 	return <WidgetComponent
 		className={`
 			@@select-child-restyle
-			@@[&_select]:!void-text-loophole-fg-3
-			@@[&_select]:!void-text-xs
+			@@[&_select]:!loophole-text-loophole-fg-3
+			@@[&_select]:!loophole-text-xs
 			!text-loophole-fg-3
 			${className ?? ''}
 		`}
@@ -1994,5 +1994,3 @@ export const VoidDiffEditor = ({ uri, searchReplaceBlocks, language }: { uri?: a
 		</div>
 	);
 };
-
-
