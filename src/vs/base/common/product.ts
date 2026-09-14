@@ -66,7 +66,8 @@ export type ExtensionVirtualWorkspaceSupport = {
 
 export interface IProductConfiguration {
 	readonly version: string;
-	readonly voidVersion?: string;
+	readonly loopholeVersion?: string;
+	readonly loopholeRelease?: string;
 	readonly release?: string; // Kodia - VSCodium added this, we add it for TS
 	readonly date?: string;
 	readonly quality?: string;
