@@ -87,7 +87,7 @@ if (isWatch) {
 		try {
 			console.log('🔨 Running initial scope-tailwind build to create src2 folder...');
 			execSync(
-				'npx scope-tailwind ./src -o src2/ -s void-scope -c styles.css -p "void-"',
+				'npx scope-tailwind ./src -o src2/ -s loophole-scope -c styles.css -p "loophole-"',
 				{ stdio: 'inherit' }
 			);
 			console.log('✅ src2/ created successfully.');
@@ -103,7 +103,7 @@ if (isWatch) {
 		'--watch', 'src',
 		'--ext', 'ts,tsx,css',
 		'--exec',
-		'npx scope-tailwind ./src -o src2/ -s void-scope -c styles.css -p "void-"'
+		'npx scope-tailwind ./src -o src2/ -s loophole-scope -c styles.css -p "loophole-"'
 	]);
 
 	const tsupWatcher = spawn('npx', [
@@ -145,7 +145,7 @@ if (isWatch) {
 	console.log('📦 Building...');
 
 	// Run scope-tailwind once
-	execSync('npx scope-tailwind ./src -o src2/ -s void-scope -c styles.css -p "void-"', { stdio: 'inherit' });
+	execSync('npx scope-tailwind ./src -o src2/ -s loophole-scope -c styles.css -p "loophole-"', { stdio: 'inherit' });
 
 	// Run tsup once
 	execSync('npx tsup', { stdio: 'inherit' });
