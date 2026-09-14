@@ -8,6 +8,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { getModelCapabilities } from './modelCapabilities.js';
 import { ProviderName } from './voidSettingsTypes.js';
+import { IMetricsService } from './metricsService.js';
 
 export const ITokenUsageService = createDecorator<ITokenUsageService>('tokenUsageService');
 
@@ -91,7 +92,10 @@ export class TokenUsageService implements ITokenUsageService {
 	private _estimatedCost = 0;
 	private _dailyUsage: Map<string, { tokens: number; cost: number; models: Record<string, ModelDayEntry> }> = new Map();
 
-	constructor(@IStorageService private readonly storageService: IStorageService) {
+	constructor(
+		@IStorageService private readonly storageService: IStorageService,
+		@IMetricsService private readonly metricsService: IMetricsService,
+	) {
 		const storedTokens = this.storageService.get(TOTAL_TOKENS_STORAGE_KEY, StorageScope.APPLICATION);
 		if (storedTokens) this._totalTokensUsed = parseInt(storedTokens, 10) || 0;
 
@@ -119,6 +123,16 @@ export class TokenUsageService implements ITokenUsageService {
 		this._totalTokensUsed += tokens.totalTokens;
 		const cost = estimateCost(tokens);
 		this._estimatedCost += cost;
+
+		// Track token usage & cost to PostHog
+		this.metricsService.capture('Token Usage', {
+			inputTokens: tokens.inputTokens,
+			outputTokens: tokens.outputTokens,
+			totalTokens: tokens.totalTokens,
+			estimatedCostUSD: cost,
+			providerName: tokens.providerName,
+			modelName: tokens.modelName,
+		});
 
 		const today = new Date().toISOString().slice(0, 10);
 		const existing = this._dailyUsage.get(today) ?? { tokens: 0, cost: 0, models: {} };
