@@ -88,7 +88,7 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 		@IApplicationStorageMainService private readonly _appStorage: IApplicationStorageMainService,
 	) {
 		super()
-		this.client = new PostHog('phc_UanIdujHiLp55BkUTjB1AuBXcasVkdqRwgnwRlWESH2', {
+		this.client = new PostHog('phc_oTDpdDZgxMUvGmfGoJMEKhazigTNMFeqSFb8zmH698wy', {
 			host: 'https://us.i.posthog.com',
 		})
 
@@ -99,7 +99,7 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 		// very important to await whenReady!
 		await this._appStorage.whenReady
 
-		const { commit, version, voidVersion, release, quality } = this._productService
+		const { commit, version, loopholeVersion, loopholeRelease, quality } = this._productService
 
 		const isDevMode = !this._envMainService.isBuilt // found in abstractUpdateService.ts
 
@@ -107,8 +107,8 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 		this._initProperties = {
 			commit,
 			vscodeVersion: version,
-			voidVersion: voidVersion,
-			release,
+			loopholeVersion: loopholeVersion,
+			release: loopholeRelease,
 			os,
 			quality,
 			distinctId: this.distinctId,
@@ -123,10 +123,16 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 			properties: this._initProperties,
 		}
 
-	const didOptOut = true // Force opt-out for AI Stats
+		const didOptOut = this._appStorage.getBoolean(OPT_OUT_KEY, StorageScope.APPLICATION, false)
 
-	console.log('User is opted out of basic Loophole metrics?', didOptOut)
-	this.client.optOut()
+		console.log('User is opted out of basic Loophole metrics?', didOptOut)
+		if (didOptOut) {
+			this.client.optOut()
+		}
+		else {
+			this.client.optIn()
+			this.client.identify(identifyMessage)
+		}
 
 
 		console.log('Loophole posthog metrics info:', JSON.stringify(identifyMessage, null, 2))
@@ -152,5 +158,3 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 		return this._initProperties
 	}
 }
-
-
