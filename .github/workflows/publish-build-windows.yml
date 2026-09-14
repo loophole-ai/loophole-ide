@@ -115,25 +115,6 @@ jobs:
         env:
           npm_config_arch: x64
 
-      - name: Backup node-pty conpty binaries
-        shell: pwsh
-        run: |
-          $src = "node_modules/node-pty/build/Release/conpty"
-
-          if (-not (Test-Path $src)) {
-            Write-Warning "conpty folder missing after npm install (likely a stale node_modules cache) — repairing by re-running node-pty's postinstall"
-            $env:npm_config_arch = "x64"
-            node node_modules/node-pty/scripts/post-install.js
-          }
-
-          if (Test-Path $src) {
-            Copy-Item $src -Destination "$env:RUNNER_TEMP/conpty-backup" -Recurse -Force
-            Write-Host "Backed up conpty binaries from $src"
-          } else {
-            Write-Error "conpty folder still missing after repair attempt — node-pty's postinstall could not produce it. Check that node_modules/node-pty/third_party/conpty exists in the installed package."
-            exit 1
-          }
-
       - name: Rebuild native modules for Electron
         run: |
           npm install -g @electron/rebuild
@@ -141,20 +122,25 @@ jobs:
         env:
           npm_config_arch: x64
 
-      - name: Restore node-pty conpty binaries
+      - name: Restore conpty binaries from node-pty prebuilds
         shell: pwsh
         run: |
-          $backup = "$env:RUNNER_TEMP/conpty-backup"
+          # electron-rebuild wipes build/Release/ and recreates it with only the
+          # rebuilt .node binary — conpty.dll and OpenConsole.exe are lost.
+          # The correct source is node-pty's arch-specific prebuilds folder which
+          # ships the exact DLLs the postinstall would have copied.
+          $src = "node_modules/node-pty/prebuilds/win32-x64/conpty"
           $dest = "node_modules/node-pty/build/Release/conpty"
-          if (Test-Path $backup) {
-            New-Item -ItemType Directory -Force -Path $dest | Out-Null
-            Copy-Item "$backup/*" -Destination $dest -Recurse -Force
-            Write-Host "Restored conpty binaries to $dest"
-            Get-ChildItem $dest
-          } else {
-            Write-Error "No conpty backup found — electron-rebuild will produce an app without a working Windows terminal"
+
+          if (-not (Test-Path $src)) {
+            Write-Error "Cannot find node-pty prebuilds at '$src'. Check the installed node-pty version."
             exit 1
           }
+
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item "$src/*" -Destination $dest -Recurse -Force
+          Write-Host "Copied conpty binaries from $src to $dest"
+          Get-ChildItem $dest
 
       - name: Install React dependencies
         run: npm install
@@ -472,25 +458,6 @@ jobs:
         env:
           npm_config_arch: arm64
 
-      - name: Backup node-pty conpty binaries
-        shell: pwsh
-        run: |
-          $src = "node_modules/node-pty/build/Release/conpty"
-
-          if (-not (Test-Path $src)) {
-            Write-Warning "conpty folder missing after npm install (likely a stale node_modules cache) — repairing by re-running node-pty's postinstall"
-            $env:npm_config_arch = "arm64"
-            node node_modules/node-pty/scripts/post-install.js
-          }
-
-          if (Test-Path $src) {
-            Copy-Item $src -Destination "$env:RUNNER_TEMP/conpty-backup" -Recurse -Force
-            Write-Host "Backed up conpty binaries from $src"
-          } else {
-            Write-Error "conpty folder still missing after repair attempt — node-pty's postinstall could not produce it. Check that node_modules/node-pty/third_party/conpty exists in the installed package."
-            exit 1
-          }
-
       - name: Rebuild native modules for Electron
         run: |
           npm install -g @electron/rebuild
@@ -498,20 +465,25 @@ jobs:
         env:
           npm_config_arch: arm64
 
-      - name: Restore node-pty conpty binaries
+      - name: Restore conpty binaries from node-pty prebuilds
         shell: pwsh
         run: |
-          $backup = "$env:RUNNER_TEMP/conpty-backup"
+          # electron-rebuild wipes build/Release/ and recreates it with only the
+          # rebuilt .node binary — conpty.dll and OpenConsole.exe are lost.
+          # The correct source is node-pty's arch-specific prebuilds folder which
+          # ships the exact DLLs the postinstall would have copied.
+          $src = "node_modules/node-pty/prebuilds/win32-arm64/conpty"
           $dest = "node_modules/node-pty/build/Release/conpty"
-          if (Test-Path $backup) {
-            New-Item -ItemType Directory -Force -Path $dest | Out-Null
-            Copy-Item "$backup/*" -Destination $dest -Recurse -Force
-            Write-Host "Restored conpty binaries to $dest"
-            Get-ChildItem $dest
-          } else {
-            Write-Error "No conpty backup found — electron-rebuild will produce an app without a working Windows terminal"
+
+          if (-not (Test-Path $src)) {
+            Write-Error "Cannot find node-pty prebuilds at '$src'. Check the installed node-pty version."
             exit 1
           }
+
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item "$src/*" -Destination $dest -Recurse -Force
+          Write-Host "Copied conpty binaries from $src to $dest"
+          Get-ChildItem $dest
 
       - name: Install React dependencies
         run: npm install
