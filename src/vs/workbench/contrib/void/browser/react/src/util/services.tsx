@@ -55,6 +55,7 @@ import { IMCPService } from '../../../../common/mcpService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
 import { ITokenUsageService } from '../../../../common/tokenUsageService.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
+import { IFileDialogService } from '../../../../../../../platform/dialogs/common/dialogs.js'
 
 
 // normally to do this you'd use a useEffect that calls .onDidChangeState(), but useEffect mounts too late and misses initial state changes
@@ -231,6 +232,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 
 		IStorageService: accessor.get(IStorageService),
 		ITokenUsageService: accessor.get(ITokenUsageService),
+		IFileDialogService: accessor.get(IFileDialogService),
 
 	} as const
 	return reactAccessor
