@@ -23,7 +23,7 @@ import { ICommandService } from '../../../../../../../platform/commands/common/c
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
 import { estimateTokens } from '../../../../common/tokenizer.js';
-import { AlertTriangle, File, Ban, Check, ChevronRight, Dot, FileIcon, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text } from 'lucide-react';
+import { AlertTriangle, File, Ban, Check, ChevronRight, Dot, FileIcon, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Paperclip } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage } from '../../../../common/chatThreadServiceTypes.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolName, LintErrorItem, ToolApprovalType, toolApprovalTypes } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, JumpToFileButton, JumpToTerminalButton, StatusIndicator, StatusIndicatorForApplyButton, useApplyStreamState, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -252,16 +252,49 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 
 
 
+const AttachFileButton = ({ className }: { className?: string }) => {
+	const accessor = useAccessor()
+	const fileDialogService = accessor.get('IFileDialogService')
+	const chatThreadsService = accessor.get('IChatThreadService')
+	const languageService = accessor.get('ILanguageService')
+
+	const onClick = useCallback(async () => {
+		const uris = await fileDialogService.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, canSelectMany: true })
+		if (!uris) return
+		for (const uri of uris) {
+			chatThreadsService.addNewStagingSelection({
+				type: 'File',
+				uri,
+				language: languageService.guessLanguageIdByFilepathOrFirstLine(uri) || '',
+				state: { wasAddedAsCurrentFile: false },
+			})
+		}
+	}, [fileDialogService, chatThreadsService, languageService])
+
+	return (
+		<button
+			className={`flex items-center justify-center opacity-60 hover:opacity-100 transition-opacity cursor-pointer ${className ?? ''}`}
+			onClick={onClick}
+			title='Attach file'
+		>
+			<Paperclip size={13} strokeWidth={2} />
+		</button>
+	)
+}
+
+
 const nameOfChatMode = {
 	'normal': 'Chat',
 	'gather': 'Gather',
 	'agent': 'Agent',
+	'plan': 'Plan',
 }
 
 const detailOfChatMode = {
 	'normal': 'Normal chat',
 	'gather': 'Reads files, but can\'t edit',
 	'agent': 'Edits files and uses tools',
+	'plan': 'Research and write an implementation plan',
 }
 
 
@@ -271,7 +304,7 @@ const ChatModeDropdown = ({ className }: { className: string }) => {
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const settingsState = useSettingsState()
 
-	const options: ChatMode[] = useMemo(() => ['normal', 'gather', 'agent'], [])
+	const options: ChatMode[] = useMemo(() => ['normal', 'gather', 'agent', 'plan'], [])
 
 	const onChangeOption = useCallback((newVal: ChatMode) => {
 		voidSettingsService.setGlobalSetting('chatMode', newVal)
@@ -406,6 +439,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 						<div className='flex items-center flex-wrap gap-x-2 gap-y-1 text-nowrap '>
 							{featureName === 'Chat' && <ChatModeDropdown className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-2 rounded py-0.5 px-1' />}
 							<ModelDropdown featureName={featureName} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 rounded' />
+							{featureName === 'Chat' && <AttachFileButton className='text-loophole-fg-3' />}
 						</div>
 					</div>
 				)}
@@ -1448,6 +1482,7 @@ const titleOfBuiltinToolName = {
 	'search_in_file': { done: 'Searched in file', proposed: 'Search in file', running: loadingTitleWrapper('Searching in file') },
 	'read_project_memory': { done: 'Read project memory', proposed: 'Read project memory', running: loadingTitleWrapper('Reading project memory') },
 	'write_project_memory': { done: 'Saved project memory', proposed: 'Save project memory', running: loadingTitleWrapper('Saving project memory') },
+	'todo_write': { done: 'Updated todos', proposed: 'Update todos', running: loadingTitleWrapper('Updating todos') },
 } as const satisfies Record<BuiltinToolName, { done: any, proposed: any, running: any }>
 
 
@@ -1594,7 +1629,13 @@ const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinToolCallP
 		'write_project_memory': () => {
 			const toolParams = _toolParams as BuiltinToolCallParams['write_project_memory']
 			return { desc1: toolParams.mode === 'replace' ? 'Replacing memory' : 'Appending to memory' }
-		}
+		},
+		'todo_write': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['todo_write']
+			const total = toolParams.todos?.length ?? 0
+			const done = toolParams.todos?.filter(t => t.status === 'completed').length ?? 0
+			return { desc1: `${done}/${total} done` }
+		},
 	}
 
 	try {
