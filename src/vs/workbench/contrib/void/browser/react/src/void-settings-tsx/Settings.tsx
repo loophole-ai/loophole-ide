@@ -1635,11 +1635,10 @@ export const Settings = () => {
 													size='xs'
 													value={isOptedOut}
 													onChange={(newVal) => {
-														storageService.store(OPT_OUT_KEY, newVal, StorageScope.APPLICATION, StorageTarget.MACHINE)
-														metricsService.capture(`Set metrics opt-out to ${newVal}`, {}) // this only fires if it's enabled, so it's fine to have here
+														metricsService.setOptOut(newVal)
 													}}
 												/>
-												<span className='text-loophole-fg-3 text-xs pointer-events-none'>{'Opt-out (requires restart)'}</span>
+												<span className='text-loophole-fg-3 text-xs pointer-events-none'>{'Opt-out of basic usage metrics'}</span>
 											</div>
 										</ErrorBoundary>
 									</div>
