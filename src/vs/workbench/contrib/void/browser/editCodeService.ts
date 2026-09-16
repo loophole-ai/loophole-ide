@@ -38,6 +38,7 @@ import { Emitter } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { LLMChatMessage } from '../common/sendLLMMessageTypes.js';
 import { IMetricsService } from '../common/metricsService.js';
+import { ITokenUsageService } from '../common/tokenUsageService.js';
 import { IEditCodeService, AddCtrlKOpts, StartApplyingOpts, CallBeforeStartApplyingOpts, } from './editCodeServiceInterface.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { FeatureName } from '../common/voidSettingsTypes.js';
@@ -196,6 +197,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		// @IFileService private readonly _fileService: IFileService,
 		@IVoidModelService private readonly _voidModelService: IVoidModelService,
 		@IConvertToLLMMessageService private readonly _convertToLLMMessageService: IConvertToLLMMessageService,
+		@ITokenUsageService private readonly _tokenUsageService: ITokenUsageService,
 	) {
 		super();
 
@@ -327,7 +329,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 					const fn1 = this._addLineDecoration(model, diffArea._streamState.line, diffArea._streamState.line, 'void-sweepIdxBG')
 					// sweepLine+1 ... endLine
 					const fn2 = diffArea._streamState.line + 1 <= diffArea.endLine ?
-						this._addLineDecoration(model, diffArea._streamState.line + 1, diffArea.endLine, 'void-sweepBG')
+						this._addLineDecoration(model, diffArea._streamState.line + 1, diffArea.endLine, 'loophole-sweepBG')
 						: null
 					diffArea._removeStylesFns.add(() => { fn1?.(); fn2?.(); })
 
@@ -481,7 +483,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 		// green decoration and minimap decoration
 		if (type !== 'deletion') {
-			const fn = this._addLineDecoration(model, diff.startLine, diff.endLine, 'void-greenBG', {
+			const fn = this._addLineDecoration(model, diff.startLine, diff.endLine, 'loophole-greenBG', {
 				minimap: { color: { id: 'minimapGutter.addedBackground' }, position: 2 },
 				overviewRuler: { color: { id: 'editorOverviewRuler.addedForeground' }, position: 7 }
 			})
@@ -496,7 +498,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 				fn: (editor) => {
 
 					const domNode = document.createElement('div');
-					domNode.className = 'void-redBG'
+					domNode.className = 'loophole-redBG'
 
 					const renderOptions = RenderOptions.fromEditor(editor)
 
@@ -1529,7 +1531,11 @@ class EditCodeService extends Disposable implements IEditCodeService {
 						prevIgnoredSuffix = croppedSuffix
 					},
 					onFinalMessage: (params) => {
-						const { fullText } = params
+						const { fullText, tokenUsage } = params
+						// Track token usage if available
+						if (tokenUsage) {
+							this._tokenUsageService.addTokens({ ...tokenUsage, providerName: modelSelection?.providerName, modelName: modelSelection?.modelName })
+						}
 						// console.log('DONE! FULL TEXT\n', extractText(fullText), diffZone.startLine, diffZone.endLine)
 						// at the end, re-write whole thing to make sure no sync errors
 						const [croppedText, _1, _2] = extractText(fullText, 0)
@@ -1963,7 +1969,11 @@ class EditCodeService extends Disposable implements IEditCodeService {
 						onText(params)
 					},
 					onFinalMessage: async (params) => {
-						const { fullText } = params
+						const { fullText, tokenUsage } = params
+						// Track token usage if available
+						if (tokenUsage) {
+							this._tokenUsageService.addTokens({ ...tokenUsage, providerName: modelSelection?.providerName, modelName: modelSelection?.modelName })
+						}
 						onText(params)
 
 						const blocks = extractSearchReplaceBlocks(fullText)
@@ -2458,8 +2468,3 @@ class AcceptRejectInlineWidget extends Widget implements IOverlayWidget {
 	}
 
 }
-
-
-
-
-
