@@ -134,24 +134,54 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 			this.client.identify(identifyMessage)
 		}
 
-
 		console.log('Loophole posthog metrics info:', JSON.stringify(identifyMessage, null, 2))
+
+		// mark ready and flush any events that arrived before storage was ready
+		this._ready = true
+		if (!didOptOut) {
+			this._flushPending()
+		}
+		else {
+			this._pendingCaptures = []
+		}
 	}
 
 
+	// queue captures that arrive before initialize() has resolved
+	private _pendingCaptures: Array<{ event: string; params: Record<string, any> }> = []
+	private _ready = false
+
 	capture: IMetricsService['capture'] = (event, params) => {
-		const capture = { distinctId: this.distinctId, event, properties: params } as const
-		// console.log('full capture:', this.distinctId)
-		this.client.capture(capture)
+		if (!this._ready) {
+			this._pendingCaptures.push({ event, params })
+			return
+		}
+		this.client.capture({ distinctId: this.distinctId, event, properties: { ...params, ...this._initProperties } })
+	}
+
+	private _flushPending() {
+		for (const { event, params } of this._pendingCaptures) {
+			this.client.capture({ distinctId: this.distinctId, event, properties: { ...params, ...this._initProperties } })
+		}
+		this._pendingCaptures = []
 	}
 
 	setOptOut: IMetricsService['setOptOut'] = (newVal: boolean) => {
+		// persist to main-process storage so it survives restarts
 		if (newVal) {
 			this._appStorage.store(OPT_OUT_KEY, 'true', StorageScope.APPLICATION, StorageTarget.MACHINE)
+			this.client.optOut()
 		}
 		else {
 			this._appStorage.remove(OPT_OUT_KEY, StorageScope.APPLICATION)
+			this.client.optIn()
 		}
+	}
+
+	override async dispose() {
+		// flush any pending events before the process exits
+		await this.client.shutdown()
+		super.dispose()
 	}
 
 	async getDebuggingProperties() {
