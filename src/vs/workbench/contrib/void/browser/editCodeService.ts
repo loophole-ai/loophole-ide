@@ -326,7 +326,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 				// add sweep styles to the diffZone
 				if (diffArea._streamState.isStreaming) {
 					// sweepLine ... sweepLine
-					const fn1 = this._addLineDecoration(model, diffArea._streamState.line, diffArea._streamState.line, 'void-sweepIdxBG')
+					const fn1 = this._addLineDecoration(model, diffArea._streamState.line, diffArea._streamState.line, 'loophole-sweepIdxBG')
 					// sweepLine+1 ... endLine
 					const fn2 = diffArea._streamState.line + 1 <= diffArea.endLine ?
 						this._addLineDecoration(model, diffArea._streamState.line + 1, diffArea.endLine, 'loophole-sweepBG')
@@ -338,7 +338,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 			else if (diffArea.type === 'CtrlKZone' && diffArea._linkedStreamingDiffZone === null) {
 				// highlight zone's text
-				const fn = this._addLineDecoration(model, diffArea.startLine, diffArea.endLine, 'void-highlightBG')
+				const fn = this._addLineDecoration(model, diffArea.startLine, diffArea.endLine, 'loophole-highlightBG')
 				diffArea._removeStylesFns.add(() => fn?.());
 			}
 		}
