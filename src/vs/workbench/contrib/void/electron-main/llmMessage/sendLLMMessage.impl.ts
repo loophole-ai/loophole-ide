@@ -22,6 +22,8 @@ import { availableTools, InternalToolInfo } from '../../common/prompt/prompts.js
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { estimateTokens } from '../../common/tokenizer.js';
 
+const estimateTokensFromText = (text: string): number => Math.ceil(text.length / 4);
+
 const getGoogleApiKey = async () => {
 	// module‑level singleton
 	const auth = new GoogleAuth({ scopes: `https://www.googleapis.com/auth/cloud-platform` });
@@ -469,6 +471,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		model: modelName,
 		messages: preparedMessages,
 		stream: true,
+		stream_options: { include_usage: true },
 		...nativeToolsObj,
 		...reasoningAndExtraPayload,
 		// max_completion_tokens: maxTokens,
@@ -496,6 +499,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 	let toolName = ''
 	let toolId = ''
 	let toolParamsStr = ''
+	let tokenUsage: import('../../common/sendLLMMessageTypes.js').TokenUsageInfo | undefined = undefined
 
 	openai.chat.completions
 		.create(options)
@@ -527,6 +531,15 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 					fullReasoningSoFar += newReasoning
 				}
 
+				// usage (sent in the last chunk when stream_options.include_usage is true)
+				if (chunk.usage) {
+					tokenUsage = {
+						inputTokens: chunk.usage.prompt_tokens || 0,
+						outputTokens: chunk.usage.completion_tokens || 0,
+						totalTokens: chunk.usage.total_tokens || 0,
+					}
+				}
+
 				// call onText
 				onText({
 					fullText: fullTextSoFar,
@@ -540,9 +553,16 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				onError({ message: 'Loophole: Response from model was empty.', fullError: null })
 			}
 			else {
+				// Fallback: estimate tokens if provider didn't return usage
+				if (!tokenUsage) {
+					const inputText = messages.map((m: any) => typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).join(' ');
+					const estInput = estimateTokensFromText(inputText);
+					const estOutput = estimateTokensFromText(fullTextSoFar);
+					tokenUsage = { inputTokens: estInput, outputTokens: estOutput, totalTokens: estInput + estOutput };
+				}
 				const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId)
 				const toolCallObj = toolCall ? { toolCall } : {}
-				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning: null, ...toolCallObj });
+				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning: null, tokenUsage, ...toolCallObj });
 			}
 		})
 		// when error/fail - this catches errors of both .create() and .then(for await)
@@ -729,12 +749,25 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 	stream.on('finalMessage', (response) => {
 		const anthropicReasoning = response.content.filter(c => c.type === 'thinking' || c.type === 'redacted_thinking')
 		const tools = response.content.filter(c => c.type === 'tool_use')
-		// console.log('TOOLS!!!!!!', JSON.stringify(tools, null, 2))
-		// console.log('TOOLS!!!!!!', JSON.stringify(response, null, 2))
 		const toolCall = tools[0] && rawToolCallObjOfAnthropicParams(tools[0])
 		const toolCallObj = toolCall ? { toolCall } : {}
 
-		onFinalMessage({ fullText, fullReasoning, anthropicReasoning, ...toolCallObj })
+		// Extract token usage from Anthropic response
+		const usage = response.usage
+		let tokenUsage: import('../../common/sendLLMMessageTypes.js').TokenUsageInfo | undefined = usage ? {
+			inputTokens: usage.input_tokens || 0,
+			outputTokens: usage.output_tokens || 0,
+			totalTokens: (usage.input_tokens || 0) + (usage.output_tokens || 0),
+		} : undefined
+
+		if (!tokenUsage) {
+			const inputText = sanitizedMessages.map((m: any) => typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).join(' ')
+			const estInput = estimateTokensFromText(inputText)
+			const estOutput = estimateTokensFromText(fullText)
+			tokenUsage = { inputTokens: estInput, outputTokens: estOutput, totalTokens: estInput + estOutput }
+		}
+
+		onFinalMessage({ fullText, fullReasoning, anthropicReasoning, tokenUsage, ...toolCallObj })
 	})
 	// on error
 	stream.on('error', (error) => {
