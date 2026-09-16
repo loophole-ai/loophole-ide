@@ -761,7 +761,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 		} : undefined
 
 		if (!tokenUsage) {
-			const inputText = sanitizedMessages.map((m: any) => typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).join(' ')
+			const inputText = messages.map((m: any) => typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).join(' ')
 			const estInput = estimateTokensFromText(inputText)
 			const estOutput = estimateTokensFromText(fullText)
 			tokenUsage = { inputTokens: estInput, outputTokens: estOutput, totalTokens: estInput + estOutput }
