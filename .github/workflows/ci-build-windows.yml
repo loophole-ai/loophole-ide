@@ -19,7 +19,7 @@ env:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Resolve version from package.json or manual override
+  # Resolve version from product.json / package.json
   # ─────────────────────────────────────────────────────────────────────────────
   resolve-version:
     name: Resolve Version
@@ -38,7 +38,8 @@ jobs:
           echo "Resolved version: $VERSION"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Build all Windows x64 artifacts
+  # Build: Windows x64
+  # Produces: LoopholeUserSetup-x64-{version}.exe, LoopholeSetup-x64-{version}.exe
   # ─────────────────────────────────────────────────────────────────────────────
   build-windows-x64:
     name: Build Windows x64
@@ -48,20 +49,17 @@ jobs:
       VERSION: ${{ needs.resolve-version.outputs.version }}
 
     steps:
-      # ── Checkout ──────────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── Toolchain ─────────────────────────────────────────────────────────────
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      # ── Pin npm (< 11.2.0 required by preinstall.ts) ──────────────────────────
       - name: Pin npm (< 11.2.0 required by preinstall)
         shell: pwsh
         run: |
@@ -86,7 +84,6 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      # ── Caches ────────────────────────────────────────────────────────────────
       - name: Cache Rust artifacts
         uses: actions/cache@v4
         with:
@@ -103,17 +100,16 @@ jobs:
           path: |
             ${{ env.ELECTRON_CACHE }}
             ${{ env.ELECTRON_BUILDER_CACHE }}
-          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
-          restore-keys: ${{ runner.os }}-electron-
+          key: ${{ runner.os }}-electron-x64-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-electron-x64-
 
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: ${{ runner.os }}-node-
+          key: ${{ runner.os }}-node-x64-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-x64-
 
-      # ── Install & compile ──────────────────────────────────────────────────────
       - name: Install node-gyp
         run: npm install -g node-gyp
 
@@ -136,18 +132,12 @@ jobs:
       - name: Restore conpty binaries from node-pty prebuilds
         shell: pwsh
         run: |
-          # electron-rebuild wipes build/Release/ and recreates it with only the
-          # rebuilt .node binary — conpty.dll and OpenConsole.exe are lost.
-          # The correct source is node-pty's arch-specific prebuilds folder which
-          # ships the exact DLLs the postinstall would have copied.
-          $src = "node_modules/node-pty/prebuilds/win32-x64/conpty"
+          $src  = "node_modules/node-pty/prebuilds/win32-x64/conpty"
           $dest = "node_modules/node-pty/build/Release/conpty"
-
           if (-not (Test-Path $src)) {
-            Write-Error "Cannot find node-pty prebuilds at '$src'. Check the installed node-pty version."
+            Write-Error "Cannot find node-pty prebuilds at '$src'."
             exit 1
           }
-
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Copy-Item "$src/*" -Destination $dest -Recurse -Force
           Write-Host "Copied conpty binaries from $src to $dest"
@@ -170,7 +160,6 @@ jobs:
         working-directory: cli
         run: cargo build --release --target x86_64-pc-windows-msvc
 
-      # ── Package base app ───────────────────────────────────────────────────────
       - name: Package Electron app
         run: npm run gulp vscode-win32-x64
         env:
@@ -180,7 +169,6 @@ jobs:
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path dist | Out-Null
 
-      # ── 1. User Installer (.exe) ───────────────────────────────────────────────
       - name: Copy Inno Updater tools
         run: npm run gulp vscode-win32-x64-inno-updater
 
@@ -201,7 +189,6 @@ jobs:
             } else { Write-Warning "No .exe found in user-setup — skipping" }
           } else { Write-Warning "user-setup folder not found — skipping" }
 
-      # ── 2. System Installer (.exe) ─────────────────────────────────────────────
       - name: Build System Installer
         run: npm run gulp vscode-win32-x64-system-setup
         env:
@@ -219,17 +206,6 @@ jobs:
             } else { Write-Warning "No .exe found in system-setup — skipping" }
           } else { Write-Warning "system-setup folder not found — skipping" }
 
-      # ── 3. CLI binary ──────────────────────────────────────────────────────────
-      - name: Stage — CLI binary
-        shell: pwsh
-        run: |
-          $cliBin = "cli/target/x86_64-pc-windows-msvc/release/loophole.exe"
-          if (Test-Path $cliBin) {
-            Copy-Item $cliBin "dist/loophole-cli-win32-x64-$env:VERSION.exe"
-            Write-Host "Staged CLI binary"
-          } else { Write-Warning "CLI binary not found — skipping" }
-
-      # ── Summary ───────────────────────────────────────────────────────────────
       - name: List built artifacts
         shell: pwsh
         run: |
@@ -239,7 +215,6 @@ jobs:
             Write-Host "  $($_.Name)  ($size MB)"
           }
 
-      # ── Upload all artifacts to GitHub ────────────────────────────────────────
       - name: Upload — User Installer
         uses: actions/upload-artifact@v4
         with:
@@ -256,61 +231,22 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-      - name: Upload — CLI
-        uses: actions/upload-artifact@v4
-        with:
-          name: loophole-cli-win32-x64-${{ env.VERSION }}
-          path: dist/loophole-cli-win32-x64-${{ env.VERSION }}.exe
-          retention-days: 7
-          if-no-files-found: warn
-
-      - name: Zip artifacts
-        shell: pwsh
-        run: |
-          Get-ChildItem dist -Filter "*.exe" | ForEach-Object {
-            Compress-Archive -Path $_.FullName -DestinationPath "dist/$($_.BaseName).zip"
-          }
-
-      - name: Upload — Zips
-        uses: actions/upload-artifact@v4
-        with:
-          name: loophole-win32-x64-zips-${{ env.VERSION }}
-          path: dist/*.zip
-          retention-days: 7
-          if-no-files-found: warn
-
-      # ── Upload to Gofile.io (optional) ────────────────────────────────────────
       - name: Upload to Gofile.io
         if: ${{ github.event.inputs.upload_to_gofile == 'true' }}
         shell: bash
         run: |
-          echo "======================================"
-          echo "  Uploading artifacts to Gofile.io"
-          echo "======================================"
-
-          # Get best available server
           SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])")
-          echo "Using server: $SERVER"
-
-          for FILE in dist/*.zip; do
+          for FILE in dist/*.exe; do
+            [ -f "$FILE" ] || continue
             FILENAME=$(basename "$FILE")
-            echo ""
-            echo "Uploading: $FILENAME"
-            RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
-            echo "Response: $RESPONSE"
-            LINK=$(echo $RESPONSE | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['downloadPage'])")
+            RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/contents/uploadfile")
+            LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data',{}).get('downloadPage','FAILED'))" 2>/dev/null)
             echo " $FILENAME → $LINK"
           done
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Build all Windows arm64 artifacts
-  #
-  # Cross-compiled from the same windows-2022 runner type used for x64 — this is
-  # the same approach upstream VS Code uses (no dedicated ARM64 hardware needed).
-  # The underlying gulp tasks (vscode-win32-arm64, vscode-win32-arm64-*-setup,
-  # vscode-win32-arm64-inno-updater) and Inno Setup arm64 AppIds already exist
-  # in build/gulpfile.vscode.win32.ts and build/gulpfile.vscode.ts — this job
-  # just wires them up the same way the x64 job already does.
+  # Build: Windows arm64
+  # Produces: LoopholeUserSetup-arm64-{version}.exe, LoopholeSetup-arm64-{version}.exe
   # ─────────────────────────────────────────────────────────────────────────────
   build-windows-arm64:
     name: Build Windows arm64
@@ -320,20 +256,17 @@ jobs:
       VERSION: ${{ needs.resolve-version.outputs.version }}
 
     steps:
-      # ── Checkout ──────────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── Toolchain ─────────────────────────────────────────────────────────────
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      # ── Pin npm (< 11.2.0 required by preinstall.ts) ──────────────────────────
       - name: Pin npm (< 11.2.0 required by preinstall)
         shell: pwsh
         run: |
@@ -341,7 +274,7 @@ jobs:
           Write-Host "node: $(node -v)"
           Write-Host "npm:  $(npm -v)"
           if ([version](npm -v) -ge [version]'11.2.0') {
-            Write-Error "npm is still >= 11.2.0 after pin — PATH is not honoring setup-node"
+            Write-Error "npm is still >= 11.2.0 after pin"
             exit 1
           }
 
@@ -358,7 +291,6 @@ jobs:
         with:
           targets: aarch64-pc-windows-msvc
 
-      # ── Caches ────────────────────────────────────────────────────────────────
       - name: Cache Rust artifacts
         uses: actions/cache@v4
         with:
@@ -385,7 +317,6 @@ jobs:
           key: ${{ runner.os }}-node-arm64-${{ hashFiles('package-lock.json') }}
           restore-keys: ${{ runner.os }}-node-arm64-
 
-      # ── Install & compile ──────────────────────────────────────────────────────
       - name: Install node-gyp
         run: npm install -g node-gyp
 
@@ -408,18 +339,12 @@ jobs:
       - name: Restore conpty binaries from node-pty prebuilds
         shell: pwsh
         run: |
-          # electron-rebuild wipes build/Release/ and recreates it with only the
-          # rebuilt .node binary — conpty.dll and OpenConsole.exe are lost.
-          # The correct source is node-pty's arch-specific prebuilds folder which
-          # ships the exact DLLs the postinstall would have copied.
-          $src = "node_modules/node-pty/prebuilds/win32-arm64/conpty"
+          $src  = "node_modules/node-pty/prebuilds/win32-arm64/conpty"
           $dest = "node_modules/node-pty/build/Release/conpty"
-
           if (-not (Test-Path $src)) {
-            Write-Error "Cannot find node-pty prebuilds at '$src'. Check the installed node-pty version."
+            Write-Error "Cannot find node-pty prebuilds at '$src'."
             exit 1
           }
-
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Copy-Item "$src/*" -Destination $dest -Recurse -Force
           Write-Host "Copied conpty binaries from $src to $dest"
@@ -442,7 +367,6 @@ jobs:
         working-directory: cli
         run: cargo build --release --target aarch64-pc-windows-msvc
 
-      # ── Package base app ───────────────────────────────────────────────────────
       - name: Package Electron app
         run: npm run gulp vscode-win32-arm64
         env:
@@ -452,7 +376,6 @@ jobs:
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path dist | Out-Null
 
-      # ── 1. User Installer (.exe) ───────────────────────────────────────────────
       - name: Copy Inno Updater tools
         run: npm run gulp vscode-win32-arm64-inno-updater
 
@@ -473,7 +396,6 @@ jobs:
             } else { Write-Warning "No .exe found in user-setup — skipping" }
           } else { Write-Warning "user-setup folder not found — skipping" }
 
-      # ── 2. System Installer (.exe) ─────────────────────────────────────────────
       - name: Build System Installer
         run: npm run gulp vscode-win32-arm64-system-setup
         env:
@@ -491,17 +413,6 @@ jobs:
             } else { Write-Warning "No .exe found in system-setup — skipping" }
           } else { Write-Warning "system-setup folder not found — skipping" }
 
-      # ── 3. CLI binary ──────────────────────────────────────────────────────────
-      - name: Stage — CLI binary
-        shell: pwsh
-        run: |
-          $cliBin = "cli/target/aarch64-pc-windows-msvc/release/loophole.exe"
-          if (Test-Path $cliBin) {
-            Copy-Item $cliBin "dist/loophole-cli-win32-arm64-$env:VERSION.exe"
-            Write-Host "Staged CLI binary"
-          } else { Write-Warning "CLI binary not found — skipping" }
-
-      # ── Summary ───────────────────────────────────────────────────────────────
       - name: List built artifacts
         shell: pwsh
         run: |
@@ -511,7 +422,6 @@ jobs:
             Write-Host "  $($_.Name)  ($size MB)"
           }
 
-      # ── Upload all artifacts to GitHub ────────────────────────────────────────
       - name: Upload — User Installer
         uses: actions/upload-artifact@v4
         with:
@@ -528,47 +438,15 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-      - name: Upload — CLI
-        uses: actions/upload-artifact@v4
-        with:
-          name: loophole-cli-win32-arm64-${{ env.VERSION }}
-          path: dist/loophole-cli-win32-arm64-${{ env.VERSION }}.exe
-          retention-days: 7
-          if-no-files-found: warn
-
-      - name: Zip artifacts
-        shell: pwsh
-        run: |
-          Get-ChildItem dist -Filter "*.exe" | ForEach-Object {
-            Compress-Archive -Path $_.FullName -DestinationPath "dist/$($_.BaseName).zip"
-          }
-
-      - name: Upload — Zips
-        uses: actions/upload-artifact@v4
-        with:
-          name: loophole-win32-arm64-zips-${{ env.VERSION }}
-          path: dist/*.zip
-          retention-days: 7
-          if-no-files-found: warn
-
-      # ── Upload to Gofile.io (optional) ────────────────────────────────────────
       - name: Upload to Gofile.io
         if: ${{ github.event.inputs.upload_to_gofile == 'true' }}
         shell: bash
         run: |
-          echo "======================================"
-          echo "  Uploading artifacts to Gofile.io"
-          echo "======================================"
-
           SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])")
-          echo "Using server: $SERVER"
-
-          for FILE in dist/*.zip; do
+          for FILE in dist/*.exe; do
+            [ -f "$FILE" ] || continue
             FILENAME=$(basename "$FILE")
-            echo ""
-            echo "Uploading: $FILENAME"
-            RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/uploadFile")
-            echo "Response: $RESPONSE"
-            LINK=$(echo $RESPONSE | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['downloadPage'])")
+            RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/contents/uploadfile")
+            LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data',{}).get('downloadPage','FAILED'))" 2>/dev/null)
             echo " $FILENAME → $LINK"
           done
