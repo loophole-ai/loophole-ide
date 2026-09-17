@@ -24,6 +24,19 @@ import { estimateTokens } from '../../common/tokenizer.js';
 
 const estimateTokensFromText = (text: string): number => Math.ceil(text.length / 4);
 
+// Estimate tokens for a full messages array including role/content wrapper overhead
+// Based on OpenAI tiktoken docs: 4 tokens per message + 3 tokens per reply primer
+const estimateTokensFromMessages = (msgs: Array<{ role: string; content: any }>): number => {
+	let total = 3 // base conversation overhead
+	for (const m of msgs) {
+		total += 4 // per-message role/content wrapper
+		if (m.role === 'assistant') total += 3 // reply primer
+		const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+		total += estimateTokensFromText(text)
+	}
+	return total
+}
+
 const getGoogleApiKey = async () => {
 	// module‑level singleton
 	const auth = new GoogleAuth({ scopes: `https://www.googleapis.com/auth/cloud-platform` });
@@ -555,9 +568,8 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			else {
 				// Fallback: estimate tokens if provider didn't return usage
 				if (!tokenUsage) {
-					const inputText = messages.map((m: any) => typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).join(' ');
-					const estInput = estimateTokensFromText(inputText);
-					const estOutput = estimateTokensFromText(fullTextSoFar);
+					const estInput = estimateTokensFromMessages(messages as any)
+					const estOutput = estimateTokensFromText(fullTextSoFar)
 					tokenUsage = { inputTokens: estInput, outputTokens: estOutput, totalTokens: estInput + estOutput };
 				}
 				const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId)
@@ -761,8 +773,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 		} : undefined
 
 		if (!tokenUsage) {
-			const inputText = messages.map((m: any) => typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).join(' ')
-			const estInput = estimateTokensFromText(inputText)
+			const estInput = estimateTokensFromMessages(messages as any)
 			const estOutput = estimateTokensFromText(fullText)
 			tokenUsage = { inputTokens: estInput, outputTokens: estOutput, totalTokens: estInput + estOutput }
 		}
