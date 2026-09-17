@@ -11,4 +11,11 @@ export type VoidCheckUpdateRespose = {
 	actions?: undefined,
 } | null
 
+export interface IVoidUpdateInfo {
+	version?: string;
+	assetName?: string;
+	isDownloaded?: boolean;
+	isReady?: boolean;
+}
+
 

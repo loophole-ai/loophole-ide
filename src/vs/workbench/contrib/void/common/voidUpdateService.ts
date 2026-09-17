@@ -7,13 +7,17 @@ import { ProxyChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
-import { VoidCheckUpdateRespose } from './voidUpdateServiceTypes.js';
+import { VoidCheckUpdateRespose, IVoidUpdateInfo } from './voidUpdateServiceTypes.js';
 
 
 
 export interface IVoidUpdateService {
 	readonly _serviceBrand: undefined;
 	check: (explicit: boolean) => Promise<VoidCheckUpdateRespose>;
+	downloadUpdate: () => Promise<boolean>;
+	applyUpdate: () => Promise<boolean>;
+	quitAndInstall: () => Promise<void>;
+	getUpdateInfo: () => Promise<IVoidUpdateInfo>;
 }
 
 
@@ -29,15 +33,34 @@ export class VoidUpdateService implements IVoidUpdateService {
 	constructor(
 		@IMainProcessService mainProcessService: IMainProcessService, // (only usable on client side)
 	) {
-		// creates an IPC proxy to use metricsMainService.ts
+		// creates an IPC proxy to use voidUpdateMainService.ts
 		this.voidUpdateService = ProxyChannel.toService<IVoidUpdateService>(mainProcessService.getChannel('void-channel-update'));
 	}
 
 
 	// anything transmitted over a channel must be async even if it looks like it doesn't have to be
 	check: IVoidUpdateService['check'] = async (explicit) => {
-		const res = await this.voidUpdateService.check(explicit)
-		return res
+		const res = await this.voidUpdateService.check(explicit);
+		return res;
+	}
+
+	downloadUpdate: IVoidUpdateService['downloadUpdate'] = async () => {
+		const res = await this.voidUpdateService.downloadUpdate();
+		return res;
+	}
+
+	applyUpdate: IVoidUpdateService['applyUpdate'] = async () => {
+		const res = await this.voidUpdateService.applyUpdate();
+		return res;
+	}
+
+	quitAndInstall: IVoidUpdateService['quitAndInstall'] = async () => {
+		await this.voidUpdateService.quitAndInstall();
+	}
+
+	getUpdateInfo: IVoidUpdateService['getUpdateInfo'] = async () => {
+		const res = await this.voidUpdateService.getUpdateInfo();
+		return res;
 	}
 }
 
