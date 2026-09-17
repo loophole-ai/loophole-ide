@@ -283,6 +283,108 @@ const AttachFileButton = ({ className }: { className?: string }) => {
 }
 
 
+// Context Window Indicator - circular SVG ring that fills based on context usage
+const ContextWindowIndicator = ({ featureName }: { featureName: FeatureName }) => {
+	const accessor = useAccessor()
+	const settingsState = useSettingsState()
+	const chatThreadsState = useChatThreadsState()
+
+	const currentThread = chatThreadsState.allThreads[chatThreadsState.currentThreadId]
+	const modelSelection = settingsState.modelSelectionOfFeature[featureName]
+
+	const modelCapabilities = useMemo(() => {
+		if (!modelSelection) return null
+		return getModelCapabilities(modelSelection.providerName, modelSelection.modelName, settingsState.overridesOfModel)
+	}, [modelSelection, settingsState.overridesOfModel])
+
+	const estimatedUsage = useMemo(() => {
+		if (!currentThread || !modelCapabilities) return 0
+
+		// PRIMARY: use real inputTokens from the last API response —
+		// this is exact and already includes system prompt + tool definitions + full history.
+		const cumulativeCount = currentThread.state.cumulativeTokenCount || 0
+		if (cumulativeCount > 0) return cumulativeCount
+
+		// FALLBACK (before first response): estimate locally.
+		// Rules from OpenAI tiktoken docs and Anthropic token counting:
+		//   - Every message: +4 tokens for role/content wrapper overhead
+		//   - Every reply primed by assistant turn: +3 tokens
+		//   - System prompt: counted as a message with same overhead
+		//   - Tool definitions: ~1500-2000 tokens per tool in agent mode
+		//   - Base conversation overhead: ~3 tokens
+		const chatMode = settingsState.globalSettings.chatMode
+		const numTools = chatMode === 'agent' ? 10 : chatMode === 'gather' ? 2 : 0 // approximate
+		const toolOverhead = numTools * 150 // ~150 tokens per tool definition (conservative)
+
+		let totalTokens = 3 // base overhead
+		totalTokens += 800 // system prompt estimate (loophole system prompt is ~600-1000 tokens)
+		totalTokens += toolOverhead
+
+		for (const message of currentThread.messages) {
+			totalTokens += 4 // per-message role/content wrapper overhead
+			if (message.role === 'user' && 'content' in message) {
+				totalTokens += estimateTokens(message.content)
+				// count selection/file context
+				if ('selections' in message && message.selections) {
+					for (const sel of message.selections) {
+						if ('content' in sel) totalTokens += estimateTokens((sel as any).content ?? '')
+					}
+				}
+			} else if (message.role === 'assistant' && 'displayContent' in message) {
+				totalTokens += 3 // assistant reply primer
+				totalTokens += estimateTokens(message.displayContent)
+				if ('reasoning' in message && message.reasoning) {
+					totalTokens += estimateTokens(message.reasoning)
+				}
+			} else if (message.role === 'tool' && 'content' in message) {
+				totalTokens += estimateTokens((message as any).content ?? '')
+			}
+		}
+
+		return totalTokens
+	}, [currentThread, modelCapabilities, settingsState.globalSettings.chatMode])
+
+	const contextWindow = modelCapabilities?.contextWindow || 128000
+	const usagePercentage = Math.min((estimatedUsage / contextWindow) * 100, 100)
+	const circumference = 2 * Math.PI * 6
+	const strokeDashoffset = circumference - (usagePercentage / 100) * circumference
+
+	const getColor = () => {
+		if (usagePercentage < 50) return 'text-loophole-fg-3'
+		if (usagePercentage < 75) return 'text-yellow-500'
+		if (usagePercentage < 90) return 'text-orange-500'
+		return 'text-red-500'
+	}
+
+	const title = modelCapabilities
+		? `Context window: ${formatTokenCount(estimatedUsage)} / ${formatTokenCount(contextWindow)} (${usagePercentage.toFixed(1)}%)`
+		: 'Select a model to see context window usage'
+
+	return (
+		<button
+			type='button'
+			className={`w-5 h-5 rounded flex-shrink-0 flex items-center justify-center cursor-pointer transition-colors ${getColor()} hover:text-loophole-fg-1`}
+			title={title}
+		>
+			<svg width='14' height='14' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'>
+				<circle cx='8' cy='8' r='6' stroke='currentColor' strokeWidth='1.5' strokeOpacity='0.3' />
+				<circle
+					cx='8'
+					cy='8'
+					r='6'
+					stroke='currentColor'
+					strokeWidth='1.5'
+					strokeDasharray={circumference.toFixed(1)}
+					strokeDashoffset={strokeDashoffset.toFixed(1)}
+					strokeLinecap='round'
+					transform='rotate(-90 8 8)'
+				/>
+			</svg>
+		</button>
+	)
+}
+
+
 const nameOfChatMode = {
 	'normal': 'Chat',
 	'gather': 'Gather',
@@ -446,11 +548,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 
 				<div className="flex flex-col items-end gap-y-1">
 
-					{tokenCount !== undefined && tokenCount > 0 && (
-						<span className='text-loophole-fg-3 text-[10px] leading-none select-none pointer-events-none'>
-							{contextWindow ? `${formatTokenCount(tokenCount)} / ${formatTokenCount(contextWindow)}` : `${formatTokenCount(tokenCount)} tokens`}
-						</span>
-					)}
+					{featureName === 'Chat' && <ContextWindowIndicator featureName={featureName} />}
 
 					<div className="flex items-center gap-2">
 
