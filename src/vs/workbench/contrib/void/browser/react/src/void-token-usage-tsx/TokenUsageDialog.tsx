@@ -300,8 +300,11 @@ export const TokenUsageDialog = ({ isOpen: isOpenProp, _ts }: Props) => {
 
     const close = useCallback(() => setIsOpen(false), []);
 
-    const totalTokens = tokenUsageService.getTotalTokensUsed();
-    const totalCost = tokenUsageService.getEstimatedCost();
+    // Derive totals from dailyData so they update reactively whenever new tokens are added.
+    // Reading directly from the service (getTotalTokensUsed / getEstimatedCost) only runs
+    // once at initial render and never re-runs, causing the frozen display.
+    const totalTokens = dailyData.reduce((sum, d) => sum + d.tokens, 0);
+    const totalCost = dailyData.reduce((sum, d) => sum + d.cost, 0);
 
     // Collect all unique models across all days,
     const allModels = Array.from(
