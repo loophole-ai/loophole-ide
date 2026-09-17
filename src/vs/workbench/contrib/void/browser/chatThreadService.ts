@@ -133,6 +133,7 @@ export type ThreadType = {
 			}
 		}
 
+		cumulativeTokenCount: number; // inputTokens from the latest API call — represents current context size
 
 		mountedInfo?: {
 			whenMounted: Promise<WhenMounted>
@@ -218,6 +219,7 @@ const newThreadObject = () => {
 			stagingSelections: [],
 			focusedMessageIdx: undefined,
 			linksOfMessageIdx: {},
+			cumulativeTokenCount: 0,
 		},
 		filesWithUserChanges: new Set()
 	} satisfies ThreadType
@@ -820,6 +822,11 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						// Track token usage if available
 						if (tokenUsage) {
 							this._tokenUsageService.addTokens({ ...tokenUsage, providerName: modelSelection?.providerName, modelName: modelSelection?.modelName })
+							// Update context window indicator — inputTokens IS the current context size
+							const thread = this.state.allThreads[threadId]
+							if (thread) {
+								this._setThreadState(threadId, { cumulativeTokenCount: tokenUsage.inputTokens })
+							}
 						}
 						resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText, fullReasoning, anthropicReasoning } }) // resolve with tool calls
 					},
