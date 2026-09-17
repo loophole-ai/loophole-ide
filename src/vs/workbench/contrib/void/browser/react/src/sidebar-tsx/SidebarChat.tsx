@@ -548,19 +548,13 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 
 				<div className="flex flex-col items-end gap-y-1">
 
-					{featureName === 'Chat' && <ContextWindowIndicator featureName={featureName} />}
-
 					<div className="flex items-center gap-2">
-
 						{isStreaming && loadingIcon}
-
-						{isStreaming ? (
+        				{featureName === 'Chat' && <ContextWindowIndicator featureName={featureName} />}
+        				{isStreaming ? (
 							<ButtonStop onClick={onAbort} />
 						) : (
-							<ButtonSubmit
-								onClick={onSubmit}
-								disabled={isDisabled}
-							/>
+							<ButtonSubmit onClick={onSubmit} disabled={isDisabled} />
 						)}
 					</div>
 				</div>
