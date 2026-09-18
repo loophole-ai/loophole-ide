@@ -3,7 +3,7 @@
 	"commit": "release",
 	"nameShort": "Loophole",
 	"nameLong": "Loophole Editor",
-	"loopholeVersion": "2.2.0",
+	"loopholeVersion": "2.2.1",
 	"loopholeRelease": "1000",
 	"applicationName": "loophole",
 	"dataFolderName": ".loophole-editor",
@@ -109,7 +109,7 @@
 		"completionsEnablementSetting": "",
 		"nextEditSuggestionsSetting": ""
 	},
-	"quality": "stable",
+	"quality": "oss",
 	"onboardingThemes": [
 		{
 			"id": "loophole-dark",
