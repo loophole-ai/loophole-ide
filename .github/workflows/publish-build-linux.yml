@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: '24.18.0'
   ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
   ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
 
@@ -23,14 +23,26 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - id: version
+
+      - name: Pin npm (< 11.2.0 required by preinstall)
+        run: |
+          npm install -g npm@11.1.0
+          echo "node: $(node -v)"
+          echo "npm:  $(npm -v)"
+
+      - name: Determine version
+        id: version
         run: |
           VERSION=$(node -p "require('./product.json').loopholeVersion ?? require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Linux x64
@@ -47,7 +59,8 @@ jobs:
       VSCODE_QUALITY: stable
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -68,16 +81,25 @@ jobs:
           sudo mv squashfs-root /opt/appimagetool
           sudo ln -s /opt/appimagetool/AppRun /usr/local/bin/appimagetool
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - uses: actions/setup-python@v5
+      - name: Pin npm (< 11.2.0 required by preinstall)
+        run: |
+          npm install -g npm@11.1.0
+          echo "node: $(node -v)"
+          echo "npm:  $(npm -v)"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust (for CLI)
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
 
@@ -265,16 +287,25 @@ jobs:
           sudo mv squashfs-root /opt/appimagetool
           sudo ln -s /opt/appimagetool/AppRun /usr/local/bin/appimagetool
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - uses: actions/setup-python@v5
+      - name: Pin npm (< 11.2.0 required by preinstall)
+        run: |
+          npm install -g npm@11.1.0
+          echo "node: $(node -v)"
+          echo "npm:  $(npm -v)"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust (for CLI)
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-gnu
 
