@@ -16,7 +16,7 @@ on:
           - 'false'
 
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: '24.18.0'
   ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
   ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
 
@@ -37,6 +37,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+
+      - name: Pin npm (< 11.2.0 required by preinstall)
+        run: |
+          npm install -g npm@11.1.0
+          echo "node: $(node -v)"
+          echo "npm:  $(npm -v)"
 
       - name: Install dependencies
         run: npm ci
@@ -75,6 +81,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Pin npm (< 11.2.0 required by preinstall)
+        run: |
+          npm install -g npm@11.1.0
+          echo "node: $(node -v)"
+          echo "npm:  $(npm -v)"
+
       - name: Determine version
         id: version
         run: |
@@ -107,6 +119,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+
+      - name: Pin npm (< 11.2.0 required by preinstall)
+        run: |
+          npm install -g npm@11.1.0
+          echo "node: $(node -v)"
+          echo "npm:  $(npm -v)"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -248,6 +266,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+
+      - name: Pin npm (< 11.2.0 required by preinstall)
+        run: |
+          npm install -g npm@11.1.0
+          echo "node: $(node -v)"
+          echo "npm:  $(npm -v)"
 
       - name: Setup Python
         uses: actions/setup-python@v5
