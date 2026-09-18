@@ -461,7 +461,8 @@ function patchWin32DependenciesTask(destinationFolderName: string) {
 		])).flatMap(o => o);
 		const packageJsonContents = JSON.parse(await fs.promises.readFile(path.join(cwd, 'package.json'), 'utf8'));
 		const productContents = JSON.parse(await fs.promises.readFile(path.join(cwd, 'product.json'), 'utf8'));
-		const baseVersion = packageJsonContents.version.replace(/-.*$/, '');
+		const displayVersion = productContents.loopholeVersion ?? packageJsonContents.version;
+		const baseVersion = displayVersion.replace(/-.*$/, '');
 
 		const patchPromises = deps.map<Promise<unknown>>(async dep => {
 			const basename = path.basename(dep);
@@ -472,12 +473,12 @@ function patchWin32DependenciesTask(destinationFolderName: string) {
 					'version-string': {
 						'CompanyName': 'Microsoft Corporation',
 						'FileDescription': productContents.nameLong,
-						'FileVersion': packageJsonContents.version,
+						'FileVersion': displayVersion,
 						'InternalName': basename,
 						'LegalCopyright': 'Copyright (C) 2026 Microsoft. All rights reserved',
 						'OriginalFilename': basename,
 						'ProductName': productContents.nameLong,
-						'ProductVersion': packageJsonContents.version,
+						'ProductVersion': displayVersion,
 					}
 				});
 			} catch (err) {
