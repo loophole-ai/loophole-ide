@@ -50,7 +50,7 @@ jobs:
           echo "npm:  $(npm -v)"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Install React dependencies
         run: npm install
@@ -176,7 +176,7 @@ jobs:
           restore-keys: linux-x64-electron-
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
         env:
           npm_config_arch: x64
 
@@ -362,7 +362,7 @@ jobs:
           restore-keys: linux-arm64-electron-
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
         env:
           npm_config_arch: arm64
 

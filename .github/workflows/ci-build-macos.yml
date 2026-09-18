@@ -45,7 +45,7 @@ jobs:
           echo "npm:  $(npm -v)"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -156,7 +156,7 @@ jobs:
           restore-keys: macos-x64-electron-
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
         env:
           npm_config_arch: x64
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -303,7 +303,7 @@ jobs:
           restore-keys: macos-arm64-electron-
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
         env:
           npm_config_arch: arm64
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
