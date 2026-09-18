@@ -404,7 +404,15 @@ jobs:
           EOF
           chmod +x .appimage/AppDir/AppRun
 
-          ARCH=aarch64 appimagetool --no-appstream .appimage/AppDir "dist/Loophole-$VERSION-aarch64.AppImage"
+          # Clean up any files that might confuse appimagetool architecture detection
+          find .appimage/AppDir -name ".dir-locals.el" -delete
+          find .appimage/AppDir -name ".git*" -delete
+          find .appimage/AppDir -name "*.a" -delete
+          find .appimage/AppDir -name "*.o" -delete
+
+          # Set architecture explicitly and build AppImage
+          export ARCH=aarch64
+          appimagetool --no-appstream .appimage/AppDir "dist/Loophole-$VERSION-aarch64.AppImage"
 
       - name: Compute SHA256
         run: |
