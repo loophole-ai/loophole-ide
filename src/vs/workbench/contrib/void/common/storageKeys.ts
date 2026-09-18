@@ -6,26 +6,28 @@
 // past values:
 // 'void.settingsServiceStorage'
 // 'void.settingsServiceStorageI' // 1.0.2
+// 'void.settingsServiceStorageII' // 1.0.3
 
-// 1.0.3
-export const VOID_SETTINGS_STORAGE_KEY = 'void.settingsServiceStorageII'
+// Loophole
+export const VOID_SETTINGS_STORAGE_KEY = 'loophole.settingsServiceStorage'
 
 
 // past values:
 // 'void.chatThreadStorage'
 // 'void.chatThreadStorageI' // 1.0.2
+// 'void.chatThreadStorageII' // 1.0.3
 
-// 1.0.3
-export const THREAD_STORAGE_KEY = 'void.chatThreadStorageII'
+// Loophole
+export const THREAD_STORAGE_KEY = 'loophole.chatThreadStorage'
 
 
 
-export const OPT_OUT_KEY = 'void.app.optOutAll'
+export const OPT_OUT_KEY = 'loophole.app.optOutAll'
 
-export const PROJECT_MEMORY_STORAGE_KEY = 'void.projectMemory.v1'
+export const PROJECT_MEMORY_STORAGE_KEY = 'loophole.projectMemory.v1'
 
 // set once we've attempted to auto-bootstrap project memory for a workspace, so we never retry
 // (even if the run failed or the user later clears the memory on purpose)
-export const PROJECT_MEMORY_BOOTSTRAP_ATTEMPTED_KEY = 'void.projectMemory.bootstrapAttempted.v1'
+export const PROJECT_MEMORY_BOOTSTRAP_ATTEMPTED_KEY = 'loophole.projectMemory.bootstrapAttempted.v1'
 
-export const TODO_STORAGE_KEY = 'void.todos.v1'
+export const TODO_STORAGE_KEY = 'loophole.todos.v1'

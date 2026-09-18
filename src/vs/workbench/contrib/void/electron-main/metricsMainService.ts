@@ -54,7 +54,7 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 	// returns 'NULL' or the old key
 	private get oldId() {
 		// check new storage key first
-		const newKey = 'void.app.oldMachineId'
+		const newKey = 'loophole.app.oldMachineId'
 		const newOldId = this._appStorage.get(newKey, StorageScope.APPLICATION)
 		if (newOldId) return newOldId
 
@@ -65,7 +65,7 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 
 		// in a few weeks we can replace above with this
 		// private get oldId() {
-		// 	return this._memoStorage('void.app.oldMachineId', StorageTarget.MACHINE, 'NULL')
+		// 	return this._memoStorage('loophole.app.oldMachineId', StorageTarget.MACHINE, 'NULL')
 		// }
 	}
 
@@ -74,12 +74,12 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 	private get distinctId() {
 		const oldId = this.oldId
 		const setValIfNotExist = oldId === 'NULL' ? undefined : oldId
-		return this._memoStorage('void.app.machineId', StorageTarget.MACHINE, setValIfNotExist)
+		return this._memoStorage('loophole.app.machineId', StorageTarget.MACHINE, setValIfNotExist)
 	}
 
 	// just to see if there are ever multiple machineIDs per userID (instead of this, we should just track by the user's email)
 	private get userId() {
-		return this._memoStorage('void.app.userMachineId', StorageTarget.USER)
+		return this._memoStorage('loophole.app.userMachineId', StorageTarget.USER)
 	}
 
 	constructor(
