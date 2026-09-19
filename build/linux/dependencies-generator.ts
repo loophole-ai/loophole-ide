@@ -54,11 +54,18 @@ export async function getDependencies(packageType: 'deb' | 'rpm', buildDir: stri
 	}
 
 	const appPath = path.join(buildDir, applicationName);
-	// Add the native modules, excluding musl-linked binaries which dpkg-shlibdeps
-	// cannot resolve on a glibc system (e.g. @img/sharp-linuxmusl-*).
-	// Also exclude native binaries for non-Linux platforms and non-target Linux architectures
-	// (e.g. onnxruntime-node ships binaries for darwin, win32, and linux/arm64 alongside linux/x64).
-	// dpkg-shlibdeps will fail trying to resolve shared library deps for foreign-arch ELF binaries.
+	// Add the native modules, excluding:
+	// 1. musl-linked binaries which dpkg-shlibdeps cannot resolve on a glibc system (e.g. @img/sharp-linuxmusl-*).
+	// 2. Non-Linux platform binaries and Linux binaries for non-target architectures
+	//    (e.g. onnxruntime-node ships binaries for darwin, win32, linux/arm64 alongside linux/x64).
+	//    dpkg-shlibdeps will fail trying to resolve shared library deps for foreign-arch ELF binaries.
+	// 3. Packages that bundle their own private .so files via $ORIGIN RPATH. dpkg-shlibdeps cannot
+	//    resolve $ORIGIN without a DEBIAN/ sub-directory in the build tree, so these must be skipped.
+	//    Their bundled libraries are not system dependencies and should not appear in the .deb deps.
+	const bundledPrivateLibPackages = [
+		'onnxruntime-node',  // bundles libonnxruntime.so.1 next to the .node file
+		'sharp-linux-',      // @img/sharp-linux-* bundles libvips via sharp-libvips-linux-*
+	];
 	const targetLinuxArch = arch === 'amd64' ? 'x64' : arch === 'arm64' ? 'arm64' : arch === 'armhf' ? 'arm' : arch;
 	const files = findResult.stdout.toString().trimEnd().split('\n').filter(f => {
 		if (f.includes('linuxmusl')) {
@@ -70,6 +77,10 @@ export async function getDependencies(packageType: 'deb' | 'rpm', buildDir: stri
 		}
 		// Exclude Linux binaries for non-target architectures
 		if (/[\\/]linux[\\/]/.test(f) && !new RegExp(`[\\\\/]linux[\\\\/]${targetLinuxArch}[\\\\/]`).test(f)) {
+			return false;
+		}
+		// Exclude packages that bundle private .so files ($ORIGIN RPATH)
+		if (bundledPrivateLibPackages.some(pkg => f.includes(pkg))) {
 			return false;
 		}
 		return true;
