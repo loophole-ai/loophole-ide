@@ -20,7 +20,7 @@ env:
   ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
   ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
 
-jobs
+jobs:
   pr-check:
     name: PR Compile Check
     if: github.event_name == 'pull_request'
