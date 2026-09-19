@@ -71,12 +71,14 @@ export async function getDependencies(packageType: 'deb' | 'rpm', buildDir: stri
 		if (f.includes('linuxmusl')) {
 			return false;
 		}
-		// Exclude binaries under non-Linux platform directories (darwin, win32)
-		if (/[\\/](darwin|win32)[\\/]/.test(f)) {
+		// Exclude binaries under non-Linux platform directories.
+		// Matches both slash-separated (darwin/arm64/) and hyphenated prebuild (darwin-x64/) layouts.
+		if (/[\\/](darwin|win32)[-/]/.test(f)) {
 			return false;
 		}
-		// Exclude Linux binaries for non-target architectures
-		if (/[\\/]linux[\\/]/.test(f) && !new RegExp(`[\\\\/]linux[\\\\/]${targetLinuxArch}[\\\\/]`).test(f)) {
+		// Exclude Linux binaries for non-target architectures.
+		// Matches both slash-separated (/linux/arm64/) and hyphenated prebuild (linux-arm64/) layouts.
+		if (/[\\/]linux[-/]/.test(f) && !new RegExp(`[\\\\/]linux[-/]${targetLinuxArch}(?:[\\\\/]|$)`).test(f)) {
 			return false;
 		}
 		// Exclude packages that bundle private .so files ($ORIGIN RPATH)
