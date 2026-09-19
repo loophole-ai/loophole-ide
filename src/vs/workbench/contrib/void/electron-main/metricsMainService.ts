@@ -37,10 +37,10 @@ const osInfo = _getOSInfo()
 export class MetricsMainService extends Disposable implements IMetricsService {
 	_serviceBrand: undefined;
 
-	private readonly client: PostHog
+	private readonly client!: PostHog
 
 	private _initProperties: object = {}
-	private _flushInterval?: NodeJS.Timeout
+	private _flushInterval?: any
 	private _distinctId?: string
 	private _userId?: string
 	private _oldId?: string
