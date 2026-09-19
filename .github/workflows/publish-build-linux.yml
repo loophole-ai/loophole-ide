@@ -197,6 +197,18 @@ jobs:
           EOF
           chmod +x .appimage/AppDir/AppRun
 
+          # Debug: List all files in AppDir to identify architecture conflicts
+          echo "=== Debug: Files in .appimage/AppDir ==="
+          find .appimage/AppDir -type f -exec file {} \; | head -50
+          echo "=== Debug: Directory structure ==="
+          find .appimage/AppDir -type f | head -50
+
+          # Clean up any files that might confuse appimagetool architecture detection
+          find .appimage/AppDir -name ".dir-locals.el" -delete
+          find .appimage/AppDir -name ".git*" -delete
+          find .appimage/AppDir -name "*.a" -delete
+          find .appimage/AppDir -name "*.o" -delete
+
           ARCH=x86_64 appimagetool --no-appstream .appimage/AppDir "dist/Loophole-$VERSION-x86_64.AppImage"
 
       - name: Compute SHA256
