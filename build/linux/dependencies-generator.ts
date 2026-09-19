@@ -56,7 +56,24 @@ export async function getDependencies(packageType: 'deb' | 'rpm', buildDir: stri
 	const appPath = path.join(buildDir, applicationName);
 	// Add the native modules, excluding musl-linked binaries which dpkg-shlibdeps
 	// cannot resolve on a glibc system (e.g. @img/sharp-linuxmusl-*).
-	const files = findResult.stdout.toString().trimEnd().split('\n').filter(f => !f.includes('linuxmusl'));
+	// Also exclude native binaries for non-Linux platforms and non-target Linux architectures
+	// (e.g. onnxruntime-node ships binaries for darwin, win32, and linux/arm64 alongside linux/x64).
+	// dpkg-shlibdeps will fail trying to resolve shared library deps for foreign-arch ELF binaries.
+	const targetLinuxArch = arch === 'amd64' ? 'x64' : arch === 'arm64' ? 'arm64' : arch === 'armhf' ? 'arm' : arch;
+	const files = findResult.stdout.toString().trimEnd().split('\n').filter(f => {
+		if (f.includes('linuxmusl')) {
+			return false;
+		}
+		// Exclude binaries under non-Linux platform directories (darwin, win32)
+		if (/[\\/](darwin|win32)[\\/]/.test(f)) {
+			return false;
+		}
+		// Exclude Linux binaries for non-target architectures
+		if (/[\\/]linux[\\/]/.test(f) && !new RegExp(`[\\\\/]linux[\\\\/]${targetLinuxArch}[\\\\/]`).test(f)) {
+			return false;
+		}
+		return true;
+	});
 	// Add the tunnel binary.
 	files.push(path.join(buildDir, 'bin', product.tunnelApplicationName));
 	// Add the main executable.
