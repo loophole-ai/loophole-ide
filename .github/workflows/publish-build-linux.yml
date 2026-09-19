@@ -44,17 +44,12 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Linux x64
-  # Produces: Loophole-{version}-x86_64.AppImage
-  # ─────────────────────────────────────────────────────────────────────────────
-  build-and-upload-linux-x64:
-    name: Build & Upload Linux x64
+  build-linux-x64:
+    name: Build Linux x64
     needs: resolve-version
     runs-on: ubuntu-22.04
-    environment: publish
     env:
-      VERSION: ${{ inputs.version || needs.resolve-version.outputs.version }}
+      VERSION: ${{ needs.resolve-version.outputs.version }}
       VSCODE_ARCH: x64
       VSCODE_QUALITY: stable
 
@@ -69,17 +64,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential libx11-dev libxkbfile-dev libsecret-1-dev \
-            libkrb5-dev fakeroot squashfs-tools zsync file python3-pip \
-            pkg-config libgtk-3-dev libnss3-dev libgbm-dev libasound2-dev
-
-      - name: Install appimagetool
-        run: |
-          curl -sL -o appimagetool.AppImage \
-            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
-          chmod +x appimagetool.AppImage
-          ./appimagetool.AppImage --appimage-extract
-          sudo mv squashfs-root /opt/appimagetool
-          sudo ln -s /opt/appimagetool/AppRun /usr/local/bin/appimagetool
+            libkrb5-dev fakeroot python3-pip \
+            pkg-config libgtk-3-dev libnss3-dev libgbm-dev libasound2-dev \
+            rpm
 
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -103,22 +90,24 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu
 
-      - uses: actions/cache@v4
+      - name: Cache Rust artifacts
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             cli/target
-          key: publish-linux-x64-cargo-${{ hashFiles('cli/Cargo.lock') }}
-          restore-keys: publish-linux-x64-cargo-
+          key: linux-x64-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: linux-x64-cargo-
 
-      - uses: actions/cache@v4
+      - name: Cache Electron
+        uses: actions/cache@v4
         with:
           path: |
             ${{ env.ELECTRON_CACHE }}
             ${{ env.ELECTRON_BUILDER_CACHE }}
-          key: publish-linux-x64-electron-${{ hashFiles('package-lock.json') }}
-          restore-keys: publish-linux-x64-electron-
+          key: linux-x64-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: linux-x64-electron-
 
       - name: Install dependencies
         run: npm install
@@ -134,109 +123,58 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - name: Compile build
+      - name: Compile build (produces out-build/)
         run: npm run gulp compile-build-without-mangling
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - name: Build CLI (x64)
+      - name: Build CLI (Rust, x64)
         working-directory: cli
         run: cargo build --release --target x86_64-unknown-linux-gnu
 
-      - name: Bundle VSCode
+      - name: Bundle VSCode (produces out-vscode/)
         run: npm run gulp bundle-vscode
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
       - name: Verify out-vscode exists
         run: |
-          [ -d "out-vscode" ] || { echo "::error::out-vscode/ not found"; exit 1; }
+          if [ ! -d "out-vscode" ]; then
+            echo "::error::out-vscode/ not found"
+            exit 1
+          fi
 
       - name: Package Electron app (linux x64)
         run: npm run gulp vscode-linux-x64-ci
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - name: Create dist directory
-        run: mkdir -p dist
-
-      - name: Build AppImage (x86_64)
+      - name: Build .deb (x64)
         run: |
-          set -e
-          APP_DIR=$(find .. -maxdepth 1 -type d -name "*linux-x64" 2>/dev/null | head -1)
-          [ -z "$APP_DIR" ] && APP_DIR="../VSCode-linux-x64"
-          if [ ! -d "$APP_DIR" ]; then
-            echo "::warning::No unpacked app directory found — skipping AppImage"
-            exit 0
-          fi
+          npm run gulp vscode-linux-x64-prepare-deb
+          npm run gulp vscode-linux-x64-build-deb
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
 
-          rm -rf .appimage
-          mkdir -p .appimage/AppDir/usr/bin
-          cp -r "$APP_DIR"/* .appimage/AppDir/usr/bin/
-
-          EXEC_NAME=$(find .appimage/AppDir/usr/bin -maxdepth 1 -type f -executable \
-            ! -name "*.so" ! -name "*.so.*" -printf '%f\n' | grep -x -m1 -e "loophole" -e "code" || true)
-          [ -z "$EXEC_NAME" ] && EXEC_NAME="loophole"
-
-          ICON_SRC=$(find resources -iname "*.png" 2>/dev/null | head -1)
-          [ -n "$ICON_SRC" ] && cp "$ICON_SRC" .appimage/AppDir/loophole.png || touch .appimage/AppDir/loophole.png
-
-          cat > .appimage/AppDir/loophole.desktop << EOF
-          [Desktop Entry]
-          Name=Loophole
-          Exec=usr/bin/$EXEC_NAME %F
-          Icon=loophole
-          Type=Application
-          Categories=Development;
-          EOF
-
-          cat > .appimage/AppDir/AppRun << EOF
-          #!/bin/sh
-          HERE="\$(dirname "\$(readlink -f "\${0}")")"
-          exec "\${HERE}/usr/bin/$EXEC_NAME" "\$@"
-          EOF
-          chmod +x .appimage/AppDir/AppRun
-
-          # Remove any ELF binaries that are NOT x86-64 to prevent appimagetool
-          # from seeing multiple architectures and refusing to build.
-          find .appimage/AppDir -type f | while read f; do
-            ft=$(file -b "$f")
-            case "$ft" in
-              ELF\ 64-bit\ LSB*x86-64*) ;;   # keep
-              ELF\ 32-bit*)  rm -f "$f" ;;   # wrong arch
-              ELF\ 64-bit\ LSB*aarch64*) rm -f "$f" ;; # wrong arch
-              ELF\ 64-bit\ LSB*ARM\ aarch64*) rm -f "$f" ;;
-            esac
-          done
-
-          # Clean up any files that might confuse appimagetool architecture detection
-          find .appimage/AppDir -name ".dir-locals.el" -delete
-          find .appimage/AppDir -name ".git*" -delete
-          find .appimage/AppDir -name "*.a" -delete
-          find .appimage/AppDir -name "*.o" -delete
-
-          ARCH=x86_64 appimagetool --no-appstream .appimage/AppDir "dist/Loophole-$VERSION-x86_64.AppImage"
-
-      - name: Compute SHA256
+      - name: Build .rpm (x64)
         run: |
-          echo "{}" > sha256-hashes.json
-          for f in dist/*; do
-            [ -f "$f" ] || continue
-            FILENAME=$(basename "$f")
-            SHA=$(sha256sum "$f" | awk '{print $1}')
-            python3 -c "import json,sys; d=json.load(open('sha256-hashes.json')); d[sys.argv[1]]=sys.argv[2]; json.dump(d,open('sha256-hashes.json','w'),indent=2)" "$FILENAME" "$SHA"
-          done
+          npm run gulp vscode-linux-x64-prepare-rpm
+          npm run gulp vscode-linux-x64-build-rpm
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sha256-hashes-linux-x64
-          path: sha256-hashes.json
-          retention-days: 7
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          find .build/linux/deb -name "*.deb" -exec cp {} dist/ \;
+          find .build/linux/rpm -name "*.rpm" -exec cp {} dist/ \;
+          ls -lh dist/
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: Loophole-${{ env.VERSION }}-x86_64-appimage
-          path: dist/Loophole-${{ env.VERSION }}-x86_64.AppImage
+          name: Loophole-${{ env.VERSION }}-x64-linux-packages
+          path: dist/
           retention-days: 7
           if-no-files-found: warn
 
@@ -251,41 +189,27 @@ jobs:
       - name: Upload to Gofile.io
         run: |
           SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
-          [ -z "$SERVER" ] && { echo "[]" > gofile-links-x64.json; exit 0; }
-          echo "[" > gofile-links-x64.json; FIRST=true
+          [ -z "$SERVER" ] && exit 0
           for FILE in dist/*; do
             [ -f "$FILE" ] || continue
             FILENAME=$(basename "$FILE")
             RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/contents/uploadfile")
-            LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data',{}).get('downloadPage','N/A'))" 2>/dev/null)
-            [ "$LINK" = "N/A" ] && continue
-            [ "$FIRST" = true ] && FIRST=false || echo "," >> gofile-links-x64.json
-            echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"linux-x64\"}" >> gofile-links-x64.json
+            LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data',{}).get('downloadPage','FAILED'))" 2>/dev/null)
+            echo " $FILENAME → $LINK"
           done
-          echo "]" >> gofile-links-x64.json
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gofile-links-linux-x64
-          path: gofile-links-x64.json
-          retention-days: 7
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Linux arm64
-  # Produces: Loophole-{version}-aarch64.AppImage
-  # ─────────────────────────────────────────────────────────────────────────────
-  build-and-upload-linux-arm64:
-    name: Build & Upload Linux ARM64
+  build-linux-arm64:
+    name: Build Linux ARM64
     needs: resolve-version
     runs-on: ubuntu-22.04-arm
-    environment: publish
     env:
-      VERSION: ${{ inputs.version || needs.resolve-version.outputs.version }}
+      VERSION: ${{ needs.resolve-version.outputs.version }}
       VSCODE_ARCH: arm64
       VSCODE_QUALITY: stable
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -294,17 +218,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential libx11-dev libxkbfile-dev libsecret-1-dev \
-            libkrb5-dev fakeroot squashfs-tools file python3-pip \
-            pkg-config libgtk-3-dev libnss3-dev libgbm-dev libasound2-dev
-
-      - name: Install appimagetool (aarch64)
-        run: |
-          curl -sL -o appimagetool.AppImage \
-            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage"
-          chmod +x appimagetool.AppImage
-          ./appimagetool.AppImage --appimage-extract
-          sudo mv squashfs-root /opt/appimagetool
-          sudo ln -s /opt/appimagetool/AppRun /usr/local/bin/appimagetool
+            libkrb5-dev fakeroot python3-pip \
+            pkg-config libgtk-3-dev libnss3-dev libgbm-dev libasound2-dev \
+            rpm
 
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -328,22 +244,24 @@ jobs:
         with:
           targets: aarch64-unknown-linux-gnu
 
-      - uses: actions/cache@v4
+      - name: Cache Rust artifacts
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             cli/target
-          key: publish-linux-arm64-cargo-${{ hashFiles('cli/Cargo.lock') }}
-          restore-keys: publish-linux-arm64-cargo-
+          key: linux-arm64-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          restore-keys: linux-arm64-cargo-
 
-      - uses: actions/cache@v4
+      - name: Cache Electron
+        uses: actions/cache@v4
         with:
           path: |
             ${{ env.ELECTRON_CACHE }}
             ${{ env.ELECTRON_BUILDER_CACHE }}
-          key: publish-linux-arm64-electron-${{ hashFiles('package-lock.json') }}
-          restore-keys: publish-linux-arm64-electron-
+          key: linux-arm64-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: linux-arm64-electron-
 
       - name: Install dependencies
         run: npm install
@@ -359,109 +277,58 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - name: Compile build
+      - name: Compile build (produces out-build/)
         run: npm run gulp compile-build-without-mangling
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - name: Build CLI (arm64)
+      - name: Build CLI (Rust, arm64)
         working-directory: cli
         run: cargo build --release --target aarch64-unknown-linux-gnu
 
-      - name: Bundle VSCode
+      - name: Bundle VSCode (produces out-vscode/)
         run: npm run gulp bundle-vscode
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
       - name: Verify out-vscode exists
         run: |
-          [ -d "out-vscode" ] || { echo "::error::out-vscode/ not found"; exit 1; }
+          if [ ! -d "out-vscode" ]; then
+            echo "::error::out-vscode/ not found"
+            exit 1
+          fi
 
       - name: Package Electron app (linux arm64)
         run: npm run gulp vscode-linux-arm64-ci
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - name: Create dist directory
-        run: mkdir -p dist
-
-      - name: Build AppImage (aarch64)
+      - name: Build .deb (arm64)
         run: |
-          set -e
-          APP_DIR=$(find .. -maxdepth 1 -type d -name "*linux-arm64" 2>/dev/null | head -1)
-          [ -z "$APP_DIR" ] && APP_DIR="../VSCode-linux-arm64"
-          if [ ! -d "$APP_DIR" ]; then
-            echo "::warning::No unpacked app directory found — skipping AppImage"
-            exit 0
-          fi
+          npm run gulp vscode-linux-arm64-prepare-deb
+          npm run gulp vscode-linux-arm64-build-deb
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
 
-          rm -rf .appimage
-          mkdir -p .appimage/AppDir/usr/bin
-          cp -r "$APP_DIR"/* .appimage/AppDir/usr/bin/
-
-          EXEC_NAME=$(find .appimage/AppDir/usr/bin -maxdepth 1 -type f -executable \
-            ! -name "*.so" ! -name "*.so.*" -printf '%f\n' | grep -x -m1 -e "loophole" -e "code" || true)
-          [ -z "$EXEC_NAME" ] && EXEC_NAME="loophole"
-
-          ICON_SRC=$(find resources -iname "*.png" 2>/dev/null | head -1)
-          [ -n "$ICON_SRC" ] && cp "$ICON_SRC" .appimage/AppDir/loophole.png || touch .appimage/AppDir/loophole.png
-
-          cat > .appimage/AppDir/loophole.desktop << EOF
-          [Desktop Entry]
-          Name=Loophole
-          Exec=usr/bin/$EXEC_NAME %F
-          Icon=loophole
-          Type=Application
-          Categories=Development;
-          EOF
-
-          cat > .appimage/AppDir/AppRun << EOF
-          #!/bin/sh
-          HERE="\$(dirname "\$(readlink -f "\${0}")")"
-          exec "\${HERE}/usr/bin/$EXEC_NAME" "\$@"
-          EOF
-          chmod +x .appimage/AppDir/AppRun
-
-          # Remove any ELF binaries that are NOT aarch64 to prevent appimagetool
-          # from seeing multiple architectures and refusing to build.
-          find .appimage/AppDir -type f | while read f; do
-            ft=$(file -b "$f")
-            case "$ft" in
-              ELF\ 64-bit\ LSB*aarch64*) ;;        # keep
-              ELF\ 64-bit\ LSB*ARM\ aarch64*) ;;   # keep
-              ELF\ 32-bit*) rm -f "$f" ;;           # wrong arch
-              ELF\ 64-bit\ LSB*x86-64*) rm -f "$f" ;; # wrong arch
-            esac
-          done
-
-          # Clean up any files that might confuse appimagetool architecture detection
-          find .appimage/AppDir -name ".dir-locals.el" -delete
-          find .appimage/AppDir -name ".git*" -delete
-          find .appimage/AppDir -name "*.a" -delete
-          find .appimage/AppDir -name "*.o" -delete
-
-          ARCH=aarch64 appimagetool --no-appstream .appimage/AppDir "dist/Loophole-$VERSION-aarch64.AppImage"
-
-      - name: Compute SHA256
+      - name: Build .rpm (arm64)
         run: |
-          echo "{}" > sha256-hashes.json
-          for f in dist/*; do
-            [ -f "$f" ] || continue
-            FILENAME=$(basename "$f")
-            SHA=$(sha256sum "$f" | awk '{print $1}')
-            python3 -c "import json,sys; d=json.load(open('sha256-hashes.json')); d[sys.argv[1]]=sys.argv[2]; json.dump(d,open('sha256-hashes.json','w'),indent=2)" "$FILENAME" "$SHA"
-          done
+          npm run gulp vscode-linux-arm64-prepare-rpm
+          npm run gulp vscode-linux-arm64-build-rpm
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sha256-hashes-linux-arm64
-          path: sha256-hashes.json
-          retention-days: 7
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          find .build/linux/deb -name "*.deb" -exec cp {} dist/ \;
+          find .build/linux/rpm -name "*.rpm" -exec cp {} dist/ \;
+          ls -lh dist/
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: Loophole-${{ env.VERSION }}-aarch64-appimage
-          path: dist/Loophole-${{ env.VERSION }}-aarch64.AppImage
+          name: Loophole-${{ env.VERSION }}-arm64-linux-packages
+          path: dist/
           retention-days: 7
           if-no-files-found: warn
 
@@ -476,21 +343,11 @@ jobs:
       - name: Upload to Gofile.io
         run: |
           SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
-          [ -z "$SERVER" ] && { echo "[]" > gofile-links-arm64.json; exit 0; }
-          echo "[" > gofile-links-arm64.json; FIRST=true
+          [ -z "$SERVER" ] && exit 0
           for FILE in dist/*; do
             [ -f "$FILE" ] || continue
             FILENAME=$(basename "$FILE")
             RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/contents/uploadfile")
-            LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data',{}).get('downloadPage','N/A'))" 2>/dev/null)
-            [ "$LINK" = "N/A" ] && continue
-            [ "$FIRST" = true ] && FIRST=false || echo "," >> gofile-links-arm64.json
-            echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"linux-arm64\"}" >> gofile-links-arm64.json
+            LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data',{}).get('downloadPage','FAILED'))" 2>/dev/null)
+            echo " $FILENAME → $LINK"
           done
-          echo "]" >> gofile-links-arm64.json
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gofile-links-linux-arm64
-          path: gofile-links-arm64.json
-          retention-days: 7
