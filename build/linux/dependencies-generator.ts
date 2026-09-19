@@ -54,8 +54,9 @@ export async function getDependencies(packageType: 'deb' | 'rpm', buildDir: stri
 	}
 
 	const appPath = path.join(buildDir, applicationName);
-	// Add the native modules
-	const files = findResult.stdout.toString().trimEnd().split('\n');
+	// Add the native modules, excluding musl-linked binaries which dpkg-shlibdeps
+	// cannot resolve on a glibc system (e.g. @img/sharp-linuxmusl-*).
+	const files = findResult.stdout.toString().trimEnd().split('\n').filter(f => !f.includes('linuxmusl'));
 	// Add the tunnel binary.
 	files.push(path.join(buildDir, 'bin', product.tunnelApplicationName));
 	// Add the main executable.
