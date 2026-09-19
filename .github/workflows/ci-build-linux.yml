@@ -20,10 +20,7 @@ env:
   ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
   ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
 
-jobs:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Fast PR check — compile only
-  # ─────────────────────────────────────────────────────────────────────────────
+jobs
   pr-check:
     name: PR Compile Check
     if: github.event_name == 'pull_request'
@@ -66,9 +63,6 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Resolve version
-  # ─────────────────────────────────────────────────────────────────────────────
   resolve-version:
     name: Resolve Version
     if: github.event_name == 'workflow_dispatch'
@@ -97,10 +91,6 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Build: Linux x64
-  # Produces: Loophole-{version}-x86_64.AppImage
-  # ─────────────────────────────────────────────────────────────────────────────
   build-linux-x64:
     name: Build Linux x64
     needs: resolve-version
@@ -122,17 +112,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential libx11-dev libxkbfile-dev libsecret-1-dev \
-            libkrb5-dev fakeroot squashfs-tools zsync file python3-pip \
-            pkg-config libgtk-3-dev libnss3-dev libgbm-dev libasound2-dev
-
-      - name: Install appimagetool
-        run: |
-          curl -sL -o appimagetool.AppImage \
-            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
-          chmod +x appimagetool.AppImage
-          ./appimagetool.AppImage --appimage-extract
-          sudo mv squashfs-root /opt/appimagetool
-          sudo ln -s /opt/appimagetool/AppRun /usr/local/bin/appimagetool
+            libkrb5-dev fakeroot python3-pip \
+            pkg-config libgtk-3-dev libnss3-dev libgbm-dev libasound2-dev \
+            rpm
 
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -215,78 +197,40 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - name: Create dist directory
-        run: mkdir -p dist
-
-      - name: Build AppImage (x86_64)
+      - name: Build .deb (x64)
         run: |
-          set -e
-          APP_DIR=$(find .. -maxdepth 1 -type d -name "*linux-x64" 2>/dev/null | head -1)
-          [ -z "$APP_DIR" ] && APP_DIR="../VSCode-linux-x64"
-          if [ ! -d "$APP_DIR" ]; then
-            echo "::warning::No unpacked app directory found — skipping AppImage"
-            exit 0
-          fi
+          npm run gulp vscode-linux-x64-prepare-deb
+          npm run gulp vscode-linux-x64-build-deb
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
 
-          rm -rf .appimage
-          mkdir -p .appimage/AppDir/usr/bin
-          cp -r "$APP_DIR"/* .appimage/AppDir/usr/bin/
+      - name: Build .rpm (x64)
+        run: |
+          npm run gulp vscode-linux-x64-prepare-rpm
+          npm run gulp vscode-linux-x64-build-rpm
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
 
-          EXEC_NAME=$(find .appimage/AppDir/usr/bin -maxdepth 1 -type f -executable \
-            ! -name "*.so" ! -name "*.so.*" -printf '%f\n' | grep -x -m1 -e "loophole" -e "code" || true)
-          [ -z "$EXEC_NAME" ] && EXEC_NAME="loophole"
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          find .build/linux/deb -name "*.deb" -exec cp {} dist/ \;
+          find .build/linux/rpm -name "*.rpm" -exec cp {} dist/ \;
+          ls -lh dist/
 
-          ICON_SRC=$(find resources -iname "*.png" 2>/dev/null | head -1)
-          if [ -n "$ICON_SRC" ]; then
-            cp "$ICON_SRC" .appimage/AppDir/loophole.png
-          else
-            touch .appimage/AppDir/loophole.png
-          fi
-
-          cat > .appimage/AppDir/loophole.desktop << EOF
-          [Desktop Entry]
-          Name=Loophole
-          Exec=usr/bin/$EXEC_NAME %F
-          Icon=loophole
-          Type=Application
-          Categories=Development;
-          EOF
-
-          cat > .appimage/AppDir/AppRun << EOF
-          #!/bin/sh
-          HERE="\$(dirname "\$(readlink -f "\${0}")")"
-          exec "\${HERE}/usr/bin/$EXEC_NAME" "\$@"
-          EOF
-          chmod +x .appimage/AppDir/AppRun
-
-          # Remove any ELF binaries that are NOT x86-64 to prevent appimagetool
-          # from seeing multiple architectures and refusing to build.
-          find .appimage/AppDir -type f | while read f; do
-            ft=$(file -b "$f")
-            case "$ft" in
-              ELF\ 64-bit\ LSB*x86-64*) ;;   # keep
-              ELF\ 32-bit*)  rm -f "$f" ;;   # wrong arch
-              ELF\ 64-bit\ LSB*aarch64*) rm -f "$f" ;; # wrong arch
-              ELF\ 64-bit\ LSB*ARM\ aarch64*) rm -f "$f" ;;
-            esac
-          done
-
-          # Clean up any files that might confuse appimagetool architecture detection
-          find .appimage/AppDir -name ".dir-locals.el" -delete
-          find .appimage/AppDir -name ".git*" -delete
-          find .appimage/AppDir -name "*.a" -delete
-          find .appimage/AppDir -name "*.o" -delete
-
-          ARCH=x86_64 appimagetool --no-appstream .appimage/AppDir "dist/Loophole-$VERSION-x86_64.AppImage"
-
-      - name: List built artifacts
-        run: ls -lh dist/ || echo "(dist/ is empty)"
-
-      - name: Upload — AppImage x86_64
+      - name: Upload — deb x64
         uses: actions/upload-artifact@v4
         with:
-          name: Loophole-${{ env.VERSION }}-x86_64-appimage
-          path: dist/Loophole-${{ env.VERSION }}-x86_64.AppImage
+          name: Loophole-${{ env.VERSION }}-amd64-deb
+          path: dist/*.deb
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — rpm x64
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loophole-${{ env.VERSION }}-x86_64-rpm
+          path: dist/*.rpm
           retention-days: 7
           if-no-files-found: warn
 
@@ -294,7 +238,7 @@ jobs:
         if: ${{ github.event.inputs.upload_to_gofile == 'true' }}
         run: |
           SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])")
-          for FILE in dist/*.AppImage; do
+          for FILE in dist/*.deb dist/*.rpm; do
             [ -f "$FILE" ] || continue
             FILENAME=$(basename "$FILE")
             RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/contents/uploadfile")
@@ -302,10 +246,6 @@ jobs:
             echo " $FILENAME → $LINK"
           done
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Build: Linux arm64
-  # Produces: Loophole-{version}-aarch64.AppImage
-  # ─────────────────────────────────────────────────────────────────────────────
   build-linux-arm64:
     name: Build Linux ARM64
     needs: resolve-version
@@ -327,17 +267,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential libx11-dev libxkbfile-dev libsecret-1-dev \
-            libkrb5-dev fakeroot squashfs-tools file python3-pip \
-            pkg-config libgtk-3-dev libnss3-dev libgbm-dev libasound2-dev
-
-      - name: Install appimagetool (aarch64)
-        run: |
-          curl -sL -o appimagetool.AppImage \
-            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage"
-          chmod +x appimagetool.AppImage
-          ./appimagetool.AppImage --appimage-extract
-          sudo mv squashfs-root /opt/appimagetool
-          sudo ln -s /opt/appimagetool/AppRun /usr/local/bin/appimagetool
+            libkrb5-dev fakeroot python3-pip \
+            pkg-config libgtk-3-dev libnss3-dev libgbm-dev libasound2-dev \
+            rpm
 
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -420,78 +352,40 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
-      - name: Create dist directory
-        run: mkdir -p dist
-
-      - name: Build AppImage (aarch64)
+      - name: Build .deb (arm64)
         run: |
-          set -e
-          APP_DIR=$(find .. -maxdepth 1 -type d -name "*linux-arm64" 2>/dev/null | head -1)
-          [ -z "$APP_DIR" ] && APP_DIR="../VSCode-linux-arm64"
-          if [ ! -d "$APP_DIR" ]; then
-            echo "::warning::No unpacked app directory found — skipping AppImage"
-            exit 0
-          fi
+          npm run gulp vscode-linux-arm64-prepare-deb
+          npm run gulp vscode-linux-arm64-build-deb
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
 
-          rm -rf .appimage
-          mkdir -p .appimage/AppDir/usr/bin
-          cp -r "$APP_DIR"/* .appimage/AppDir/usr/bin/
+      - name: Build .rpm (arm64)
+        run: |
+          npm run gulp vscode-linux-arm64-prepare-rpm
+          npm run gulp vscode-linux-arm64-build-rpm
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
 
-          EXEC_NAME=$(find .appimage/AppDir/usr/bin -maxdepth 1 -type f -executable \
-            ! -name "*.so" ! -name "*.so.*" -printf '%f\n' | grep -x -m1 -e "loophole" -e "code" || true)
-          [ -z "$EXEC_NAME" ] && EXEC_NAME="loophole"
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          find .build/linux/deb -name "*.deb" -exec cp {} dist/ \;
+          find .build/linux/rpm -name "*.rpm" -exec cp {} dist/ \;
+          ls -lh dist/
 
-          ICON_SRC=$(find resources -iname "*.png" 2>/dev/null | head -1)
-          if [ -n "$ICON_SRC" ]; then
-            cp "$ICON_SRC" .appimage/AppDir/loophole.png
-          else
-            touch .appimage/AppDir/loophole.png
-          fi
-
-          cat > .appimage/AppDir/loophole.desktop << EOF
-          [Desktop Entry]
-          Name=Loophole
-          Exec=usr/bin/$EXEC_NAME %F
-          Icon=loophole
-          Type=Application
-          Categories=Development;
-          EOF
-
-          cat > .appimage/AppDir/AppRun << EOF
-          #!/bin/sh
-          HERE="\$(dirname "\$(readlink -f "\${0}")")"
-          exec "\${HERE}/usr/bin/$EXEC_NAME" "\$@"
-          EOF
-          chmod +x .appimage/AppDir/AppRun
-
-          # Remove any ELF binaries that are NOT aarch64 to prevent appimagetool
-          # from seeing multiple architectures and refusing to build.
-          find .appimage/AppDir -type f | while read f; do
-            ft=$(file -b "$f")
-            case "$ft" in
-              ELF\ 64-bit\ LSB*aarch64*) ;;        # keep
-              ELF\ 64-bit\ LSB*ARM\ aarch64*) ;;   # keep
-              ELF\ 32-bit*) rm -f "$f" ;;           # wrong arch
-              ELF\ 64-bit\ LSB*x86-64*) rm -f "$f" ;; # wrong arch
-            esac
-          done
-
-          # Clean up any files that might confuse appimagetool architecture detection
-          find .appimage/AppDir -name ".dir-locals.el" -delete
-          find .appimage/AppDir -name ".git*" -delete
-          find .appimage/AppDir -name "*.a" -delete
-          find .appimage/AppDir -name "*.o" -delete
-
-          ARCH=aarch64 appimagetool --no-appstream .appimage/AppDir "dist/Loophole-$VERSION-aarch64.AppImage"
-
-      - name: List built artifacts
-        run: ls -lh dist/ || echo "(dist/ is empty)"
-
-      - name: Upload — AppImage aarch64
+      - name: Upload — deb arm64
         uses: actions/upload-artifact@v4
         with:
-          name: Loophole-${{ env.VERSION }}-aarch64-appimage
-          path: dist/Loophole-${{ env.VERSION }}-aarch64.AppImage
+          name: Loophole-${{ env.VERSION }}-arm64-deb
+          path: dist/*.deb
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload — rpm arm64
+        uses: actions/upload-artifact@v4
+        with:
+          name: Loophole-${{ env.VERSION }}-aarch64-rpm
+          path: dist/*.rpm
           retention-days: 7
           if-no-files-found: warn
 
@@ -499,7 +393,7 @@ jobs:
         if: ${{ github.event.inputs.upload_to_gofile == 'true' }}
         run: |
           SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])")
-          for FILE in dist/*.AppImage; do
+          for FILE in dist/*.deb dist/*.rpm; do
             [ -f "$FILE" ] || continue
             FILENAME=$(basename "$FILE")
             RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/contents/uploadfile")
