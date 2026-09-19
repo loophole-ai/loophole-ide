@@ -132,6 +132,11 @@ jobs:
         working-directory: cli
         run: cargo build --release --target x86_64-unknown-linux-gnu
 
+      - name: Copy tunnel binary (x64)
+        run: |
+          mkdir -p ../VSCode-linux-x64/bin
+          cp cli/target/x86_64-unknown-linux-gnu/release/code ../VSCode-linux-x64/bin/loophole-tunnel
+
       - name: Bundle VSCode (produces out-vscode/)
         run: npm run gulp bundle-vscode
         env:
@@ -285,6 +290,11 @@ jobs:
       - name: Build CLI (Rust, arm64)
         working-directory: cli
         run: cargo build --release --target aarch64-unknown-linux-gnu
+
+      - name: Copy tunnel binary (arm64)
+        run: |
+          mkdir -p ../VSCode-linux-arm64/bin
+          cp cli/target/aarch64-unknown-linux-gnu/release/code ../VSCode-linux-arm64/bin/loophole-tunnel
 
       - name: Bundle VSCode (produces out-vscode/)
         run: npm run gulp bundle-vscode
