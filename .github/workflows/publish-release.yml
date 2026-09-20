@@ -80,7 +80,12 @@ jobs:
 
           #### Linux
 
-          Linux packages (.deb and .rpm for x64 and arm64) are attached to this release as assets above.
+          | Type | File |
+          |------|------|
+          | .deb (x64) | [loophole_${LV}-1_amd64.deb](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole_${LV}-1_amd64.deb) |
+          | .rpm (x64) | [loophole-${LV}-1.el8.x86_64.rpm](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-${LV}-1.el8.x86_64.rpm) |
+          | .deb (arm64) | [loophole_${LV}-1_arm64.deb](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole_${LV}-1_arm64.deb) |
+          | .rpm (arm64) | [loophole-${LV}-1.el8.aarch64.rpm](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-${LV}-1.el8.aarch64.rpm) |
 
           ---
 
@@ -407,8 +412,9 @@ jobs:
 
           # Map each latest.json → (artifact name for sha256, download url)
           mappings = {
-              'versions-repo/oss/darwin/x64/latest.json':        (f'Loophole-darwin-x64-{LV}.dmg',     f'{BASE}/Loophole-darwin-x64-{LV}.dmg'),
-              'versions-repo/oss/darwin/arm64/latest.json':      (f'Loophole-darwin-arm64-{LV}.dmg',   f'{BASE}/Loophole-darwin-arm64-{LV}.dmg'),
+              'versions-repo/oss/darwin/x64/latest.json':        (f'Loophole-darwin-x64-{LV}.dmg',        f'{BASE}/Loophole-darwin-x64-{LV}.dmg'),
+              'versions-repo/oss/darwin/arm64/latest.json':      (f'Loophole-darwin-arm64-{LV}.dmg',      f'{BASE}/Loophole-darwin-arm64-{LV}.dmg'),
+              'versions-repo/oss/darwin/universal/latest.json':  (f'Loophole-darwin-universal-{LV}.dmg',  f'{BASE}/Loophole-darwin-universal-{LV}.dmg'),
               'versions-repo/oss/linux/x64/latest.json':         (f'loophole_{LV}-1_amd64.deb',        f'{BASE}/loophole_{LV}-1_amd64.deb'),
               'versions-repo/oss/linux/arm64/latest.json':       (f'loophole_{LV}-1_arm64.deb',        f'{BASE}/loophole_{LV}-1_arm64.deb'),
               'versions-repo/oss/win32/x64/user/latest.json':    (f'LoopholeUserSetup-x64-{LV}.exe',   f'{BASE}/LoopholeUserSetup-x64-{LV}.exe'),
