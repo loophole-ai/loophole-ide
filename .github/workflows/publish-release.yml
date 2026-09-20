@@ -61,64 +61,26 @@ jobs:
 
           ---
 
-          ### x86 64bits
-
           #### Windows
 
           | Type | File |
           |------|------|
-          | User Installer | [LoopholeUserSetup-x64-${LV}.exe](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/LoopholeUserSetup-x64-${LV}.exe) |
-          | System Installer | [LoopholeSetup-x64-${LV}.exe](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/LoopholeSetup-x64-${LV}.exe) |
-          | .zip | [Loophole-win32-x64-${LV}.zip](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-win32-x64-${LV}.zip) |
-          | .msi — updates enabled | [Loophole-x64-${LV}.msi](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-x64-${LV}.msi) |
-          | .msi — updates disabled | [Loophole-x64-updates-disabled-${LV}.msi](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-x64-updates-disabled-${LV}.msi) |
-          | Remote Host | [loophole-reh-win32-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-win32-x64-${LV}.tar.gz) |
-          | Web Host | [loophole-reh-web-win32-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-win32-x64-${LV}.tar.gz) |
-          | CLI | [loophole-cli-win32-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-cli-win32-x64-${LV}.tar.gz) |
+          | User Installer (x64) | [LoopholeUserSetup-x64-${LV}.exe](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/LoopholeUserSetup-x64-${LV}.exe) |
+          | System Installer (x64) | [LoopholeSetup-x64-${LV}.exe](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/LoopholeSetup-x64-${LV}.exe) |
+          | User Installer (arm64) | [LoopholeUserSetup-arm64-${LV}.exe](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/LoopholeUserSetup-arm64-${LV}.exe) |
+          | System Installer (arm64) | [LoopholeSetup-arm64-${LV}.exe](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/LoopholeSetup-arm64-${LV}.exe) |
 
           #### macOS
 
           | Type | File |
           |------|------|
-          | .dmg (Intel x64) | [Loophole.x64.${LV}.dmg](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole.x64.${LV}.dmg) |
-          | .zip (Intel x64) | [Loophole-darwin-x64-${LV}.zip](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-darwin-x64-${LV}.zip) |
-          | .dmg (Apple Silicon arm64) | [Loophole.arm64.${LV}.dmg](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole.arm64.${LV}.dmg) |
-          | .zip (Apple Silicon arm64) | [Loophole-darwin-arm64-${LV}.zip](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-darwin-arm64-${LV}.zip) |
-          | Remote Host (x64) | [loophole-reh-darwin-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-darwin-x64-${LV}.tar.gz) |
-          | Web Host (x64) | [loophole-reh-web-darwin-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-darwin-x64-${LV}.tar.gz) |
-          | CLI (x64) | [loophole-cli-darwin-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-cli-darwin-x64-${LV}.tar.gz) |
-          | Remote Host (arm64) | [loophole-reh-darwin-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-darwin-arm64-${LV}.tar.gz) |
-          | Web Host (arm64) | [loophole-reh-web-darwin-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-darwin-arm64-${LV}.tar.gz) |
-          | CLI (arm64) | [loophole-cli-darwin-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-cli-darwin-arm64-${LV}.tar.gz) |
+          | .dmg (Intel x64) | [Loophole-darwin-x64-${LV}.dmg](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-darwin-x64-${LV}.dmg) |
+          | .dmg (Apple Silicon arm64) | [Loophole-darwin-arm64-${LV}.dmg](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-darwin-arm64-${LV}.dmg) |
+          | .dmg (Universal) | [Loophole-darwin-universal-${LV}.dmg](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-darwin-universal-${LV}.dmg) |
 
           #### Linux
 
-          | Type | File |
-          |------|------|
-          | .deb (x64) | [loophole_${LV}_amd64.deb](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole_${LV}_amd64.deb) |
-          | .rpm (x64) | [loophole-${LV}-el8.x86_64.rpm](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-${LV}-el8.x86_64.rpm) |
-          | .tar.gz (x64) | [Loophole-linux-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-linux-x64-${LV}.tar.gz) |
-          | AppImage (x64) | [Loophole-${LV}.glibc2.30-x86_64.AppImage](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-${LV}.glibc2.30-x86_64.AppImage) |
-          | AppImage zsync (x64) | [Loophole-${LV}.glibc2.30-x86_64.AppImage.zsync](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-${LV}.glibc2.30-x86_64.AppImage.zsync) |
-          | Snap (x64) | [loophole_${LV}_amd64.snap](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole_${LV}_amd64.snap) |
-          | Remote Host (x64) | [loophole-reh-linux-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-linux-x64-${LV}.tar.gz) |
-          | Web Host (x64) | [loophole-reh-web-linux-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-linux-x64-${LV}.tar.gz) |
-          | CLI (x64) | [loophole-cli-linux-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-cli-linux-x64-${LV}.tar.gz) |
-          | .deb (arm64) | [loophole_${LV}_arm64.deb](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole_${LV}_arm64.deb) |
-          | .rpm (arm64) | [loophole-${LV}-el8.aarch64.rpm](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-${LV}-el8.aarch64.rpm) |
-          | .tar.gz (arm64) | [Loophole-linux-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/Loophole-linux-arm64-${LV}.tar.gz) |
-          | Remote Host (arm64) | [loophole-reh-linux-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-linux-arm64-${LV}.tar.gz) |
-          | Web Host (arm64) | [loophole-reh-web-linux-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-linux-arm64-${LV}.tar.gz) |
-          | CLI (arm64) | [loophole-cli-linux-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-cli-linux-arm64-${LV}.tar.gz) |
-
-          #### Alpine (musl libc)
-
-          | Type | File |
-          |------|------|
-          | Remote Host (x64) | [loophole-reh-alpine-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-alpine-x64-${LV}.tar.gz) |
-          | Web Host (x64) | [loophole-reh-web-alpine-x64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-alpine-x64-${LV}.tar.gz) |
-          | Remote Host (arm64) | [loophole-reh-alpine-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-alpine-arm64-${LV}.tar.gz) |
-          | Web Host (arm64) | [loophole-reh-web-alpine-arm64-${LV}.tar.gz](https://github.com/$GITHUB_REPOSITORY/releases/download/${LV}/loophole-reh-web-alpine-arm64-${LV}.tar.gz) |
+          Linux packages (.deb and .rpm for x64 and arm64) are attached to this release as assets above.
 
           ---
 
@@ -225,6 +187,13 @@ jobs:
           path: gofile-links/macos-arm64/
         continue-on-error: true
 
+      - name: Download Gofile links — macOS Universal
+        uses: actions/download-artifact@v4
+        with:
+          name: gofile-links-macos-universal
+          path: gofile-links/macos-universal/
+        continue-on-error: true
+
       - name: Download Gofile links — Linux x64
         uses: actions/download-artifact@v4
         with:
@@ -305,9 +274,10 @@ jobs:
               "---",
           ]
 
-          render_links(find_json("gofile-links/windows"),    "Windows",                  lines)
-          render_links(find_json("gofile-links/macos-x64"),  "macOS Intel (x64)",        lines)
-          render_links(find_json("gofile-links/macos-arm64"),"macOS Apple Silicon (ARM64)", lines)
+          render_links(find_json("gofile-links/windows"),      "Windows",                      lines)
+          render_links(find_json("gofile-links/macos-x64"),    "macOS Intel (x64)",            lines)
+          render_links(find_json("gofile-links/macos-arm64"),  "macOS Apple Silicon (arm64)",  lines)
+          render_links(find_json("gofile-links/macos-universal"), "macOS Universal",            lines)
 
           linux_x64    = find_json("gofile-links/linux-x64")
           linux_arm64  = find_json("gofile-links/linux-arm64")
@@ -362,6 +332,13 @@ jobs:
         with:
           name: sha256-hashes-macos-arm64
           path: sha256-hashes/macos-arm64/
+        continue-on-error: true
+
+      - name: Download SHA256 hashes — macOS universal
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-hashes-macos-universal
+          path: sha256-hashes/macos-universal/
         continue-on-error: true
 
       - name: Download SHA256 hashes — Linux x64
@@ -430,10 +407,8 @@ jobs:
 
           # Map each latest.json → (artifact name for sha256, download url)
           mappings = {
-              'versions-repo/oss/darwin/x64/latest.json':        (f'Loophole-darwin-x64-{LV}.zip',     f'{BASE}/Loophole-darwin-x64-{LV}.zip'),
-              'versions-repo/oss/darwin/arm64/latest.json':      (f'Loophole-darwin-arm64-{LV}.zip',   f'{BASE}/Loophole-darwin-arm64-{LV}.zip'),
-              'versions-repo/oss/linux/x64/latest.json':         (f'Loophole-linux-x64-{LV}.tar.gz',   f'{BASE}/Loophole-linux-x64-{LV}.tar.gz'),
-              'versions-repo/oss/linux/arm64/latest.json':       (f'Loophole-linux-arm64-{LV}.tar.gz', f'{BASE}/Loophole-linux-arm64-{LV}.tar.gz'),
+              'versions-repo/oss/darwin/x64/latest.json':        (f'Loophole-darwin-x64-{LV}.dmg',     f'{BASE}/Loophole-darwin-x64-{LV}.dmg'),
+              'versions-repo/oss/darwin/arm64/latest.json':      (f'Loophole-darwin-arm64-{LV}.dmg',   f'{BASE}/Loophole-darwin-arm64-{LV}.dmg'),
               'versions-repo/oss/win32/x64/user/latest.json':    (f'LoopholeUserSetup-x64-{LV}.exe',   f'{BASE}/LoopholeUserSetup-x64-{LV}.exe'),
               'versions-repo/oss/win32/x64/system/latest.json':  (f'LoopholeSetup-x64-{LV}.exe',       f'{BASE}/LoopholeSetup-x64-{LV}.exe'),
               'versions-repo/oss/win32/arm64/user/latest.json':  (f'LoopholeUserSetup-arm64-{LV}.exe', f'{BASE}/LoopholeUserSetup-arm64-{LV}.exe'),
