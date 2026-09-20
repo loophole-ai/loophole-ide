@@ -181,6 +181,23 @@ jobs:
           find .build/linux/rpm -name "*.rpm" -exec cp {} dist/ \;
           ls -lh dist/
 
+      - name: Compute SHA256 hashes
+        run: |
+          echo "{}" > sha256-hashes.json
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            FILENAME=$(basename "$f")
+            SHA=$(sha256sum "$f" | awk '{print $1}')
+            python3 -c "import json,sys; d=json.load(open('sha256-hashes.json')); d[sys.argv[1]]=sys.argv[2]; json.dump(d,open('sha256-hashes.json','w'),indent=2)" "$FILENAME" "$SHA"
+          done
+
+      - name: Upload SHA256 hashes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-hashes-linux-x64
+          path: sha256-hashes.json
+          retention-days: 7
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -200,14 +217,25 @@ jobs:
       - name: Upload to Gofile.io
         run: |
           SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
-          [ -z "$SERVER" ] && exit 0
+          [ -z "$SERVER" ] && { echo "[]" > gofile-links-x64.json; exit 0; }
+          echo "[" > gofile-links-x64.json; FIRST=true
           for FILE in dist/*; do
             [ -f "$FILE" ] || continue
             FILENAME=$(basename "$FILE")
             RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/contents/uploadfile")
-            LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data',{}).get('downloadPage','FAILED'))" 2>/dev/null)
-            echo " $FILENAME → $LINK"
+            LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data',{}).get('downloadPage','N/A'))" 2>/dev/null)
+            [ "$LINK" = "N/A" ] && continue
+            [ "$FIRST" = true ] && FIRST=false || echo "," >> gofile-links-x64.json
+            echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"linux-x64\"}" >> gofile-links-x64.json
           done
+          echo "]" >> gofile-links-x64.json
+
+      - name: Upload Gofile links artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofile-links-linux-x64
+          path: gofile-links-x64.json
+          retention-days: 7
 
   build-linux-arm64:
     name: Build Linux ARM64
@@ -346,6 +374,23 @@ jobs:
           find .build/linux/rpm -name "*.rpm" -exec cp {} dist/ \;
           ls -lh dist/
 
+      - name: Compute SHA256 hashes
+        run: |
+          echo "{}" > sha256-hashes.json
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            FILENAME=$(basename "$f")
+            SHA=$(sha256sum "$f" | awk '{print $1}')
+            python3 -c "import json,sys; d=json.load(open('sha256-hashes.json')); d[sys.argv[1]]=sys.argv[2]; json.dump(d,open('sha256-hashes.json','w'),indent=2)" "$FILENAME" "$SHA"
+          done
+
+      - name: Upload SHA256 hashes artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-hashes-linux-arm64
+          path: sha256-hashes.json
+          retention-days: 7
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -365,11 +410,22 @@ jobs:
       - name: Upload to Gofile.io
         run: |
           SERVER=$(curl -s https://api.gofile.io/servers | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['data']['servers'][0]['name'])" 2>/dev/null)
-          [ -z "$SERVER" ] && exit 0
+          [ -z "$SERVER" ] && { echo "[]" > gofile-links-arm64.json; exit 0; }
+          echo "[" > gofile-links-arm64.json; FIRST=true
           for FILE in dist/*; do
             [ -f "$FILE" ] || continue
             FILENAME=$(basename "$FILE")
             RESPONSE=$(curl -s -F "file=@$FILE" "https://$SERVER.gofile.io/contents/uploadfile")
-            LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data',{}).get('downloadPage','FAILED'))" 2>/dev/null)
-            echo " $FILENAME → $LINK"
+            LINK=$(echo "$RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('data',{}).get('downloadPage','N/A'))" 2>/dev/null)
+            [ "$LINK" = "N/A" ] && continue
+            [ "$FIRST" = true ] && FIRST=false || echo "," >> gofile-links-arm64.json
+            echo "  {\"filename\": \"$FILENAME\", \"link\": \"$LINK\", \"platform\": \"linux-arm64\"}" >> gofile-links-arm64.json
           done
+          echo "]" >> gofile-links-arm64.json
+
+      - name: Upload Gofile links artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofile-links-linux-arm64
+          path: gofile-links-arm64.json
+          retention-days: 7
