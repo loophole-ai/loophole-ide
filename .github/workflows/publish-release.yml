@@ -409,6 +409,8 @@ jobs:
           mappings = {
               'versions-repo/oss/darwin/x64/latest.json':        (f'Loophole-darwin-x64-{LV}.dmg',     f'{BASE}/Loophole-darwin-x64-{LV}.dmg'),
               'versions-repo/oss/darwin/arm64/latest.json':      (f'Loophole-darwin-arm64-{LV}.dmg',   f'{BASE}/Loophole-darwin-arm64-{LV}.dmg'),
+              'versions-repo/oss/linux/x64/latest.json':         (f'loophole_{LV}-1_amd64.deb',        f'{BASE}/loophole_{LV}-1_amd64.deb'),
+              'versions-repo/oss/linux/arm64/latest.json':       (f'loophole_{LV}-1_arm64.deb',        f'{BASE}/loophole_{LV}-1_arm64.deb'),
               'versions-repo/oss/win32/x64/user/latest.json':    (f'LoopholeUserSetup-x64-{LV}.exe',   f'{BASE}/LoopholeUserSetup-x64-{LV}.exe'),
               'versions-repo/oss/win32/x64/system/latest.json':  (f'LoopholeSetup-x64-{LV}.exe',       f'{BASE}/LoopholeSetup-x64-{LV}.exe'),
               'versions-repo/oss/win32/arm64/user/latest.json':  (f'LoopholeUserSetup-arm64-{LV}.exe', f'{BASE}/LoopholeUserSetup-arm64-{LV}.exe'),
