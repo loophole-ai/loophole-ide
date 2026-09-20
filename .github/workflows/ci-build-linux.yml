@@ -162,6 +162,13 @@ jobs:
         env:
           npm_config_arch: x64
 
+      - name: Rebuild native modules for Electron (x64)
+        run: |
+          npm install -g @electron/rebuild
+          electron-rebuild -f -w node-pty
+        env:
+          npm_config_arch: x64
+
       - name: Install React dependencies
         run: npm install
         working-directory: src/vs/workbench/contrib/void/browser/react
@@ -180,11 +187,6 @@ jobs:
         working-directory: cli
         run: cargo build --release --target x86_64-unknown-linux-gnu
 
-      - name: Copy tunnel binary (x64)
-        run: |
-          mkdir -p ../VSCode-linux-x64/bin
-          cp cli/target/x86_64-unknown-linux-gnu/release/code ../VSCode-linux-x64/bin/loophole-tunnel
-
       - name: Bundle VSCode (produces out-vscode/)
         run: npm run gulp bundle-vscode
         env:
@@ -201,6 +203,11 @@ jobs:
         run: npm run gulp vscode-linux-x64-ci
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Copy tunnel binary (x64)
+        run: |
+          mkdir -p ../VSCode-linux-x64/bin
+          cp cli/target/x86_64-unknown-linux-gnu/release/code ../VSCode-linux-x64/bin/loophole-tunnel
 
       - name: Build .deb (x64)
         run: |
@@ -322,6 +329,13 @@ jobs:
         env:
           npm_config_arch: arm64
 
+      - name: Rebuild native modules for Electron (arm64)
+        run: |
+          npm install -g @electron/rebuild
+          electron-rebuild -f -w node-pty --arch=arm64
+        env:
+          npm_config_arch: arm64
+
       - name: Install React dependencies
         run: npm install
         working-directory: src/vs/workbench/contrib/void/browser/react
@@ -340,11 +354,6 @@ jobs:
         working-directory: cli
         run: cargo build --release --target aarch64-unknown-linux-gnu
 
-      - name: Copy tunnel binary (arm64)
-        run: |
-          mkdir -p ../VSCode-linux-arm64/bin
-          cp cli/target/aarch64-unknown-linux-gnu/release/code ../VSCode-linux-arm64/bin/loophole-tunnel
-
       - name: Bundle VSCode (produces out-vscode/)
         run: npm run gulp bundle-vscode
         env:
@@ -361,6 +370,11 @@ jobs:
         run: npm run gulp vscode-linux-arm64-ci
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
+
+      - name: Copy tunnel binary (arm64)
+        run: |
+          mkdir -p ../VSCode-linux-arm64/bin
+          cp cli/target/aarch64-unknown-linux-gnu/release/code ../VSCode-linux-arm64/bin/loophole-tunnel
 
       - name: Build .deb (arm64)
         run: |
