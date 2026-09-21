@@ -279,18 +279,19 @@ export class LoopholeMainUpdateService extends Disposable implements ILoopholeUp
 				patterns = ['LoopholeUserSetup', 'LoopholeSetup', '.exe'];
 			}
 		} else if (platformName === 'darwin') {
-			// macOS: Loophole-darwin-arm64-2.x.x.dmg / Loophole-darwin-x64-2.x.x.dmg
+			// macOS: Loophole-darwin-arm64-2.x.x.dmg / Loophole-darwin-x64-2.x.x.dmg / Loophole-darwin-universal-2.x.x.dmg
 			if (archName === 'arm64') {
-				patterns = ['Loophole-darwin-arm64', 'darwin-arm64', 'arm64.dmg'];
+				// Prefer universal binary for Apple Silicon, fallback to arm64-specific
+				patterns = ['Loophole-darwin-universal', 'Loophole-darwin-arm64', 'darwin-arm64', 'arm64.dmg'];
 			} else {
 				patterns = ['Loophole-darwin-x64', 'darwin-x64', 'x64.dmg'];
 			}
 		} else if (platformName === 'linux') {
-			// Linux: loophole_2.x.x-1_amd64.deb / loophole_2.x.x-1_arm64.deb
+			// Linux: Loophole-linux-x64-2.x.x.tar.gz / Loophole-linux-arm64-2.x.x.tar.gz
 			if (archName === 'arm64') {
-				patterns = ['_arm64.deb', 'arm64.deb', 'aarch64.rpm'];
+				patterns = ['Loophole-linux-arm64', 'linux-arm64', 'arm64.tar.gz'];
 			} else {
-				patterns = ['_amd64.deb', 'amd64.deb', 'x86_64.rpm'];
+				patterns = ['Loophole-linux-x64', 'linux-x64', 'x64.tar.gz'];
 			}
 		}
 
