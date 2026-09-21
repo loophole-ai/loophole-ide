@@ -146,9 +146,9 @@ import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetr
 // in theory this is not allowed
 // ignore the eslint errors below
 import { IMetricsService } from '../../workbench/contrib/void/common/metricsService.js';
-import { IVoidUpdateService } from '../../workbench/contrib/void/common/voidUpdateService.js';
+import { ILoopholeUpdateService } from '../../workbench/contrib/void/common/voidUpdateService.js';
 import { MetricsMainService } from '../../workbench/contrib/void/electron-main/metricsMainService.js';
-import { VoidMainUpdateService } from '../../workbench/contrib/void/electron-main/voidUpdateMainService.js';
+import { LoopholeMainUpdateService } from '../../workbench/contrib/void/electron-main/voidUpdateMainService.js';
 import { LLMMessageChannel } from '../../workbench/contrib/void/electron-main/sendLLMMessageChannel.js';
 import { VoidSCMService } from '../../workbench/contrib/void/electron-main/voidSCMMainService.js';
 import { AppleFoundationModelsMainService } from '../../workbench/contrib/void/electron-main/appleFoundationModelsMainService.js';
@@ -1167,7 +1167,7 @@ export class CodeApplication extends Disposable {
 
 		// Kodia main process services (required for services with a channel for comm between browser and electron-main (node))
 		services.set(IMetricsService, new SyncDescriptor(MetricsMainService, undefined, false));
-		services.set(IVoidUpdateService, new SyncDescriptor(VoidMainUpdateService, undefined, false));
+		services.set(ILoopholeUpdateService, new SyncDescriptor(LoopholeMainUpdateService, undefined, false));
 		services.set(IVoidSCMService, new SyncDescriptor(VoidSCMService, undefined, false));
 		services.set(IAppleFoundationModelsMainService, new SyncDescriptor(AppleFoundationModelsMainService, undefined, false));
 		services.set(IMlxMainService, new SyncDescriptor(MlxMainService, undefined, false));
@@ -1332,7 +1332,7 @@ export class CodeApplication extends Disposable {
 		const metricsChannel = ProxyChannel.fromService(accessor.get(IMetricsService), disposables);
 		mainProcessElectronServer.registerChannel('void-channel-metrics', metricsChannel);
 
-		const voidUpdatesChannel = ProxyChannel.fromService(accessor.get(IVoidUpdateService), disposables);
+		const voidUpdatesChannel = ProxyChannel.fromService(accessor.get(ILoopholeUpdateService), disposables);
 		mainProcessElectronServer.registerChannel('void-channel-update', voidUpdatesChannel);
 
 		const sendLLMMessageChannel = new LLMMessageChannel(accessor.get(IMetricsService));
