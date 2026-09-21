@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-export type VoidCheckUpdateRespose = {
+export type LoopholeCheckUpdateRespose = {
 	message: string,
 	action?: 'reinstall' | 'restart' | 'download' | 'apply'
 } | {
@@ -11,11 +11,9 @@ export type VoidCheckUpdateRespose = {
 	actions?: undefined,
 } | null
 
-export interface IVoidUpdateInfo {
+export interface ILoopholeUpdateInfo {
 	version?: string;
 	assetName?: string;
 	isDownloaded?: boolean;
 	isReady?: boolean;
 }
-
-
