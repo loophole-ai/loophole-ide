@@ -3,7 +3,7 @@
 	"commit": "release",
 	"nameShort": "Loophole",
 	"nameLong": "Loophole Editor",
-	"loopholeVersion": "2.2.1",
+	"loopholeVersion": "2.2.2",
 	"loopholeRelease": "1000",
 	"applicationName": "loophole",
 	"dataFolderName": ".loophole-editor",
