@@ -175,7 +175,7 @@ const notifyUpdate = (res: LoopholeCheckUpdateRespose & { message: string }, not
 	// })
 }
 const notifyErrChecking = (notifService: INotificationService): INotificationHandle => {
-	const message = `Loophole Error: There was an error checking for updates. If this persists, please get in touch or reinstall Loophole [here](https://www.loopholeeditor.in/download-beta)!`
+	const message = `Loophole Error: There was an error checking for updates. If this persists, please get in touch or reinstall Loophole [here](https://github.com/loophole-ai/loophole-ide/releases)!`
 	const notifController = notifService.notify({
 		severity: Severity.Info,
 		message: message,
