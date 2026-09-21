@@ -7,8 +7,8 @@ import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IEnvironmentMainService } from '../../../../platform/environment/electron-main/environmentMainService.js';
 import { IProductService } from '../../../../platform/product/common/productService.js';
 import { IUpdateService, State, StateType } from '../../../../platform/update/common/update.js';
-import { IVoidUpdateService } from '../common/voidUpdateService.js';
-import { VoidCheckUpdateRespose, IVoidUpdateInfo } from '../common/voidUpdateServiceTypes.js';
+import { ILoopholeUpdateService } from '../common/voidUpdateService.js';
+import { LoopholeCheckUpdateRespose } from '../common/voidUpdateServiceTypes.js';
 import { IRequestService } from '../../../../platform/request/common/request.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
@@ -57,7 +57,7 @@ interface IGitHubUpdateInfo {
 
 
 
-export class VoidMainUpdateService extends Disposable implements IVoidUpdateService {
+export class LoopholeMainUpdateService extends Disposable implements ILoopholeUpdateService {
 	_serviceBrand: undefined;
 
 	private _githubState: GitHubUpdateState = GitHubUpdateState.Idle;
@@ -85,7 +85,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 
 
 	private _onVSCodeUpdateStateChange(state: State): void {
-		this._logService.info('[VoidUpdate] VS Code update state changed:', state.type);
+		this._logService.info('[LoopholeUpdate] VS Code update state changed:', state.type);
 
 		// If VS Code update service found an update, we don't need to use GitHub
 		if (state.type === StateType.Ready || state.type === StateType.Downloaded) {
@@ -94,7 +94,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 	}
 
 
-	async check(explicit: boolean): Promise<VoidCheckUpdateRespose> {
+	async check(explicit: boolean): Promise<LoopholeCheckUpdateRespose> {
 		const isDevMode = !this._envMainService.isBuilt;
 
 		if (isDevMode) {
@@ -116,7 +116,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 		return await this._checkGitHubReleases(explicit);
 	}
 
-	private _getResponseFromVSCodeState(explicit: boolean): VoidCheckUpdateRespose {
+	private _getResponseFromVSCodeState(explicit: boolean): LoopholeCheckUpdateRespose {
 		const state = this._updateService.state;
 
 		switch (state.type) {
@@ -158,8 +158,8 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 
 
 
-	private async _checkGitHubReleases(explicit: boolean): Promise<VoidCheckUpdateRespose> {
-		this._logService.info('[VoidUpdate] Checking GitHub releases...');
+	private async _checkGitHubReleases(explicit: boolean): Promise<LoopholeCheckUpdateRespose> {
+		this._logService.info('[LoopholeUpdate] Checking GitHub releases...');
 
 		try {
 			this._githubState = GitHubUpdateState.Checking;
@@ -170,7 +170,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 					'Accept': 'application/vnd.github.v3+json',
 					'User-Agent': `Loophole/${(this._productService as any).loopholeVersion ?? this._productService.version}`
 				},
-				callSite: 'VoidMainUpdateService._checkGitHubReleases'
+				callSite: 'LoopholeMainUpdateService._checkGitHubReleases'
 			}, CancellationToken.None);
 
 			const release = await asJson<IGitHubRelease>(response);
@@ -183,7 +183,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 			const latestVersion = release.tag_name.replace(/^v/, '');
 			const myVersion = (this._productService as any).loopholeVersion ?? this._productService.version;
 
-			this._logService.info(`[VoidUpdate] Current: ${myVersion}, Latest: ${latestVersion}`);
+			this._logService.info(`[LoopholeUpdate] Current: ${myVersion}, Latest: ${latestVersion}`);
 
 			// Strip any build metadata after the patch number (e.g. "1.91.7-202605090344" → "1.91.7")
 			const stripBuild = (v: string) => v.replace(/-.*$/, '');
@@ -205,7 +205,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 
 			if (!asset) {
 				this._githubState = GitHubUpdateState.Error;
-				this._logService.warn('[VoidUpdate] No suitable asset found for platform:', platform(), arch());
+				this._logService.warn('[LoopholeUpdate] No suitable asset found for platform:', platform(), arch());
 				if (explicit) {
 					return {
 						message: `Update available (${latestVersion}), but no installer found for your platform. Please download manually.`,
@@ -248,7 +248,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 
 		} catch (e) {
 			this._githubState = GitHubUpdateState.Error;
-			this._logService.error('[VoidUpdate] Error checking GitHub:', e);
+			this._logService.error('[LoopholeUpdate] Error checking GitHub:', e);
 
 			if (explicit) {
 				return {
@@ -264,7 +264,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 		const platformName = platform();
 		const archName = arch();
 
-		this._logService.info(`[VoidUpdate] Looking for asset: platform=${platformName}, arch=${archName}`);
+		this._logService.info(`[LoopholeUpdate] Looking for asset: platform=${platformName}, arch=${archName}`);
 
 		// Define patterns for different platforms
 		let patterns: string[] = [];
@@ -279,18 +279,18 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 				patterns = ['LoopholeUserSetup', 'LoopholeSetup', '.exe'];
 			}
 		} else if (platformName === 'darwin') {
-			// macOS: Loophole.arm64.2.x.x.dmg / Loophole.x64.2.x.x.dmg
+			// macOS: Loophole-darwin-arm64-2.x.x.dmg / Loophole-darwin-x64-2.x.x.dmg
 			if (archName === 'arm64') {
-				patterns = ['Loophole.arm64', 'loophole-arm64', 'arm64.dmg'];
+				patterns = ['Loophole-darwin-arm64', 'darwin-arm64', 'arm64.dmg'];
 			} else {
-				patterns = ['Loophole.x64', 'loophole-x64', 'x64.dmg'];
+				patterns = ['Loophole-darwin-x64', 'darwin-x64', 'x64.dmg'];
 			}
 		} else if (platformName === 'linux') {
-			// Linux: Loophole-linux-x64-2.x.x.tar.gz / Loophole-linux-arm64-2.x.x.tar.gz
+			// Linux: loophole_2.x.x-1_amd64.deb / loophole_2.x.x-1_arm64.deb
 			if (archName === 'arm64') {
-				patterns = ['Loophole-linux-arm64', 'linux-arm64', 'arm64.tar.gz'];
+				patterns = ['_arm64.deb', 'arm64.deb', 'aarch64.rpm'];
 			} else {
-				patterns = ['Loophole-linux-x64', 'linux-x64', 'x64.tar.gz'];
+				patterns = ['_amd64.deb', 'amd64.deb', 'x86_64.rpm'];
 			}
 		}
 
@@ -298,7 +298,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 		for (const pattern of patterns) {
 			const asset = assets.find(a => a.name.toLowerCase().includes(pattern.toLowerCase()));
 			if (asset) {
-				this._logService.info(`[VoidUpdate] Found matching asset: ${asset.name}`);
+				this._logService.info(`[LoopholeUpdate] Found matching asset: ${asset.name}`);
 				return asset;
 			}
 		}
@@ -310,7 +310,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 		});
 
 		if (fallback) {
-			this._logService.info(`[VoidUpdate] Using fallback asset: ${fallback.name}`);
+			this._logService.info(`[LoopholeUpdate] Using fallback asset: ${fallback.name}`);
 		}
 
 		return fallback;
@@ -323,7 +323,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 
 		try {
 			this._githubState = GitHubUpdateState.Downloading;
-			this._logService.info(`[VoidUpdate] Downloading update: ${this._currentUpdate.assetName}`);
+			this._logService.info(`[LoopholeUpdate] Downloading update: ${this._currentUpdate.assetName}`);
 
 			// Ensure cache directory exists
 			if (!fs.existsSync(this._cachePath)) {
@@ -336,7 +336,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 			// Download the file
 			const context = await this._requestService.request({
 				url: this._currentUpdate.assetUrl,
-				callSite: 'VoidMainUpdateService.downloadUpdate'
+				callSite: 'LoopholeMainUpdateService.downloadUpdate'
 			}, CancellationToken.None);
 
 			await this._fileService.writeFile(URI.file(tempPath), context.stream);
@@ -347,7 +347,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 			this._currentUpdate.downloadPath = downloadPath;
 			this._githubState = GitHubUpdateState.Downloaded;
 
-			this._logService.info(`[VoidUpdate] Download complete: ${downloadPath}`);
+			this._logService.info(`[LoopholeUpdate] Download complete: ${downloadPath}`);
 
 			// On Windows, we can auto-apply the update
 			if (platform() === 'win32' && downloadPath.endsWith('.exe')) {
@@ -358,7 +358,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 			return true;
 		} catch (e) {
 			this._githubState = GitHubUpdateState.Error;
-			this._logService.error('[VoidUpdate] Download failed:', e instanceof Error ? e.message : String(e));
+			this._logService.error('[LoopholeUpdate] Download failed:', e instanceof Error ? e.message : String(e));
 			return false;
 		}
 	}
@@ -374,7 +374,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 		try {
 			if (platformName === 'win32' && downloadPath.endsWith('.exe')) {
 				// Windows: Run the installer silently
-				this._logService.info('[VoidUpdate] Applying Windows update...');
+				this._logService.info('[LoopholeUpdate] Applying Windows update...');
 
 				spawn(downloadPath, ['/verysilent', '/mergetasks=!runcode,!desktopicon,!quicklaunchicon', '/nocancel', '/nocloseapplications'], {
 					detached: true,
@@ -386,17 +386,17 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 				return true;
 			} else if (platformName === 'darwin') {
 				// macOS: Open the .dmg for the user to manually install
-				this._logService.info('[VoidUpdate] Opening macOS installer...');
+				this._logService.info('[LoopholeUpdate] Opening macOS installer...');
 				spawn('open', [downloadPath], { detached: true });
 				return true;
 			} else {
 				// Linux: Open the file location for manual install
-				this._logService.info('[VoidUpdate] Opening file manager...');
+				this._logService.info('[LoopholeUpdate] Opening file manager...');
 				spawn('xdg-open', [this._cachePath], { detached: true });
 				return true;
 			}
 		} catch (e) {
-			this._logService.error('[VoidUpdate] Apply failed:', e);
+			this._logService.error('[LoopholeUpdate] Apply failed:', e);
 			return false;
 		}
 	}
@@ -419,7 +419,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 
 		if (platformName === 'win32' && downloadPath.endsWith('.exe')) {
 			// Windows: Spawn a detached watcher that runs installer after app closes
-			this._logService.info('[VoidUpdate] Preparing Windows update with watcher...');
+			this._logService.info('[LoopholeUpdate] Preparing Windows update with watcher...');
 
 			const installerPath = downloadPath;
 			const updateScriptPath = join(this._cachePath, 'update-watcher.bat');
@@ -457,7 +457,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 			await timeout(500);
 
 			// Now quit the app - watcher will run installer after we close
-			this._logService.info('[VoidUpdate] Quitting app for update...');
+			this._logService.info('[LoopholeUpdate] Quitting app for update...');
 			await this._lifecycleMainService.quit(true);
 		} else {
 			// For other platforms, just apply (user needs to manually restart)
@@ -465,7 +465,11 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 		}
 	}
 
-	async getUpdateInfo(): Promise<IVoidUpdateInfo> {
+	getGitHubUpdateState(): GitHubUpdateState {
+		return this._githubState;
+	}
+
+	async getUpdateInfo(): Promise<{ version?: string; assetName?: string; isDownloaded?: boolean; isReady?: boolean }> {
 		return {
 			version: this._currentUpdate?.version,
 			assetName: this._currentUpdate?.assetName,
