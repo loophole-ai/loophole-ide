@@ -265,6 +265,45 @@ jobs:
             gh release upload "$env:VERSION" "$($f.FullName)" --clobber
           }
 
+      - name: Update versions repository (x64)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the user installer (preferred for updates)
+          $userInstaller = Get-ChildItem dist -Filter "LoopholeUserSetup-x64-$env:VERSION.exe" | Select-Object -First 1
+          if ($userInstaller) {
+            # Compute SHA256
+            $sha256 = (Get-FileHash -Algorithm SHA256 $userInstaller.FullName).Hash.ToLower()
+
+            # Create latest.json
+            $latestJson = @{
+              version = $env:VERSION
+              productVersion = $env:VERSION
+              url = "https://github.com/loophole-ai/loophole-ide/releases/download/$env:VERSION/LoopholeUserSetup-x64-$env:VERSION.exe"
+              sha256hash = $sha256
+              timestamp = [long][double]::Parse((Get-Date -UFormat %s)) * 1000
+            } | ConvertTo-Json -Depth 10
+
+            # Clone versions repo
+            git clone https://github.com/loophole-ai/versions.git versions-repo
+            cd versions-repo
+
+            # Ensure directory exists
+            New-Item -ItemType Directory -Force -Path "oss/win32/x64"
+
+            # Write latest.json
+            $latestJson | Out-File -FilePath "oss/win32/x64/latest.json" -Encoding utf8
+
+            # Commit and push
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add oss/win32/x64/latest.json
+            git commit -m "Update Windows x64 to $env:VERSION"
+            git push
+          } else {
+            Write-Warning "User installer not found, skipping versions repo update"
+          }
+
       - name: Upload to Gofile.io
         shell: bash
         run: |
@@ -517,6 +556,45 @@ jobs:
           foreach ($f in $files) {
             Write-Host "Uploading $($f.Name)..."
             gh release upload "$env:VERSION" "$($f.FullName)" --clobber
+          }
+
+      - name: Update versions repository (arm64)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the user installer (preferred for updates)
+          $userInstaller = Get-ChildItem dist -Filter "LoopholeUserSetup-arm64-$env:VERSION.exe" | Select-Object -First 1
+          if ($userInstaller) {
+            # Compute SHA256
+            $sha256 = (Get-FileHash -Algorithm SHA256 $userInstaller.FullName).Hash.ToLower()
+
+            # Create latest.json
+            $latestJson = @{
+              version = $env:VERSION
+              productVersion = $env:VERSION
+              url = "https://github.com/loophole-ai/loophole-ide/releases/download/$env:VERSION/LoopholeUserSetup-arm64-$env:VERSION.exe"
+              sha256hash = $sha256
+              timestamp = [long][double]::Parse((Get-Date -UFormat %s)) * 1000
+            } | ConvertTo-Json -Depth 10
+
+            # Clone versions repo
+            git clone https://github.com/loophole-ai/versions.git versions-repo
+            cd versions-repo
+
+            # Ensure directory exists
+            New-Item -ItemType Directory -Force -Path "oss/win32/arm64"
+
+            # Write latest.json
+            $latestJson | Out-File -FilePath "oss/win32/arm64/latest.json" -Encoding utf8
+
+            # Commit and push
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add oss/win32/arm64/latest.json
+            git commit -m "Update Windows arm64 to $env:VERSION"
+            git push
+          } else {
+            Write-Warning "User installer not found, skipping versions repo update"
           }
 
       - name: Upload to Gofile.io
