@@ -284,8 +284,8 @@ jobs:
               timestamp = [long][double]::Parse((Get-Date -UFormat %s)) * 1000
             } | ConvertTo-Json -Depth 10
 
-            # Clone versions repo
-            git clone https://github.com/loophole-ai/versions.git versions-repo
+            # Clone versions repo with authentication
+            git clone https://x-access-token:${env:GH_TOKEN}@github.com/loophole-ai/versions.git versions-repo
             cd versions-repo
 
             # Ensure directory exists
@@ -577,8 +577,8 @@ jobs:
               timestamp = [long][double]::Parse((Get-Date -UFormat %s)) * 1000
             } | ConvertTo-Json -Depth 10
 
-            # Clone versions repo
-            git clone https://github.com/loophole-ai/versions.git versions-repo
+            # Clone versions repo with authentication
+            git clone https://x-access-token:${env:GH_TOKEN}@github.com/loophole-ai/versions.git versions-repo
             cd versions-repo
 
             # Ensure directory exists
