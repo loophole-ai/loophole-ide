@@ -7,63 +7,61 @@ import { ProxyChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
-import { VoidCheckUpdateRespose, IVoidUpdateInfo } from './voidUpdateServiceTypes.js';
+import { LoopholeCheckUpdateRespose, ILoopholeUpdateInfo } from './voidUpdateServiceTypes.js';
+
+export const ILoopholeUpdateService = createDecorator<ILoopholeUpdateService>('LoopholeUpdateService');
 
 
-
-export interface IVoidUpdateService {
+export interface ILoopholeUpdateService {
 	readonly _serviceBrand: undefined;
-	check: (explicit: boolean) => Promise<VoidCheckUpdateRespose>;
+	check: (explicit: boolean) => Promise<LoopholeCheckUpdateRespose>;
 	downloadUpdate: () => Promise<boolean>;
 	applyUpdate: () => Promise<boolean>;
 	quitAndInstall: () => Promise<void>;
-	getUpdateInfo: () => Promise<IVoidUpdateInfo>;
+	getUpdateInfo: () => Promise<ILoopholeUpdateInfo>;
 }
 
 
-export const IVoidUpdateService = createDecorator<IVoidUpdateService>('VoidUpdateService');
+
 
 
 // implemented by calling channel
-export class VoidUpdateService implements IVoidUpdateService {
+export class LoopholeUpdateService implements ILoopholeUpdateService {
 
 	readonly _serviceBrand: undefined;
-	private readonly voidUpdateService: IVoidUpdateService;
+	private readonly loopholeUpdateService: ILoopholeUpdateService;
 
 	constructor(
 		@IMainProcessService mainProcessService: IMainProcessService, // (only usable on client side)
 	) {
 		// creates an IPC proxy to use voidUpdateMainService.ts
-		this.voidUpdateService = ProxyChannel.toService<IVoidUpdateService>(mainProcessService.getChannel('void-channel-update'));
+		this.loopholeUpdateService = ProxyChannel.toService<ILoopholeUpdateService>(mainProcessService.getChannel('loophole-channel-update'));
 	}
-
 
 	// anything transmitted over a channel must be async even if it looks like it doesn't have to be
-	check: IVoidUpdateService['check'] = async (explicit) => {
-		const res = await this.voidUpdateService.check(explicit);
+	check: ILoopholeUpdateService['check'] = async (explicit) => {
+		const res = await this.loopholeUpdateService.check(explicit);
 		return res;
 	}
 
-	downloadUpdate: IVoidUpdateService['downloadUpdate'] = async () => {
-		const res = await this.voidUpdateService.downloadUpdate();
+	downloadUpdate: ILoopholeUpdateService['downloadUpdate'] = async () => {
+		const res = await this.loopholeUpdateService.downloadUpdate();
 		return res;
 	}
 
-	applyUpdate: IVoidUpdateService['applyUpdate'] = async () => {
-		const res = await this.voidUpdateService.applyUpdate();
+	applyUpdate: ILoopholeUpdateService['applyUpdate'] = async () => {
+		const res = await this.loopholeUpdateService.applyUpdate();
 		return res;
 	}
 
-	quitAndInstall: IVoidUpdateService['quitAndInstall'] = async () => {
-		await this.voidUpdateService.quitAndInstall();
+	quitAndInstall: ILoopholeUpdateService['quitAndInstall'] = async () => {
+		await this.loopholeUpdateService.quitAndInstall();
 	}
 
-	getUpdateInfo: IVoidUpdateService['getUpdateInfo'] = async () => {
-		const res = await this.voidUpdateService.getUpdateInfo();
+	getUpdateInfo: ILoopholeUpdateService['getUpdateInfo'] = async () => {
+		const res = await this.loopholeUpdateService.getUpdateInfo();
 		return res;
 	}
 }
 
-registerSingleton(IVoidUpdateService, VoidUpdateService, InstantiationType.Eager);
-
-
+registerSingleton(ILoopholeUpdateService, LoopholeUpdateService, InstantiationType.Eager);
