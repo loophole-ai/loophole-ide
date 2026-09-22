@@ -185,9 +185,8 @@ export class LoopholeMainUpdateService extends Disposable implements ILoopholeUp
 
 			this._logService.info(`[LoopholeUpdate] Current: ${myVersion}, Latest: ${latestVersion}`);
 
-			// Strip any build metadata after the patch number (e.g. "1.91.7-202605090344" → "1.91.7")
-			const stripBuild = (v: string) => v.replace(/-.*$/, '');
-			const parseVer = (v: string) => stripBuild(v).split('.').map(Number);
+			// Simple version comparison (e.g., "2.2.3" vs "2.2.2")
+			const parseVer = (v: string) => v.split('.').map(Number);
 			const [la, lb, lc] = parseVer(latestVersion);
 			const [ca, cb, cc] = parseVer(myVersion);
 			const isUpToDate = !(la > ca || (la === ca && lb > cb) || (la === ca && lb === cb && lc > cc));

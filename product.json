@@ -40,7 +40,6 @@
 	"linuxIconName": "loophole-editor",
 	"licenseFileName": "LICENSE.txt",
 	"reportIssueUrl": "https://github.com/loophole-ai/loophole-ide/issues/new",
-	"updateUrl": "https://raw.githubusercontent.com/loophole-ai/versions/refs/heads/main",
 	"downloadUrl": "https://github.com/loophole-ai/loophole-ide/releases",
 	"releaseNotesUrl": "https://github.com/loophole-ai/loophole-ide/releases",
 	"requestFeatureUrl": "https://github.com/loophole-ai/loophole-ide/issues/new",
