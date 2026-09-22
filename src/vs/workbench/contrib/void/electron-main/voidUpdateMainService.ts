@@ -57,6 +57,14 @@ interface IGitHubUpdateInfo {
 
 
 
+interface IVersionsRepoRelease {
+	version?: string;
+	productVersion?: string;
+	url: string;
+	sha256hash?: string;
+	timestamp?: number;
+}
+
 export class LoopholeMainUpdateService extends Disposable implements ILoopholeUpdateService {
 	_serviceBrand: undefined;
 
@@ -87,12 +95,138 @@ export class LoopholeMainUpdateService extends Disposable implements ILoopholeUp
 	private _onVSCodeUpdateStateChange(state: State): void {
 		this._logService.info('[LoopholeUpdate] VS Code update state changed:', state.type);
 
-		// If VS Code update service found an update, we don't need to use GitHub
+		// If VS Code update service found an update, we don't need to use direct GitHub/versions updates
 		if (state.type === StateType.Ready || state.type === StateType.Downloaded) {
 			this._useGitHubUpdates = false;
 		}
 	}
 
+	private _isNewerVersion(latestVersion: string, currentVersion: string): boolean {
+		const parse = (v: string) => v.replace(/^v/, '').split(/[-+]/)[0].split('.').map(n => parseInt(n, 10) || 0);
+		const [la = 0, lb = 0, lc = 0] = parse(latestVersion);
+		const [ca = 0, cb = 0, cc = 0] = parse(currentVersion);
+		if (la !== ca) { return la > ca; }
+		if (lb !== cb) { return lb > cb; }
+		return lc > cc;
+	}
+
+	private _getVersionsRepoCandidateUrls(): string[] {
+		const baseUrl = (this._productService.updateUrl || 'https://raw.githubusercontent.com/loophole-ai/versions/refs/heads/main').replace(/\/+$/, '');
+		const quality = this._productService.quality || 'stable';
+		const platformName = platform();
+		const archName = arch() === 'arm64' ? 'arm64' : 'x64';
+
+		if (platformName === 'win32') {
+			// Windows user setup: stable/win32/<arch>/user/latest.json
+			return [
+				`${baseUrl}/${quality}/win32/${archName}/user/latest.json`,
+			];
+		} else if (platformName === 'darwin') {
+			// macOS: stable/darwin/<arch>/latest.json with universal fallback for arm64
+			const urls = [`${baseUrl}/${quality}/darwin/${archName}/latest.json`];
+			if (archName === 'arm64') {
+				urls.push(`${baseUrl}/${quality}/darwin/universal/latest.json`);
+			}
+			return urls;
+		} else if (platformName === 'linux') {
+			// Linux: stable/linux/<arch>/latest.json
+			return [
+				`${baseUrl}/${quality}/linux/${archName}/latest.json`,
+			];
+		}
+
+		return [];
+	}
+
+	private async _checkVersionsRepo(explicit: boolean): Promise<LoopholeCheckUpdateRespose | null> {
+		const candidateUrls = this._getVersionsRepoCandidateUrls();
+		if (candidateUrls.length === 0) {
+			return null;
+		}
+
+		this._logService.info('[LoopholeUpdate] Checking versions repository...');
+
+		let release: IVersionsRepoRelease | null = null;
+		let successfulUrl: string | null = null;
+
+		for (const url of candidateUrls) {
+			try {
+				this._logService.info(`[LoopholeUpdate] Fetching version metadata from: ${url}`);
+				const response = await this._requestService.request({
+					url,
+					headers: {
+						'Cache-Control': 'no-cache',
+						'User-Agent': `Loophole/${(this._productService as any).loopholeVersion ?? this._productService.version}`
+					},
+					callSite: 'LoopholeMainUpdateService._checkVersionsRepo'
+				}, CancellationToken.None);
+
+				release = await asJson<IVersionsRepoRelease>(response);
+				if (release && release.url) {
+					successfulUrl = url;
+					break;
+				}
+			} catch (e) {
+				this._logService.warn(`[LoopholeUpdate] Failed to fetch from ${url}:`, e instanceof Error ? e.message : String(e));
+			}
+		}
+
+		if (!release || !release.url) {
+			this._logService.warn('[LoopholeUpdate] No valid release found in versions repository');
+			return null;
+		}
+
+		const latestVersion = (release.productVersion || release.version || '').replace(/^v/, '');
+		const myVersion = String((this._productService as any).loopholeVersion ?? this._productService.version).replace(/^v/, '');
+
+		this._logService.info(`[LoopholeUpdate] Versions repo check: current=${myVersion}, latest=${latestVersion}, source=${successfulUrl}`);
+
+		if (!latestVersion) {
+			this._logService.warn('[LoopholeUpdate] Release found in versions repo but has no version string');
+			return null;
+		}
+
+		const isNewer = this._isNewerVersion(latestVersion, myVersion);
+
+		if (!isNewer) {
+			this._githubState = GitHubUpdateState.Idle;
+			if (explicit) {
+				return { message: 'Loophole is up-to-date!' } as const;
+			}
+			return { message: null } as const;
+		}
+
+		const assetName = release.url.substring(release.url.lastIndexOf('/') + 1) || `Loophole-update-${latestVersion}`;
+		this._currentUpdate = {
+			version: latestVersion,
+			assetUrl: release.url,
+			assetName
+		};
+
+		this._githubState = GitHubUpdateState.Available;
+		this._useGitHubUpdates = true;
+
+		// Check if we already have this update downloaded
+		const downloadPath = join(this._cachePath, assetName);
+		if (fs.existsSync(downloadPath)) {
+			this._currentUpdate.downloadPath = downloadPath;
+			this._githubState = GitHubUpdateState.Downloaded;
+
+			if (platform() === 'win32') {
+				this._githubState = GitHubUpdateState.Ready;
+				return { message: 'Restart Loophole to update!', action: 'restart' } as const;
+			}
+		}
+
+		// Return appropriate message based on platform
+		if (platform() === 'win32') {
+			return { message: 'A new version is available!', action: 'download' } as const;
+		} else if (platform() === 'darwin') {
+			return { message: `Update ${latestVersion} available! Download and replace your Loophole.app.`, action: 'download' } as const;
+		} else {
+			return { message: `Update ${latestVersion} available! Download and reinstall.`, action: 'download' } as const;
+		}
+	}
 
 	async check(explicit: boolean): Promise<LoopholeCheckUpdateRespose> {
 		const isDevMode = !this._envMainService.isBuilt;
@@ -101,18 +235,17 @@ export class LoopholeMainUpdateService extends Disposable implements ILoopholeUp
 			return { message: null } as const;
 		}
 
-		// Always use VS Code's built-in update service which reads from updateUrl in product.json.
-		// It handles download, background install via Inno Setup, and the ready mutex automatically.
-		const vscodeState = this._updateService.state.type;
-		if (vscodeState !== StateType.Disabled) {
-			// Trigger a fresh check when user explicitly asks and service is idle
-			if (explicit && (vscodeState === StateType.Idle || vscodeState === StateType.Uninitialized)) {
-				this._updateService.checkForUpdates(true);
+		// 1. Primary: check versions repository directly
+		try {
+			const versionsRes = await this._checkVersionsRepo(explicit);
+			if (versionsRes !== null) {
+				return versionsRes;
 			}
-			return this._getResponseFromVSCodeState(explicit);
+		} catch (e) {
+			this._logService.warn('[LoopholeUpdate] Error checking versions repository, falling back to GitHub releases:', e);
 		}
 
-		// Fallback to GitHub releases only if the built-in service is disabled
+		// 2. Fallback: check GitHub releases
 		return await this._checkGitHubReleases(explicit);
 	}
 
@@ -153,11 +286,6 @@ export class LoopholeMainUpdateService extends Disposable implements ILoopholeUp
 		}
 	}
 
-
-
-
-
-
 	private async _checkGitHubReleases(explicit: boolean): Promise<LoopholeCheckUpdateRespose> {
 		this._logService.info('[LoopholeUpdate] Checking GitHub releases...');
 
@@ -181,15 +309,11 @@ export class LoopholeMainUpdateService extends Disposable implements ILoopholeUp
 			}
 
 			const latestVersion = release.tag_name.replace(/^v/, '');
-			const myVersion = (this._productService as any).loopholeVersion ?? this._productService.version;
+			const myVersion = String((this._productService as any).loopholeVersion ?? this._productService.version).replace(/^v/, '');
 
 			this._logService.info(`[LoopholeUpdate] Current: ${myVersion}, Latest: ${latestVersion}`);
 
-			// Simple version comparison (e.g., "2.2.3" vs "2.2.2")
-			const parseVer = (v: string) => v.split('.').map(Number);
-			const [la, lb, lc] = parseVer(latestVersion);
-			const [ca, cb, cc] = parseVer(myVersion);
-			const isUpToDate = !(la > ca || (la === ca && lb > cb) || (la === ca && lb === cb && lc > cc));
+			const isUpToDate = !this._isNewerVersion(latestVersion, myVersion);
 
 			if (isUpToDate) {
 				this._githubState = GitHubUpdateState.Idle;
@@ -402,66 +526,58 @@ export class LoopholeMainUpdateService extends Disposable implements ILoopholeUp
 	}
 
 	async quitAndInstall(): Promise<void> {
-		// If VS Code's built-in update service is active, let it handle quit+install.
-		// It uses Inno Setup's background install + mutex flow (the correct approach).
-		if (this._updateService.state.type !== StateType.Disabled) {
-			await this._updateService.quitAndInstall();
-			return;
-		}
+		if (this._useGitHubUpdates && this._currentUpdate?.downloadPath) {
+			const platformName = platform();
+			const downloadPath = this._currentUpdate.downloadPath;
 
-		if (!this._useGitHubUpdates || !this._currentUpdate?.downloadPath) {
-			await this._updateService.quitAndInstall();
-			return;
-		}
+			if (platformName === 'win32' && downloadPath.endsWith('.exe')) {
+				// Windows: Spawn a detached watcher that runs installer after app closes
+				this._logService.info('[LoopholeUpdate] Preparing Windows update with watcher...');
 
-		const platformName = platform();
-		const downloadPath = this._currentUpdate.downloadPath;
+				const installerPath = downloadPath;
+				const updateScriptPath = join(this._cachePath, 'update-watcher.bat');
 
-		if (platformName === 'win32' && downloadPath.endsWith('.exe')) {
-			// Windows: Spawn a detached watcher that runs installer after app closes
-			this._logService.info('[LoopholeUpdate] Preparing Windows update with watcher...');
+				// Create a batch script that waits for the app to close, then runs installer
+				const batchScriptLines = [
+					'@echo off',
+					':: Wait for Loophole to close',
+					'set /a attempts=0',
+					':waitloop',
+					'set /a attempts+=1',
+					'if %attempts% gtr 40 goto runinstaller',
+					'ping -n 2 127.0.0.1 >nul 2>&1',
+					'tasklist /FI "IMAGENAME eq loophole.exe" 2>nul | find /I "loophole.exe" >nul',
+					'if %errorlevel% equ 0 goto waitloop',
+					'',
+					':runinstaller',
+					':: Run installer and wait for it to finish before cleaning up',
+					`start /wait "" "${installerPath}" /verysilent /mergetasks=!runcode,!desktopicon,!quicklaunchicon /nocancel`,
+					':: Clean up only after installer exits',
+					`rmdir /s /q "${this._cachePath}"`,
+					'del "%~f0"'
+				];
 
-			const installerPath = downloadPath;
-			const updateScriptPath = join(this._cachePath, 'update-watcher.bat');
+				await pfs.Promises.writeFile(updateScriptPath, batchScriptLines.join('\r\n'));
 
-			// Create a batch script that waits for the app to close, then runs installer
-			const batchScriptLines = [
-				'@echo off',
-				':: Wait for Loophole to close',
-				'set /a attempts=0',
-				':waitloop',
-				'set /a attempts+=1',
-				'if %attempts% gtr 40 goto runinstaller',
-				'ping -n 2 127.0.0.1 >nul 2>&1',
-				'tasklist /FI "IMAGENAME eq loophole.exe" 2>nul | find /I "loophole.exe" >nul',
-				'if %errorlevel% equ 0 goto waitloop',
-				'',
-				':runinstaller',
-				':: Run installer and wait for it to finish before cleaning up',
-				`start /wait "" "${installerPath}" /verysilent /mergetasks=!runcode,!desktopicon,!quicklaunchicon /nocancel`,
-				':: Clean up only after installer exits',
-				`rmdir /s /q "${this._cachePath}"`,
-				'del "%~f0"'
-			];
+				// Spawn the watcher script (detached, hidden)
+				spawn('cmd.exe', ['/c', 'start', '/min', updateScriptPath], {
+					detached: true,
+					stdio: ['ignore', 'ignore', 'ignore'],
+					windowsVerbatimArguments: true
+				});
 
-			await pfs.Promises.writeFile(updateScriptPath, batchScriptLines.join('\r\n'));
+				// Small delay to ensure watcher has started
+				await timeout(500);
 
-			// Spawn the watcher script (detached, hidden)
-			spawn('cmd.exe', ['/c', 'start', '/min', updateScriptPath], {
-				detached: true,
-				stdio: ['ignore', 'ignore', 'ignore'],
-				windowsVerbatimArguments: true
-			});
-
-			// Small delay to ensure watcher has started
-			await timeout(500);
-
-			// Now quit the app - watcher will run installer after we close
-			this._logService.info('[LoopholeUpdate] Quitting app for update...');
-			await this._lifecycleMainService.quit(true);
+				// Now quit the app - watcher will run installer after we close
+				this._logService.info('[LoopholeUpdate] Quitting app for update...');
+				await this._lifecycleMainService.quit(true);
+			} else {
+				// For other platforms, just apply (user needs to manually restart)
+				await this.applyUpdate();
+			}
 		} else {
-			// For other platforms, just apply (user needs to manually restart)
-			await this.applyUpdate();
+			await this._updateService.quitAndInstall();
 		}
 	}
 

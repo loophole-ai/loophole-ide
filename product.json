@@ -1,6 +1,7 @@
 {
 	"version": "1.121.0",
 	"commit": "release",
+	"updateUrl": "https://raw.githubusercontent.com/loophole-ai/versions/refs/heads/main",
 	"nameShort": "Loophole",
 	"nameLong": "Loophole Editor",
 	"loopholeVersion": "2.2.2",
@@ -109,7 +110,7 @@
 		"completionsEnablementSetting": "",
 		"nextEditSuggestionsSetting": ""
 	},
-	"quality": "oss",
+	"quality": "stable",
 	"onboardingThemes": [
 		{
 			"id": "loophole-dark",
