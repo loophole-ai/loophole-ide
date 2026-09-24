@@ -8,6 +8,7 @@ import React, { ButtonHTMLAttributes, FormEvent, FormHTMLAttributes, Fragment, K
 
 import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState } from '../util/services.js';
 import { useLocalVoiceModel, useLocalVoiceRecorder } from '../util/localVoiceModel.js';
+import { localVoiceModelService } from '../../../localVoiceModelService.js';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
 
 import { ChatMarkdownRender, ChatMessageLocation, getApplyBoxId } from '../markdown/ChatMarkdownRender.js';
@@ -3129,10 +3130,14 @@ export const SidebarChat = () => {
 	const settingsState = useSettingsState()
 	const voiceState = useLocalVoiceModel()
 	const selectedVoiceModelId = settingsState.globalSettings.localVoiceModelId
-	const isVoiceModelReady = selectedVoiceModelId !== null && (
-		voiceState.statusByModel[selectedVoiceModelId] === 'installed' ||
-		voiceState.statusByModel[selectedVoiceModelId] === 'ready'
-	)
+	const selectedVoiceModelStatus = selectedVoiceModelId === null
+		? undefined
+		: voiceState.statusByModel[selectedVoiceModelId]
+	const isVoiceModelReady = selectedVoiceModelStatus === 'ready'
+	useEffect(() => {
+		if (!selectedVoiceModelId || selectedVoiceModelStatus !== 'installed') return;
+		void localVoiceModelService.ensureModel(selectedVoiceModelId).catch(() => undefined);
+	}, [selectedVoiceModelId, selectedVoiceModelStatus])
 	const onVoiceTranscript = useCallback((text: string) => {
 		textAreaFnsRef.current?.insertTextAtCursor(text)
 	}, [])
