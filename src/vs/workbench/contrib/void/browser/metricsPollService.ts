@@ -32,10 +32,15 @@ class MetricsPollService extends Disposable implements IMetricsPollService {
 	) {
 		super()
 
-		// initial state
+		// Send an immediate heartbeat so a short-lived session is visible in analytics.
 		const { window } = dom.getActiveWindow()
 		let i = 1
 
+		try {
+			this.metricsService.capture('Alive', { iv1: 0 })
+		} catch (error) {
+			console.error('Failed to capture the initial metrics heartbeat:', error)
+		}
 		this.intervalID = window.setInterval(() => {
 			this.metricsService.capture('Alive', { iv1: i })
 			i += 1

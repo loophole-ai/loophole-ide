@@ -15,7 +15,8 @@ import { IMetricsService } from '../common/metricsService.js';
 import { PostHog } from 'posthog-node'
 import { OPT_OUT_KEY } from '../common/storageKeys.js';
 
-const FLUSH_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+const FLUSH_INTERVAL_MS = 30 * 1000 // 30 seconds
+const POSTHOG_HOST = 'https://us.i.posthog.com'
 
 
 const os = isWindows ? 'windows' : isMacintosh ? 'mac' : isLinux ? 'linux' : null
@@ -45,6 +46,8 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 	private _userId?: string
 	private _oldId?: string
 	private _isDevMode: boolean = false
+	private _lastPostHogError?: string
+	private _lastCapture?: { event: string; timestamp: string }
 
 
 	// helper - looks like this is stored in a .vscdb file in ~/Library/Application Support/Loophole
@@ -111,8 +114,12 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 		super()
 		try {
 			this.client = new PostHog('phc_oTDpdDZgxMUvGmfGoJMEKhazigTNMFeqSFb8zmH698wy', {
-				host: 'https://us.i.posthog.com',
+				host: POSTHOG_HOST,
 			})
+			this.client.on('error', error => {
+				this._lastPostHogError = error instanceof Error ? error.message : String(error);
+				console.error('[Loophole] PostHog error:', error);
+			});
 		} catch (error) {
 			console.error('Failed to initialize PostHog client:', error)
 		}
@@ -158,12 +165,15 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 			const didOptOut = this._appStorage.getBoolean(OPT_OUT_KEY, StorageScope.APPLICATION, false)
 
 			console.log('User is opted out of basic Loophole metrics?', didOptOut)
-			if (didOptOut) {
-				this.client.optOut()
+			if (didOptOut || isDevMode) {
+				await this.client.optOut();
 			}
 			else {
-				this.client.optIn()
-				this.client.identify(identifyMessage)
+				await this.client.optIn();
+				this.client.identify(identifyMessage);
+				// Emit an event as soon as a built app starts so activity is visible
+				// without waiting for a user action or the periodic heartbeat.
+				this.capture('app opened', {});
 			}
 
 			console.log('Loophole posthog metrics info:', JSON.stringify(identifyMessage, null, 2))
@@ -172,14 +182,9 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 			this._ready = true
 			if (!didOptOut && !isDevMode) {
 				this._flushPending()
-				// Set up periodic flushing to ensure events are sent regularly
-				this._flushInterval = setInterval(() => {
-					try {
-						this.client.flush()
-					} catch (error) {
-						console.error('Failed to flush PostHog events:', error)
-					}
-				}, FLUSH_INTERVAL_MS)
+				this._flush('initialization')
+				// Keep sending queued events regularly while the app is running.
+				this._flushInterval = setInterval(() => this._flush('interval'), FLUSH_INTERVAL_MS)
 			}
 			else {
 				this._pendingCaptures = []
@@ -196,6 +201,7 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 	private _ready = false
 
 	capture: IMetricsService['capture'] = (event, params) => {
+		this._lastCapture = { event, timestamp: new Date().toISOString() };
 		if (!this._ready) {
 			this._pendingCaptures.push({ event, params })
 			return
@@ -214,6 +220,20 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 			this.client.capture({ distinctId, event, properties: { ...params, ...this._initProperties } })
 		} catch (error) {
 			console.error('Failed to capture metric event:', error, { event, params })
+		}
+	}
+
+	private _flush(reason: string) {
+		try {
+			void this.client.flush().then(() => {
+				this._lastPostHogError = undefined;
+			}).catch(error => {
+				this._lastPostHogError = error instanceof Error ? error.message : String(error);
+				console.error(`Failed to flush PostHog events (${reason}):`, error);
+			});
+		} catch (error) {
+			this._lastPostHogError = error instanceof Error ? error.message : String(error);
+			console.error(`Failed to flush PostHog events (${reason}):`, error);
 		}
 	}
 
@@ -239,11 +259,17 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 			// persist to main-process storage so it survives restarts
 			if (newVal) {
 				this._appStorage.store(OPT_OUT_KEY, 'true', StorageScope.APPLICATION, StorageTarget.MACHINE)
-				this.client.optOut()
+				void this.client.optOut().catch(error => {
+					this._lastPostHogError = error instanceof Error ? error.message : String(error);
+					console.error('Failed to opt out of PostHog:', error);
+				});
 			}
 			else {
 				this._appStorage.remove(OPT_OUT_KEY, StorageScope.APPLICATION)
-				this.client.optIn()
+				void this.client.optIn().catch(error => {
+					this._lastPostHogError = error instanceof Error ? error.message : String(error);
+					console.error('Failed to opt in to PostHog:', error);
+				});
 			}
 		} catch (error) {
 			console.error('Failed to set opt-out status:', error, { newVal })
@@ -270,7 +296,13 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 		return {
 			...this._initProperties,
 			isReady: this._ready,
+			isDevMode: this._isDevMode,
+			posthogHost: POSTHOG_HOST,
+			optedOut: this.client?.optedOut ?? false,
+			clientDisabled: this.client?.isDisabled ?? true,
+			lastCapture: this._lastCapture,
 			pendingCaptures: this._pendingCaptures.length,
+			lastPostHogError: this._lastPostHogError,
 			clientInitialized: !!this.client,
 		}
 	}
