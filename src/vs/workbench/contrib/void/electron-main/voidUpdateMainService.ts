@@ -249,43 +249,6 @@ export class LoopholeMainUpdateService extends Disposable implements ILoopholeUp
 		return await this._checkGitHubReleases(explicit);
 	}
 
-	private _getResponseFromVSCodeState(explicit: boolean): LoopholeCheckUpdateRespose {
-		const state = this._updateService.state;
-
-		switch (state.type) {
-			case StateType.Uninitialized:
-				return { message: explicit ? 'Checking for updates soon...' : null, action: explicit ? 'reinstall' : undefined } as const;
-
-			case StateType.Idle:
-				return { message: explicit ? 'No updates found!' : null, action: explicit ? 'reinstall' : undefined } as const;
-
-			case StateType.CheckingForUpdates:
-				return { message: explicit ? 'Checking for updates...' : null } as const;
-
-			case StateType.AvailableForDownload:
-				return { message: 'A new update is available!', action: 'download' } as const;
-
-			case StateType.Downloading:
-				return { message: explicit ? 'Currently downloading update...' : null } as const;
-
-			case StateType.Downloaded:
-				return { message: explicit ? 'An update is ready to be applied!' : null, action: 'apply' } as const;
-
-			case StateType.Updating:
-				return { message: explicit ? 'Applying update...' : null } as const;
-
-			case StateType.Ready:
-				return { message: 'Restart Loophole to update!', action: 'restart' } as const;
-
-			case StateType.Disabled:
-				// Will be handled by GitHub check
-				return null;
-
-			default:
-				return null;
-		}
-	}
-
 	private async _checkGitHubReleases(explicit: boolean): Promise<LoopholeCheckUpdateRespose> {
 		this._logService.info('[LoopholeUpdate] Checking GitHub releases...');
 
