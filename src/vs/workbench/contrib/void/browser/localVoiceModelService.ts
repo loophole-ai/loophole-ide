@@ -35,6 +35,13 @@ type VoiceTranscriber = {
 	dispose?: () => Promise<unknown>;
 };
 
+type VoiceDevice = 'webgpu' | 'wasm';
+
+type LoadedVoiceTranscriber = {
+	transcriber: VoiceTranscriber;
+	device: VoiceDevice;
+};
+
 type TransformersModule = typeof import('@huggingface/transformers');
 
 const VOICE_CACHE_KEY = 'loophole-voice-models';
@@ -76,8 +83,10 @@ class LocalVoiceModelService {
 	private transformersModulePromise: Promise<TransformersModule> | undefined;
 	private transcriber: VoiceTranscriber | undefined;
 	private activeModelId: LocalVoiceModelId | null = null;
+	private activeDevice: VoiceDevice | null = null;
+	private webgpuDisabled = false;
 	private operationId = 0;
-	private inferenceTail: Promise<void> = Promise.resolve();
+	private modelOperationTail: Promise<void> = Promise.resolve();
 	private installedModelIds = new Set<LocalVoiceModelId>();
 
 	readonly getState = (): LocalVoiceModelRuntimeState => this.state;
@@ -139,7 +148,29 @@ class LocalVoiceModelService {
 		}
 	}
 
-	async installModel(modelId: LocalVoiceModelId): Promise<void> {
+	installModel(modelId: LocalVoiceModelId): Promise<void> {
+		return this.enqueueModelOperation(() => this.installModelInternal(modelId));
+	}
+
+	ensureModel(modelId: LocalVoiceModelId): Promise<void> {
+		return this.enqueueModelOperation(() => this.ensureModelInternal(modelId));
+	}
+
+	transcribeBlob(blob: Blob, modelId: LocalVoiceModelId): Promise<string> {
+		return this.enqueueModelOperation(() => this.transcribeBlobInternal(blob, modelId));
+	}
+
+	removeModel(modelId: LocalVoiceModelId): Promise<void> {
+		return this.enqueueModelOperation(() => this.removeModelInternal(modelId));
+	}
+
+	private enqueueModelOperation<T>(operation: () => Promise<T>): Promise<T> {
+		const run = this.modelOperationTail.then(operation, operation);
+		this.modelOperationTail = run.then(() => undefined, () => undefined);
+		return run;
+	}
+
+	private async installModelInternal(modelId: LocalVoiceModelId): Promise<void> {
 		const model = localVoiceModelById[modelId];
 		if (!await this.hasEnoughStorage(model)) {
 			const message = `Not enough local storage is available for ${model.downloadSizeLabel}. Remove another voice model and try again.`;
@@ -150,15 +181,16 @@ class LocalVoiceModelService {
 		this.setModelState(modelId, { status: 'downloading', progress: 0, error: undefined });
 
 		try {
-			const transcriber = await this.createTranscriber(model, requestId, true);
+			const loaded = await this.createTranscriber(model, requestId, true);
 			if (requestId !== this.operationId) {
-				await this.disposeTranscriber(transcriber);
+				await this.disposeTranscriber(loaded.transcriber);
 				this.setModelState(modelId, { status: this.installedModelIds.has(modelId) ? 'installed' : 'notInstalled', progress: 0 });
 				return;
 			}
 
 			await this.disposeActiveTranscriber();
-			this.transcriber = transcriber;
+			this.transcriber = loaded.transcriber;
+			this.activeDevice = loaded.device;
 			this.activeModelId = modelId;
 			this.setModelState(modelId, { status: 'ready', progress: 100, error: undefined });
 			this.persistInstalledModel(modelId);
@@ -170,7 +202,7 @@ class LocalVoiceModelService {
 	}
 
 	/** Load a model that is already marked installed without downloading it. */
-	async ensureModel(modelId: LocalVoiceModelId): Promise<void> {
+	private async ensureModelInternal(modelId: LocalVoiceModelId): Promise<void> {
 		if (this.activeModelId === modelId && this.transcriber && this.getStatus(modelId) === 'ready') return;
 		if (!this.isInstalled(modelId)) {
 			throw new Error('Install a local voice model before using the microphone.');
@@ -179,15 +211,16 @@ class LocalVoiceModelService {
 		const requestId = ++this.operationId;
 		this.setModelState(modelId, { status: 'loading', error: undefined });
 		try {
-			const transcriber = await this.createTranscriber(localVoiceModelById[modelId], requestId, false);
+			const loaded = await this.createTranscriber(localVoiceModelById[modelId], requestId, false);
 			if (requestId !== this.operationId) {
-				await this.disposeTranscriber(transcriber);
+				await this.disposeTranscriber(loaded.transcriber);
 				this.setModelState(modelId, { status: this.installedModelIds.has(modelId) ? 'installed' : 'notInstalled', progress: 0 });
 				return;
 			}
 
 			await this.disposeActiveTranscriber();
-			this.transcriber = transcriber;
+			this.transcriber = loaded.transcriber;
+			this.activeDevice = loaded.device;
 			this.activeModelId = modelId;
 			this.setModelState(modelId, { status: 'ready', progress: 100, error: undefined });
 		} catch (error) {
@@ -197,31 +230,46 @@ class LocalVoiceModelService {
 		}
 	}
 
-	async transcribeBlob(blob: Blob, modelId: LocalVoiceModelId): Promise<string> {
+	private async transcribeBlobInternal(blob: Blob, modelId: LocalVoiceModelId): Promise<string> {
 		if (!blob.size) return '';
 
-		const run = this.inferenceTail.then(async () => {
-			await this.ensureModel(modelId);
-			if (!this.transcriber) throw new Error('The local voice model is not ready.');
+		await this.ensureModelInternal(modelId);
+		if (!this.transcriber) throw new Error('The local voice model is not ready.');
 
-			const samples = await this.decodeAudioBlob(blob);
-			const model = localVoiceModelById[modelId];
-			const options: Record<string, unknown> = {
-				task: 'transcribe',
-				chunk_length_s: 30,
-				stride_length_s: 5,
-				condition_on_previous_text: false,
-			};
-			if (model.languageOption) options.language = model.languageOption;
+		const samples = await this.decodeAudioBlob(blob);
+		const model = localVoiceModelById[modelId];
+		const options: Record<string, unknown> = {
+			task: 'transcribe',
+			chunk_length_s: 30,
+			stride_length_s: 5,
+			condition_on_previous_text: false,
+		};
+		if (model.languageOption) options.language = model.languageOption;
 
-			const result = await this.transcriber(samples, options);
+		const transcriber = this.transcriber;
+		if (!transcriber) throw new Error('The local voice model is not ready.');
+
+		try {
+			const result = await transcriber(samples, options);
 			return result.text?.trim() ?? '';
-		});
-		this.inferenceTail = run.then(() => undefined, () => undefined);
-		return run;
+		} catch (error) {
+			if (this.activeDevice !== 'webgpu' || !this.installedModelIds.has(modelId)) throw error;
+
+			// A WebGPU pipeline can construct successfully and still fail when
+			// the first shader/session is executed. Retry once from the cached
+			// CPU/WASM variant, never downloading during dictation.
+			this.webgpuDisabled = true;
+			await this.disposeActiveTranscriber();
+			this.setModelState(modelId, { status: 'installed', error: undefined });
+			await this.ensureModelInternal(modelId);
+			const fallback = this.transcriber;
+			if (!fallback) throw error;
+			const fallbackResult = await fallback(samples, options);
+			return fallbackResult.text?.trim() ?? '';
+		}
 	}
 
-	async removeModel(modelId: LocalVoiceModelId): Promise<void> {
+	private async removeModelInternal(modelId: LocalVoiceModelId): Promise<void> {
 		++this.operationId;
 		if (this.activeModelId === modelId) {
 			await this.disposeActiveTranscriber();
@@ -277,22 +325,23 @@ class LocalVoiceModelService {
 		}
 	}
 
-	private async createTranscriber(model: LocalVoiceModelDefinition, requestId: number, allowDownload: boolean): Promise<VoiceTranscriber> {
+	private async createTranscriber(model: LocalVoiceModelDefinition, requestId: number, allowDownload: boolean): Promise<LoadedVoiceTranscriber> {
 		const transformers = await this.getTransformersModule();
-		const hasWebGPU = await this.hasWebGPUAdapter();
-		const isCached = async (device: 'webgpu' | 'wasm') => transformers.ModelRegistry.is_pipeline_cached(
+		const hasWebGPU = !this.webgpuDisabled && await this.hasWebGPUAdapter();
+		const isCached = async (device: VoiceDevice) => transformers.ModelRegistry.is_pipeline_cached(
 			'automatic-speech-recognition',
 			model.modelId,
 			{ revision: model.revision, device, dtype: 'q8' },
 		);
-		const create = async (device?: 'webgpu' | 'wasm') => {
+		const create = async (device: VoiceDevice): Promise<LoadedVoiceTranscriber> => {
 			const options = {
 				revision: model.revision,
 				dtype: 'q8' as const,
-				progress_callback: (info: ProgressInfo) => this.handleProgress(model.id, info),
-				...(device ? { device } : {}),
+				...(allowDownload ? { progress_callback: (info: ProgressInfo) => this.handleProgress(model.id, info) } : {}),
+				device,
 			};
-			return (await transformers.pipeline('automatic-speech-recognition', model.modelId, options)) as unknown as VoiceTranscriber;
+			const transcriber = (await transformers.pipeline('automatic-speech-recognition', model.modelId, options)) as unknown as VoiceTranscriber;
+			return { transcriber, device };
 		};
 
 		if (!allowDownload) {
@@ -300,6 +349,7 @@ class LocalVoiceModelService {
 				try {
 					return await create('webgpu');
 				} catch (error) {
+					this.webgpuDisabled = true;
 					if (await isCached('wasm')) return create('wasm');
 					throw error;
 				}
@@ -312,6 +362,7 @@ class LocalVoiceModelService {
 			return hasWebGPU ? await create('webgpu') : await create('wasm');
 		} catch (error) {
 			if (hasWebGPU && requestId === this.operationId) {
+				this.webgpuDisabled = true;
 				return create('wasm');
 			}
 			throw error;
@@ -423,9 +474,16 @@ class LocalVoiceModelService {
 	}
 
 	private async disposeActiveTranscriber(): Promise<void> {
+		const previousModelId = this.activeModelId;
 		await this.disposeTranscriber(this.transcriber);
 		this.transcriber = undefined;
+		this.activeDevice = null;
 		this.activeModelId = null;
+		if (previousModelId) {
+			this.setModelState(previousModelId, {
+				status: this.installedModelIds.has(previousModelId) ? 'installed' : 'notInstalled',
+			});
+		}
 	}
 
 	private async disposeTranscriber(transcriber: VoiceTranscriber | undefined): Promise<void> {

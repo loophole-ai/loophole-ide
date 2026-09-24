@@ -69,6 +69,7 @@ export const LocalVoiceModelSettings = ({ compact = false }: { compact?: boolean
 					const status = voiceState.statusByModel[model.id];
 					const isSelected = selectedModelId === model.id;
 					const isInstalled = isInstalledStatus(status);
+					const canRemove = isInstalled || status === 'error';
 					const isBusy = isBusyStatus(status);
 					const progress = voiceState.progressByModel[model.id];
 					const error = voiceState.errorsByModel[model.id];
@@ -109,7 +110,7 @@ export const LocalVoiceModelSettings = ({ compact = false }: { compact?: boolean
 											{status === 'error' ? 'Retry' : 'Install'}
 										</button>
 									)}
-									{isInstalled && (
+									{canRemove && (
 										<button type="button" className="rounded p-1 text-loophole-fg-3 hover:bg-loophole-bg-2 hover:text-loophole-fg-1" onClick={() => removeModel(model.id)} title="Remove downloaded model" aria-label={`Remove ${model.label}`}>
 											<Trash2 size={14} />
 										</button>

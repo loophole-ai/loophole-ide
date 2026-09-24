@@ -731,10 +731,11 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 			const end = r.selectionEnd
 			const before = r.value.slice(0, start)
 			const after = r.value.slice(end)
-			const needsSpace = before.length > 0 && !/\s$/.test(before)
-			const value = `${before}${needsSpace ? ' ' : ''}${text}${after}`
+			const leadingSpace = before.length > 0 && !/\s$/.test(before) ? ' ' : ''
+			const trailingSpace = after.length > 0 && !/^\s/.test(after) ? ' ' : ''
+			const value = `${before}${leadingSpace}${text}${trailingSpace}${after}`
 			r.value = value
-			const cursor = before.length + (needsSpace ? 1 : 0) + text.length
+			const cursor = before.length + leadingSpace.length + text.length
 			r.setSelectionRange(cursor, cursor)
 			onChangeText?.(value)
 			adjustHeight()

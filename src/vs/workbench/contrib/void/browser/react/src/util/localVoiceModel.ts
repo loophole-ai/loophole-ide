@@ -120,9 +120,20 @@ export const useLocalVoiceRecorder = (
 					autoGainControl: true,
 				},
 			});
+			if (!mountedRef.current) {
+				stream.getTracks().forEach(track => track.stop());
+				return;
+			}
+
+			// Store the stream before constructing MediaRecorder so every failure
+			// path can release the microphone permission.
+			streamRef.current = stream;
 			const mimeType = supportedRecordingMimeTypes.find(type => MediaRecorder.isTypeSupported(type));
 			const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-			streamRef.current = stream;
+			if (!mountedRef.current) {
+				releaseCapture();
+				return;
+			}
 			recorderRef.current = recorder;
 			chunksRef.current = [];
 
@@ -138,13 +149,19 @@ export const useLocalVoiceRecorder = (
 			};
 
 			recorder.start();
+			if (!mountedRef.current) {
+				releaseCapture();
+				return;
+			}
 			setIsTranscribing(false);
 			setIsRecording(true);
 			timeoutRef.current = setTimeout(stop, MAX_RECORDING_MS);
 		} catch (recordingError) {
 			releaseCapture();
-			setIsTranscribing(false);
-			setError(errorMessageOf(recordingError));
+			if (mountedRef.current) {
+				setIsTranscribing(false);
+				setError(errorMessageOf(recordingError));
+			}
 		}
 	}, [finishRecording, isRecording, isTranscribing, modelId, releaseCapture, stop]);
 
