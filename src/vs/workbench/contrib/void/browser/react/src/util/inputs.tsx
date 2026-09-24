@@ -340,7 +340,12 @@ const getOptionsAtPath = async (accessor: ReturnType<typeof useAccessor>, path: 
 
 
 
-export type TextAreaFns = { setValue: (v: string) => void, enable: () => void, disable: () => void }
+export type TextAreaFns = {
+	setValue: (v: string) => void,
+	insertTextAtCursor: (text: string) => void,
+	enable: () => void,
+	disable: () => void,
+}
 type InputBox2Props = {
 	initValue?: string | null;
 	placeholder: string;
@@ -717,6 +722,21 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 			if (!r) return
 			r.value = val
 			onChangeText?.(r.value)
+			adjustHeight()
+		},
+		insertTextAtCursor: (text) => {
+			const r = textAreaRef.current
+			if (!r || !text) return
+			const start = r.selectionStart
+			const end = r.selectionEnd
+			const before = r.value.slice(0, start)
+			const after = r.value.slice(end)
+			const needsSpace = before.length > 0 && !/\s$/.test(before)
+			const value = `${before}${needsSpace ? ' ' : ''}${text}${after}`
+			r.value = value
+			const cursor = before.length + (needsSpace ? 1 : 0) + text.length
+			r.setSelectionRange(cursor, cursor)
+			onChangeText?.(value)
 			adjustHeight()
 		},
 		enable: () => { setEnabled(true) },

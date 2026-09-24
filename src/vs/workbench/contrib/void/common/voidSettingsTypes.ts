@@ -7,6 +7,7 @@
 import { defaultModelsOfProvider, defaultProviderSettings, ModelOverrides } from './modelCapabilities.js';
 import { ToolApprovalType } from './toolsServiceTypes.js';
 import { VoidSettingsState } from './voidSettingsService.js'
+import type { LocalVoiceModelId } from './localVoiceModelTypes.js'
 
 
 type UnionOfKeys<T> = T extends T ? keyof T : never;
@@ -486,6 +487,8 @@ export type GlobalSettings = {
 	isOnboardingComplete: boolean;
 	disableSystemMessage: boolean;
 	autoAcceptLLMChanges: boolean;
+	/** Selected local speech-to-text model. The model binary is managed separately. */
+	localVoiceModelId: LocalVoiceModelId | null;
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -504,6 +507,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	isOnboardingComplete: false,
 	disableSystemMessage: false,
 	autoAcceptLLMChanges: false,
+	localVoiceModelId: null,
 }
 
 export type GlobalSettingName = keyof GlobalSettings

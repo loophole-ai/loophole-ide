@@ -13,6 +13,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { IMetricsService } from './metricsService.js';
 import { defaultProviderSettings, getModelCapabilities, ModelOverrides } from './modelCapabilities.js';
 import { VOID_SETTINGS_STORAGE_KEY } from './storageKeys.js';
+import { isLocalVoiceModelId } from './localVoiceModelTypes.js';
 import { isMacintosh } from '../../../../base/common/platform.js';
 import { consolidateSingleAutodetectedProviderModels, dedupeProviderModels, normalizeAutodetectedModelNamesForProvider } from './localSingleModelProviders.js';
 import { defaultSettingsOfProvider, displayInfoOfProviderName, FeatureName, ProviderName, ModelSelectionOfFeature, SettingsOfProvider, SettingName, providerNames, ModelSelection, modelSelectionsEqual, featureNames, VoidStatefulModelInfo, GlobalSettings, GlobalSettingName, defaultGlobalSettings, ModelSelectionOptions, OptionsOfModelSelection, ChatMode, OverridesOfModel, defaultOverridesOfModel, MCPUserStateOfName as MCPUserStateOfName, MCPUserState } from './voidSettingsTypes.js';
@@ -319,6 +320,9 @@ class VoidSettingsService extends Disposable implements IVoidSettingsService {
 			
 			// add autoAcceptLLMChanges feature
 			if (readS.globalSettings.autoAcceptLLMChanges === undefined) readS.globalSettings.autoAcceptLLMChanges = false;
+
+			// add local voice model selection
+			if (!isLocalVoiceModelId(readS.globalSettings.localVoiceModelId)) readS.globalSettings.localVoiceModelId = null;
 
 			// Apple Foundation Models auto-setup (macOS only; default off on other platforms)
 			if (readS.globalSettings.autoSetupAppleFoundationModels === undefined) {

@@ -12,6 +12,7 @@ import { OllamaSetupInstructions, MlxSetupInstructions, AppleFoundationModelsSet
 import { ColorScheme } from '../../../../../../../platform/theme/common/theme.js';
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js';
 import { isLinux } from '../../../../../../../base/common/platform.js';
+import { LocalVoiceModelSettings } from '../local-voice/LocalVoiceModelSettings.js';
 
 const OVERRIDE_VALUE = false
 
@@ -267,6 +268,10 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 					{currentTab === 'Cloud/Other' && <ModelDump filteredProviders={cloudProviders} />}
 				</div>
 			)}
+
+			<div className="w-full max-w-xl mt-8 bg-loophole-bg-2/30 rounded-lg p-6 border border-loophole-border-4">
+				<LocalVoiceModelSettings compact />
+			</div>
 
 			{/* Navigation buttons in right column */}
 			<div className="flex flex-col items-end w-full mt-auto pt-8">

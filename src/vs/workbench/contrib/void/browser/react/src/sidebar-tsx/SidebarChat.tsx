@@ -7,6 +7,7 @@ import React, { ButtonHTMLAttributes, FormEvent, FormHTMLAttributes, Fragment, K
 
 
 import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState } from '../util/services.js';
+import { useLocalVoiceModel, useLocalVoiceRecorder } from '../util/localVoiceModel.js';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
 
 import { ChatMarkdownRender, ChatMessageLocation, getApplyBoxId } from '../markdown/ChatMarkdownRender.js';
@@ -23,7 +24,7 @@ import { ICommandService } from '../../../../../../../platform/commands/common/c
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
 import { estimateTokens } from '../../../../common/tokenizer.js';
-import { AlertTriangle, File, Ban, Check, ChevronRight, Dot, FileIcon, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Paperclip } from 'lucide-react';
+import { AlertTriangle, File, Ban, Check, ChevronRight, Dot, FileIcon, Mic, Loader2, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Paperclip } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage } from '../../../../common/chatThreadServiceTypes.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolName, LintErrorItem, ToolApprovalType, toolApprovalTypes } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, JumpToFileButton, JumpToTerminalButton, StatusIndicator, StatusIndicatorForApplyButton, useApplyStreamState, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -440,6 +441,7 @@ interface VoidChatAreaProps {
 	children: React.ReactNode; // This will be the input component
 
 	// Form controls
+	micButton?: React.ReactNode;
 	onSubmit: () => void;
 	onAbort: () => void;
 	isStreaming: boolean;
@@ -471,6 +473,7 @@ interface VoidChatAreaProps {
 
 export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 	children,
+	micButton,
 	onSubmit,
 	onAbort,
 	onClose,
@@ -551,6 +554,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 					<div className="flex items-center gap-2">
 						{isStreaming && loadingIcon}
         				{featureName === 'Chat' && <ContextWindowIndicator featureName={featureName} />}
+						{featureName === 'Chat' && micButton}
         				{isStreaming ? (
 							<ButtonStop onClick={onAbort} />
 						) : (
@@ -3123,6 +3127,16 @@ export const SidebarChat = () => {
 	const chatThreadsService = accessor.get('IChatThreadService')
 
 	const settingsState = useSettingsState()
+	const voiceState = useLocalVoiceModel()
+	const selectedVoiceModelId = settingsState.globalSettings.localVoiceModelId
+	const isVoiceModelReady = selectedVoiceModelId !== null && (
+		voiceState.statusByModel[selectedVoiceModelId] === 'installed' ||
+		voiceState.statusByModel[selectedVoiceModelId] === 'ready'
+	)
+	const onVoiceTranscript = useCallback((text: string) => {
+		textAreaFnsRef.current?.insertTextAtCursor(text)
+	}, [])
+	const voiceRecorder = useLocalVoiceRecorder(isVoiceModelReady ? selectedVoiceModelId : null, onVoiceTranscript)
 	// ----- HIGHER STATE -----
 
 	// threads state
@@ -3306,12 +3320,29 @@ export const SidebarChat = () => {
 		}
 	}, [onSubmit, onAbort, isRunning])
 
+	const voiceButton = isVoiceModelReady && !isRunning ? <button
+		type='button'
+		className={`rounded-full flex items-center justify-center ${voiceRecorder.isRecording ? 'bg-red-500 text-white' : 'bg-loophole-bg-2 text-loophole-fg-2 hover:bg-loophole-bg-3'} ${voiceRecorder.isTranscribing ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}
+		aria-label={voiceRecorder.isRecording ? 'Stop dictation' : 'Start dictation'}
+		aria-pressed={voiceRecorder.isRecording}
+		disabled={voiceRecorder.isTranscribing}
+		title={voiceRecorder.error || (voiceRecorder.isRecording ? 'Stop dictation' : 'Dictate with a local model')}
+		onMouseDown={event => event.preventDefault()}
+		onClick={() => {
+			if (voiceRecorder.isRecording) voiceRecorder.stop()
+			else void voiceRecorder.start()
+		}}
+	>
+		{voiceRecorder.isTranscribing ? <Loader2 size={DEFAULT_BUTTON_SIZE} className="animate-spin" /> : voiceRecorder.isRecording ? <IconSquare size={DEFAULT_BUTTON_SIZE} /> : <Mic size={DEFAULT_BUTTON_SIZE} />}
+	</button> : undefined
+
 	const inputChatArea = <VoidChatArea
 		featureName='Chat'
+		micButton={voiceButton}
 		onSubmit={() => onSubmit()}
 		onAbort={onAbort}
 		isStreaming={!!isRunning}
-		isDisabled={isDisabled}
+		isDisabled={isDisabled || voiceRecorder.isRecording || voiceRecorder.isTranscribing}
 		showSelections={true}
 		// showProspectiveSelections={previousMessagesHTML.length === 0}
 		selections={selections}

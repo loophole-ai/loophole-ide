@@ -11,6 +11,10 @@
 // Loophole
 export const VOID_SETTINGS_STORAGE_KEY = 'loophole.settingsServiceStorage'
 
+// Stores only model installation metadata. Model weights remain in the
+// Transformers.js browser cache and are never part of Loophole settings.
+export const LOCAL_VOICE_MODELS_STORAGE_KEY = 'loophole.localVoiceModels.v1'
+
 
 // past values:
 // 'void.chatThreadStorage'

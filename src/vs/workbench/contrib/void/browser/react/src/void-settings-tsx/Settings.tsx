@@ -12,6 +12,7 @@ import { useAccessor, useIsDark, useIsOptedOut, useRefreshModelListener, useRefr
 import { X, RefreshCw, Loader2, Check, Asterisk, Plus } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { ModelDropdown } from './ModelDropdown.js'
+import { LocalVoiceModelSettings } from '../local-voice/LocalVoiceModelSettings.js'
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
 import { WarningBox } from './WarningBox.js'
 import { IconLoading } from '../sidebar-tsx/SidebarChat.js'
@@ -26,6 +27,7 @@ import { StorageScope, StorageTarget } from '../../../../../../../platform/stora
 
 type Tab =
 	| 'models'
+	| 'voice'
 	| 'ollama'
 	| 'mlx'
 	| 'apple'
@@ -1139,6 +1141,7 @@ export const Settings = () => {
 
 	const navItems: { tab: Tab; label: string }[] = [
 		{ tab: 'models', label: 'Models' },
+		{ tab: 'voice', label: 'Microphone' },
 		{ tab: 'ollama', label: 'Ollama' },
 		...(os === 'mac' ? ([
 			{ tab: 'mlx' as const, label: 'MLX' },
@@ -1294,6 +1297,12 @@ export const Settings = () => {
 									<AutoDetectLocalModelsToggle />
 									<div className='w-full h-[1px] my-4' />
 									<p className='text-loophole-fg-3 text-sm mb-4'>Per-provider setup and refresh are under <strong>Ollama</strong>, <strong>MLX</strong>, and <strong>Apple</strong> in the sidebar.</p>
+								</ErrorBoundary>
+							</div>
+
+							<div className={shouldShowTab('voice') ? `` : 'hidden'}>
+								<ErrorBoundary>
+									<LocalVoiceModelSettings />
 								</ErrorBoundary>
 							</div>
 
