@@ -43,10 +43,10 @@ export const useLocalVoiceRecorder = (
 	const [isRecording, setIsRecording] = useState(false);
 	const [isTranscribing, setIsTranscribing] = useState(false);
 	const [error, setError] = useState<string | undefined>();
-	const recorderRef = useRef<MediaRecorder | undefined>();
-	const streamRef = useRef<MediaStream | undefined>();
+	const recorderRef = useRef<MediaRecorder | undefined>(undefined);
+	const streamRef = useRef<MediaStream | undefined>(undefined);
 	const chunksRef = useRef<Blob[]>([]);
-	const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>();
+	const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const mountedRef = useRef(true);
 	const onTranscriptRef = useRef(onTranscript);
 
