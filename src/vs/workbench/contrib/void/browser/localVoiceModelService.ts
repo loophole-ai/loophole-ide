@@ -383,7 +383,7 @@ class LocalVoiceModelService {
 
 	private async getTransformersModule(): Promise<TransformersModule> {
 		if (!this.transformersModulePromise) {
-			this.transformersModulePromise = import('@huggingface/transformers').then(transformers => {
+			this.transformersModulePromise = import('./transformersRuntime.js').then(({ transformers }) => {
 				transformers.env.allowRemoteModels = true;
 				transformers.env.allowLocalModels = false;
 				transformers.env.useBrowserCache = true;
