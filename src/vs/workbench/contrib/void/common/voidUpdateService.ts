@@ -35,7 +35,7 @@ export class LoopholeUpdateService implements ILoopholeUpdateService {
 		@IMainProcessService mainProcessService: IMainProcessService, // (only usable on client side)
 	) {
 		// creates an IPC proxy to use voidUpdateMainService.ts
-		this.loopholeUpdateService = ProxyChannel.toService<ILoopholeUpdateService>(mainProcessService.getChannel('loophole-channel-update'));
+		this.loopholeUpdateService = ProxyChannel.toService<ILoopholeUpdateService>(mainProcessService.getChannel('void-channel-update'));
 	}
 
 	// anything transmitted over a channel must be async even if it looks like it doesn't have to be
