@@ -383,21 +383,23 @@ class LocalVoiceModelService {
 
 	private async getTransformersModule(): Promise<TransformersModule> {
 		if (!this.transformersModulePromise) {
-			this.transformersModulePromise = import('./transformersRuntime.js').then(({ transformers }) => {
-				transformers.env.allowRemoteModels = true;
-				transformers.env.allowLocalModels = false;
-				transformers.env.useBrowserCache = true;
-				transformers.env.useFSCache = false;
-				transformers.env.useWasmCache = true;
-				transformers.env.cacheKey = VOICE_CACHE_KEY;
-				if (transformers.env.backends?.onnx?.wasm) {
-					transformers.env.backends.onnx.wasm.numThreads = 1;
-				}
-				return transformers;
-			}).catch(error => {
-				this.transformersModulePromise = undefined;
-				throw error;
-			});
+			this.transformersModulePromise = import('./transformersRuntime.js')
+				.then(({ loadTransformers }) => loadTransformers())
+				.then(transformers => {
+					transformers.env.allowRemoteModels = true;
+					transformers.env.allowLocalModels = false;
+					transformers.env.useBrowserCache = true;
+					transformers.env.useFSCache = false;
+					transformers.env.useWasmCache = true;
+					transformers.env.cacheKey = VOICE_CACHE_KEY;
+					if (transformers.env.backends?.onnx?.wasm) {
+						transformers.env.backends.onnx.wasm.numThreads = 1;
+					}
+					return transformers;
+				}).catch(error => {
+					this.transformersModulePromise = undefined;
+					throw error;
+				});
 		}
 		return this.transformersModulePromise;
 	}
