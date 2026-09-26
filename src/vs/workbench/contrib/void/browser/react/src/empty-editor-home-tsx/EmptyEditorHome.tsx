@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
- *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
+ *  Copyright 2026 Loophole AI. All rights reserved.
+ *  Licensed under the AGPL-3.0 License. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -23,19 +23,33 @@ import '../styles.css'
 
 // ---------------- activity heatmap ----------------
 
-/** Number of week-columns to draw. ~6 months. */
-const WEEKS = 26
+/**
+ * Number of week-columns to draw. 53 weeks covers a full year of days
+ * (53 * 7 = 371), which is what the heatmap shows.
+ *
+ * Cell/gap sizes are written as literal Tailwind arbitrary values below rather
+ * than constants, because the class strings must be statically visible to the
+ * Tailwind scanner.
+ */
+const WEEKS = 53
 
 /** Row labels, Monday-first to match the grid. */
 const DAY_LABELS = ['Mon', '', 'Wed', '', 'Fri', '', 'Sun']
 
-/** GitHub-style intensity buckets. 0 renders as an empty cell. */
+/**
+ * Intensity ramp: a light green means less activity, a deeper/more saturated green
+ * means more. Every step keeps the same hue and is expressed as opacity over the
+ * card background, so the palest step and the brightest step are both clearly
+ * visible in light and dark themes. Fully opaque dark greens (emerald-900 etc.)
+ * disappeared against a dark editor, which is why the ramp is opacity-based.
+ * 0 is neutral rather than green, so "no activity" reads as empty.
+ */
 const intensityClass = (count: number): string => {
 	if (count <= 0) return 'bg-loophole-bg-2'
-	if (count <= 2) return 'bg-emerald-900'
-	if (count <= 5) return 'bg-emerald-700'
-	if (count <= 9) return 'bg-emerald-500'
-	return 'bg-emerald-400'
+	if (count <= 2) return 'bg-emerald-500/35'
+	if (count <= 5) return 'bg-emerald-500/55'
+	if (count <= 9) return 'bg-emerald-500/75'
+	return 'bg-emerald-500'
 }
 
 type HeatmapCell = { day: string; count: number; col: number; row: number }
@@ -94,22 +108,23 @@ const ActivityHeatmap = ({ counts }: { counts: { [day: string]: number } }) => {
 			{/* weekday gutter */}
 			<div className='flex flex-col gap-[3px] shrink-0'>
 				{DAY_LABELS.map((label, i) => (
-					<div key={i} className='h-[10px] w-6 text-[9px] leading-[10px] text-loophole-fg-3'>{label}</div>
+					<div key={i} className='h-[9px] w-6 text-[9px] leading-[9px] text-loophole-fg-3'>{label}</div>
 				))}
 			</div>
 
-			<div className='flex-1 flex flex-col gap-1 min-w-0 overflow-hidden'>
+			{/* 53 columns can exceed a narrow editor group, so allow scrolling */}
+			<div className='flex-1 flex flex-col gap-1 min-w-0 overflow-x-auto'>
 				{/* grid */}
-				<div className='flex gap-[3px]'>
+				<div className='flex gap-[3px] w-max'>
 					{Array.from({ length: WEEKS }).map((_, col) => (
 						<div key={col} className='flex flex-col gap-[3px]'>
 							{Array.from({ length: 7 }).map((__, row) => {
 								const cell = cellAt.get(`${col}:${row}`)
-								if (!cell) return <div key={row} className='h-[10px] w-[10px] opacity-0' />
+								if (!cell) return <div key={row} className='h-[9px] w-[9px] opacity-0' />
 								return <div
 									key={row}
 									title={`${cell.count} message${cell.count === 1 ? '' : 's'} on ${cell.day}`}
-									className={`h-[10px] w-[10px] rounded-[2px] ${intensityClass(cell.count)}`}
+									className={`h-[9px] w-[9px] rounded-[2px] ${intensityClass(cell.count)}`}
 								/>
 							})}
 						</div>
@@ -117,9 +132,9 @@ const ActivityHeatmap = ({ counts }: { counts: { [day: string]: number } }) => {
 				</div>
 
 				{/* month labels */}
-				<div className='flex gap-[3px]'>
+				<div className='flex gap-[3px] w-max'>
 					{monthLabels.map((label, col) => (
-						<div key={col} className='w-[10px] shrink-0 text-[9px] leading-[12px] text-loophole-fg-3'>{label ?? ''}</div>
+						<div key={col} className='w-[9px] shrink-0 text-[9px] leading-[12px] text-loophole-fg-3'>{label ?? ''}</div>
 					))}
 				</div>
 			</div>
@@ -128,8 +143,8 @@ const ActivityHeatmap = ({ counts }: { counts: { [day: string]: number } }) => {
 		<div className='flex items-center justify-between text-[10px] text-loophole-fg-3'>
 			<span>
 				{activeDays > 0
-					? `${activeDays} active day${activeDays === 1 ? '' : 's'} in the last ${WEEKS} weeks`
-					: `No activity yet in the last ${WEEKS} weeks`}
+					? `${activeDays} active day${activeDays === 1 ? '' : 's'} in the last year`
+					: `No activity yet in the last year`}
 			</span>
 			<span className='flex items-center gap-1'>
 				Less
@@ -259,7 +274,8 @@ export const EmptyEditorHome = () => {
 
 	// bg-3 is --vscode-editor-background, so the screen blends into the empty editor
 	return <div className={`@@loophole-scope ${isDark ? 'dark' : ''} h-full w-full overflow-y-auto bg-loophole-bg-3 text-loophole-fg-1`}>
-		<div className='min-h-full w-full max-w-3xl mx-auto flex flex-col justify-center gap-8 px-6 py-10'>
+		{/* max-w-5xl so the 53-column heatmap fits without scrolling on a normal group */}
+		<div className='min-h-full w-full max-w-5xl mx-auto flex flex-col justify-center gap-8 px-6 py-10'>
 
 			{/* logo - reuses the workbench CSS rule so the asset resolves from editorgroupview.css */}
 			<div className='flex justify-center'>
@@ -268,8 +284,8 @@ export const EmptyEditorHome = () => {
 
 			{/* heading */}
 			<div className='flex flex-col items-center gap-1 text-center'>
-				<h1 className='text-2xl font-semibold text-loophole-fg-1 m-0'>Beyond Coding</h1>
-				<p className='text-base text-loophole-fg-3 m-0'>What can Loophole help you</p>
+				<h1 className='text-2xl font-semibold text-loophole-fg-1 m-0'>Beyond Code Completion</h1>
+				<p className='text-base text-loophole-fg-3 m-0'>An Agentic AI IDE</p>
 			</div>
 
 			{/* activity heatmap */}

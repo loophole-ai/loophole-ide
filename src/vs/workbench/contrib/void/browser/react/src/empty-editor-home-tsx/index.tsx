@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
- *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
+ *  Copyright 2026 Loophole AI. All rights reserved.
+ *  Licensed under the AGPL-3.0 License. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
 import React from 'react';

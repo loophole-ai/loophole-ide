@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
- *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
+ *  Copyright 2026 Loophole AI. All rights reserved.
+ *  Licensed under the AGPL-3.0 License. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
@@ -36,8 +36,12 @@ export const IDailyActivityService = createDecorator<IDailyActivityService>('dai
 
 const STORAGE_KEY = 'void.dailyActivity.v1';
 
-/** How many days of history we keep. ~6 months, matching the heatmap width. */
-const MAX_DAYS = 200;
+/**
+ * How many days of history we keep. The empty-editor heatmap shows a full year
+ * (53 weeks = 371 days), so keep a little more than that to cover the
+ * Monday-aligned column padding at the edges of the grid.
+ */
+const MAX_DAYS = 400;
 
 export const dayKeyOf = (date: Date = new Date()): string => {
 	// local time, not UTC - the heatmap is a local-time calendar
