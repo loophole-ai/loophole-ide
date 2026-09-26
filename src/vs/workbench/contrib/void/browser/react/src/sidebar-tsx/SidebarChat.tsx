@@ -254,7 +254,7 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 
 
 
-const AttachFileButton = ({ className }: { className?: string }) => {
+export const AttachFileButton = ({ className }: { className?: string }) => {
 	const accessor = useAccessor()
 	const fileDialogService = accessor.get('IFileDialogService')
 	const chatThreadsService = accessor.get('IChatThreadService')
@@ -402,7 +402,7 @@ const detailOfChatMode = {
 }
 
 
-const ChatModeDropdown = ({ className }: { className: string }) => {
+export const ChatModeDropdown = ({ className }: { className: string }) => {
 	const accessor = useAccessor()
 
 	const voidSettingsService = accessor.get('IVoidSettingsService')

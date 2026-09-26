@@ -23,6 +23,7 @@ import { ILanguageFeaturesService } from '../../../../editor/common/services/lan
 import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage } from '../common/chatThreadServiceTypes.js';
 import { Position } from '../../../../editor/common/core/position.js';
 import { IMetricsService } from '../common/metricsService.js';
+import { IDailyActivityService } from '../common/dailyActivityService.js';
 import { shorten } from '../../../../base/common/labels.js';
 import { IVoidModelService } from '../common/voidModelService.js';
 import { findLast, findLastIdx } from '../../../../base/common/arraysFind.js';
@@ -323,6 +324,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IVoidSettingsService private readonly _settingsService: IVoidSettingsService,
 		@ILanguageFeaturesService private readonly _languageFeaturesService: ILanguageFeaturesService,
 		@IMetricsService private readonly _metricsService: IMetricsService,
+		@IDailyActivityService private readonly _dailyActivityService: IDailyActivityService,
 		@IEditCodeService private readonly _editCodeService: IEditCodeService,
 		@INotificationService private readonly _notificationService: INotificationService,
 		@IConvertToLLMMessageService private readonly _convertToLLMMessagesService: IConvertToLLMMessageService,
@@ -1284,6 +1286,9 @@ We only need to do it for files that were edited since `from`, ie files between 
 	async addUserMessageAndStreamResponse({ userMessage, _chatSelections, threadId }: { userMessage: string, _chatSelections?: StagingSelectionItem[], threadId: string }) {
 		const thread = this.state.allThreads[threadId];
 		if (!thread) return
+
+		// local-only counter backing the empty-editor activity heatmap
+		this._dailyActivityService.recordActivity()
 
 		// if there's a current checkpoint, delete all messages after it
 		if (thread.state.currCheckpointIdx !== null) {

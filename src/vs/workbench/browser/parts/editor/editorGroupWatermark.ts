@@ -23,6 +23,11 @@ import { OpenFileFolderAction, OpenFolderAction } from '../../actions/workspaceA
 import { IWindowOpenable } from '../../../../platform/window/common/window.js';
 import { splitRecentLabel } from '../../../../base/common/labels.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
+import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+
+/* eslint-disable */ // Loophole
+import { mountEmptyEditorHome } from '../../../contrib/void/browser/react/out/empty-editor-home-tsx/index.js';
+/* eslint-enable */
 
 /* eslint-disable */ // Loophole
 import { VOID_CTRL_K_ACTION_ID, VOID_CTRL_L_ACTION_ID } from '../../../contrib/void/browser/actionIDs.js';
@@ -88,6 +93,11 @@ export class EditorGroupWatermark extends Disposable {
 	private workbenchState: WorkbenchState;
 	private currentDisposables = new Set<IDisposable>();
 
+	/** React root for the Loophole home screen, mounted when a folder is open. */
+	private readonly homeContainer: HTMLElement;
+	private readonly rootElement: HTMLElement;
+	private homeMount: { rerender: () => void, dispose: () => void } | null = null;
+
 	constructor(
 		container: HTMLElement,
 		@IKeybindingService private readonly keybindingService: IKeybindingService,
@@ -100,16 +110,20 @@ export class EditorGroupWatermark extends Disposable {
 		@IHostService private readonly hostService: IHostService,
 		@ILabelService private readonly labelService: ILabelService,
 		@IViewsService private readonly viewsService: IViewsService,
+		@IInstantiationService private readonly instantiationService: IInstantiationService,
 	) {
 		super();
 
 		const elements = h('.editor-group-watermark', [
 			h('.loophole-loophole-icon@icon'),
 			h('.shortcuts@shortcuts'),
+			h('.loophole-empty-editor-home@home'),
 		]);
 
 		append(container, elements.root);
+		this.rootElement = elements.root;
 		this.shortcuts = elements.shortcuts; // shortcuts div is modified on render()
+		this.homeContainer = elements.home;
 
 		// void icon style
 		const updateTheme = () => {
@@ -166,6 +180,8 @@ export class EditorGroupWatermark extends Disposable {
 		recentsBox.style.display = 'flex'
 		recentsBox.style.flex = 'row'
 		recentsBox.style.justifyContent = 'center'
+
+		this.renderHome()
 
 
 		const update = async () => {
@@ -329,6 +345,51 @@ export class EditorGroupWatermark extends Disposable {
 		this.transientDisposables.add(this.keybindingService.onDidUpdateKeybindings(update));
 	}
 
+	/**
+	 * The Loophole home screen (heading, activity heatmap, chat input) is a React
+	 * tree. It is shown when a folder or workspace is open, and replaced by the
+	 * Open Folder / Open SSH buttons when nothing is open.
+	 */
+	private renderHome(): void {
+		const showHome = this.contextService.getWorkbenchState() !== WorkbenchState.EMPTY;
+
+		if (!showHome) {
+			this.unmountHome();
+			return;
+		}
+
+		// let CSS hide the legacy logo + shortcuts while the home screen is up
+		this.homeContainer.classList.add('loophole-home-visible')
+		this.rootElement.classList.add('loophole-home-active')
+
+		if (this.homeMount) {
+			// already mounted - just re-render so state stays in sync
+			this.homeMount.rerender();
+			return;
+		}
+
+		this.instantiationService.invokeFunction(accessor => {
+			this.homeMount = mountEmptyEditorHome(this.homeContainer, accessor);
+		});
+	}
+
+	private unmountHome(): void {
+		if (!this.homeMount && !this.homeContainer.classList.contains('loophole-home-visible')) return
+
+		this.homeContainer.classList.remove('loophole-home-visible')
+		this.rootElement.classList.remove('loophole-home-active')
+
+		if (this.homeMount) {
+			try {
+				this.homeMount.dispose();
+			} catch (e) {
+				console.error('Error unmounting the Loophole home screen:', e)
+			}
+			this.homeMount = null
+		}
+		clearNode(this.homeContainer);
+	}
+
 	private clear(): void {
 		clearNode(this.shortcuts);
 		this.transientDisposables.clear();
@@ -336,6 +397,7 @@ export class EditorGroupWatermark extends Disposable {
 
 	override dispose(): void {
 		super.dispose();
+		this.unmountHome();
 		this.clear();
 		this.currentDisposables.forEach(label => label.dispose());
 	}

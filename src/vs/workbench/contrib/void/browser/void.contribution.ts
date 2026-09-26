@@ -40,6 +40,9 @@ import './terminalToolService.js'
 // register Thread History
 import './chatThreadService.js'
 
+// local-only per-day activity counts (empty-editor heatmap)
+import '../common/dailyActivityService.js'
+
 // ping
 import './metricsPollService.js'
 
