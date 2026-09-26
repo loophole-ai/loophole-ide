@@ -106,25 +106,25 @@ const ActivityHeatmap = ({ counts }: { counts: { [day: string]: number } }) => {
 
 		<div className='flex gap-2'>
 			{/* weekday gutter */}
-			<div className='flex flex-col gap-[3px] shrink-0'>
+			<div className='flex flex-col gap-[4px] shrink-0'>
 				{DAY_LABELS.map((label, i) => (
-					<div key={i} className='h-[9px] w-6 text-[9px] leading-[9px] text-loophole-fg-3'>{label}</div>
+					<div key={i} className='h-[11px] w-6 text-[10px] leading-[11px] text-loophole-fg-3'>{label}</div>
 				))}
 			</div>
 
 			{/* 53 columns can exceed a narrow editor group, so allow scrolling */}
 			<div className='flex-1 flex flex-col gap-1 min-w-0 overflow-x-auto'>
 				{/* grid */}
-				<div className='flex gap-[3px] w-max'>
+				<div className='flex gap-[4px] w-max'>
 					{Array.from({ length: WEEKS }).map((_, col) => (
-						<div key={col} className='flex flex-col gap-[3px]'>
+						<div key={col} className='flex flex-col gap-[4px]'>
 							{Array.from({ length: 7 }).map((__, row) => {
 								const cell = cellAt.get(`${col}:${row}`)
-								if (!cell) return <div key={row} className='h-[9px] w-[9px] opacity-0' />
+								if (!cell) return <div key={row} className='h-[11px] w-[11px] opacity-0' />
 								return <div
 									key={row}
 									title={`${cell.count} message${cell.count === 1 ? '' : 's'} on ${cell.day}`}
-									className={`h-[9px] w-[9px] rounded-[2px] ${intensityClass(cell.count)}`}
+									className={`h-[11px] w-[11px] rounded-[2px] ${intensityClass(cell.count)}`}
 								/>
 							})}
 						</div>
@@ -132,9 +132,9 @@ const ActivityHeatmap = ({ counts }: { counts: { [day: string]: number } }) => {
 				</div>
 
 				{/* month labels */}
-				<div className='flex gap-[3px] w-max'>
+				<div className='flex gap-[4px] w-max'>
 					{monthLabels.map((label, col) => (
-						<div key={col} className='w-[9px] shrink-0 text-[9px] leading-[12px] text-loophole-fg-3'>{label ?? ''}</div>
+						<div key={col} className='w-[11px] shrink-0 text-[10px] leading-[14px] text-loophole-fg-3'>{label ?? ''}</div>
 					))}
 				</div>
 			</div>
@@ -274,51 +274,61 @@ export const EmptyEditorHome = () => {
 
 	// bg-3 is --vscode-editor-background, so the screen blends into the empty editor
 	return <div className={`@@loophole-scope ${isDark ? 'dark' : ''} h-full w-full overflow-y-auto bg-loophole-bg-3 text-loophole-fg-1`}>
-		{/* max-w-5xl so the 53-column heatmap fits without scrolling on a normal group */}
-		<div className='min-h-full w-full max-w-5xl mx-auto flex flex-col justify-center gap-8 px-6 py-10'>
+		{/*
+		 * `my-auto` centres the block vertically without `justify-content: center`,
+		 * which would push content above the scroll container and make the top
+		 * unreachable when the group is short.
+		 *
+		 * max-w-4xl is sized to the heatmap: 53 columns of 11px cells with 4px
+		 * gaps plus the weekday gutter comes to ~823px, so the card reads as full
+		 * width instead of leaving dead space, and still needs no scrolling.
+		 */}
+		<div className='min-h-full w-full flex flex-col items-center'>
+			<div className='my-auto w-full max-w-4xl flex flex-col gap-10 px-8 py-12'>
 
-			{/* logo - reuses the workbench CSS rule so the asset resolves from editorgroupview.css */}
-			<div className='flex justify-center'>
-				<div className='@@loophole-loophole-icon' style={{ width: 96, maxWidth: 96, opacity: 0.9 }} />
-			</div>
+				{/* logo - reuses the workbench CSS rule so the asset resolves from editorgroupview.css */}
+				<div className='flex justify-center'>
+					<div className='@@loophole-loophole-icon' style={{ width: 96, maxWidth: 96, opacity: 0.9 }} />
+				</div>
 
-			{/* heading */}
-			<div className='flex flex-col items-center gap-1 text-center'>
-				<h1 className='text-2xl font-semibold text-loophole-fg-1 m-0'>Beyond Code Completion</h1>
-				<p className='text-base text-loophole-fg-3 m-0'>An Agentic AI IDE</p>
-			</div>
+				{/* heading */}
+				<div className='flex flex-col items-center gap-1.5 text-center'>
+					<h1 className='text-2xl font-semibold text-loophole-fg-1 m-0'>Beyond Code Completion</h1>
+					<p className='text-base text-loophole-fg-3 m-0'>An Agentic AI IDE</p>
+				</div>
 
-			{/* activity heatmap */}
-			<ActivityHeatmap counts={counts} />
+				{/* activity heatmap */}
+				<ActivityHeatmap counts={counts} />
 
-			{/* input - same components the chat sidebar uses */}
-			<div className='w-full'>
-				<VoidChatArea
-					featureName='Chat'
-					micButton={voiceButton}
-					onSubmit={() => onSubmit()}
-					onAbort={onAbort}
-					isStreaming={!!isRunning}
-					isDisabled={isDisabled || voiceRecorder.isRecording || voiceRecorder.isTranscribing}
-					showSelections={true}
-					selections={selections}
-					setSelections={setSelections}
-					onClickAnywhere={() => { textAreaRef.current?.focus() }}
-					tokenCount={tokenEstimate}
-					contextWindow={chatContextWindow}
-				>
-					<VoidInputBox2
-						enableAtToMention
-						className='min-h-[81px] px-0.5 py-0.5'
-						placeholder={`@ to mention, ${keybindingString ? `${keybindingString} to add a selection. ` : ''}Enter instructions...`}
-						onChangeText={onChangeText}
-						onKeyDown={onKeyDown}
-						onFocus={() => { chatThreadsService.setCurrentlyFocusedMessageIdx(undefined) }}
-						ref={textAreaRef}
-						fnsRef={textAreaFnsRef}
-						multiline={true}
-					/>
-				</VoidChatArea>
+				{/* input - same components the chat sidebar uses */}
+				<div className='w-full'>
+					<VoidChatArea
+						featureName='Chat'
+						micButton={voiceButton}
+						onSubmit={() => onSubmit()}
+						onAbort={onAbort}
+						isStreaming={!!isRunning}
+						isDisabled={isDisabled || voiceRecorder.isRecording || voiceRecorder.isTranscribing}
+						showSelections={true}
+						selections={selections}
+						setSelections={setSelections}
+						onClickAnywhere={() => { textAreaRef.current?.focus() }}
+						tokenCount={tokenEstimate}
+						contextWindow={chatContextWindow}
+					>
+						<VoidInputBox2
+							enableAtToMention
+							className='min-h-[81px] px-0.5 py-0.5'
+							placeholder={`@ to mention, ${keybindingString ? `${keybindingString} to add a selection. ` : ''}Enter instructions...`}
+							onChangeText={onChangeText}
+							onKeyDown={onKeyDown}
+							onFocus={() => { chatThreadsService.setCurrentlyFocusedMessageIdx(undefined) }}
+							ref={textAreaRef}
+							fnsRef={textAreaFnsRef}
+							multiline={true}
+						/>
+					</VoidChatArea>
+				</div>
 			</div>
 		</div>
 	</div>
