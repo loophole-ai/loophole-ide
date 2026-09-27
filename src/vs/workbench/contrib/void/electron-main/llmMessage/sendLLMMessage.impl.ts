@@ -187,7 +187,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName }: { se
 			baseURL: 'https://openrouter.ai/api/v1',
 			apiKey: thisConfig.apiKey,
 			defaultHeaders: {
-				'HTTP-Referer': 'https://voideditor.com', // Optional, for including your app on openrouter.ai rankings.
+				'HTTP-Referer': 'https://www.loopholeeditor.in', // Optional, for including your app on openrouter.ai rankings.
 				'X-Title': 'Loophole', // Optional. Shows in rankings on openrouter.ai.
 			},
 			...commonPayloadOpts,
