@@ -29,6 +29,7 @@
 					'unsafe-eval'
 					'wasm-unsafe-eval'
 					blob:
+					'nonce-0c6a828f1297'
 				;
 				style-src
 					'self'
@@ -67,6 +68,44 @@
 					chatDebugTokenizer
 				;
 		"/>
+
+		<!--
+			Loophole: the local voice runtime. @huggingface/transformers is loaded as a
+			native ES module straight out of node_modules, and its browser build has
+			two *static* bare imports of its own:
+
+			  import * as ONNX_WEB from "onnxruntime-web/webgpu";
+			  import { Tensor }      from "onnxruntime-common";
+
+			The workbench is itself loaded as one native ES module and there is no
+			import map for bare npm specifiers, so the browser cannot resolve them and
+			the mic dies with "Failed to resolve module specifier". Both packages ship
+			inside the app, so map them here.
+
+			Two details this has to get right:
+
+			- It lives in the document rather than in a <script> injected when the mic is
+			  first used. The CSP sets `require-trusted-types-for 'script'`, which
+			  refuses a plain string assigned to a script's textContent unless the
+			  policy name is allowlisted, and an import map is only guaranteed to apply
+			  before the document's first module load. Neither holds for a late,
+			  script-injected map.
+			- The targets are the *.mjs* builds. The .js files beside them are UMD
+			  bundles, and an ESM import of a UMD file yields an empty namespace, so
+			  ONNX_WEB would come out undefined.
+
+			Paths are relative to this file, i.e. out/vs/code/electron-browser/workbench/,
+			which puts them in the app root next to out/ - the same place
+			_VSCODE_FILE_ROOT points the voice runtime at.
+		-->
+		<script type="importmap" nonce="0c6a828f1297">
+			{
+				"imports": {
+					"onnxruntime-web/webgpu": "../../../../../node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs",
+					"onnxruntime-common": "../../../../../node_modules/onnxruntime-common/dist/esm/index.js"
+				}
+			}
+		</script>
 
 		<!-- Workbench CSS -->
 		<link rel="stylesheet" href="../../../workbench/workbench.desktop.main.css">

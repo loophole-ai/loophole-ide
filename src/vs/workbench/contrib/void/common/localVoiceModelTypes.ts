@@ -6,13 +6,21 @@
 /**
  * The local speech-to-text models offered by Loophole.
  *
+ * Every entry is an English-only Whisper checkpoint. The multilingual ones were
+ * dropped on purpose: dictation is fed to the model with no `language` option,
+ * and Transformers.js rejects `language` (and `task`) outright for an
+ * English-only model, so a multilingual catalog only bought a language picker
+ * that the transcription path cannot honour anyway.
+ *
  * Model files are intentionally not bundled with the IDE. The revisions below
- * pin the remote model artifacts used by the Transformers.js downloader.
+ * pin the remote model artifacts used by the Transformers.js downloader, and
+ * downloadSizeBytes is the q8 encoder + merged-decoder pair the service actually
+ * fetches, not the full-precision weights.
  */
 export const LOCAL_VOICE_MODEL_IDS = [
-	'whisper-base',
-	'whisper-small',
-	'distil-medium-en',
+	'whisper-tiny-en',
+	'whisper-base-en',
+	'whisper-small-en',
 ] as const;
 
 export type LocalVoiceModelId = typeof LOCAL_VOICE_MODEL_IDS[number];
@@ -25,8 +33,7 @@ export type LocalVoiceModelDefinition = {
 	/** Approximate q8 encoder/decoder download size, excluding small metadata files. */
 	downloadSizeBytes: number;
 	downloadSizeLabel: string;
-	language: 'Multilingual' | 'English';
-	languageOption?: string;
+	language: 'English';
 	description: string;
 	license: string;
 	recommended?: boolean;
@@ -34,39 +41,38 @@ export type LocalVoiceModelDefinition = {
 
 export const LOCAL_VOICE_MODELS: readonly LocalVoiceModelDefinition[] = [
 	{
-		id: 'whisper-base',
-		label: 'Whisper Base',
-		modelId: 'onnx-community/whisper-base',
-		revision: '1846881b6b3a3024392c1eea3ad983695bc23925',
-		downloadSizeBytes: 78_000_000,
-		downloadSizeLabel: '~78 MB',
-		language: 'Multilingual',
-		description: 'Fastest option with broad language support. Good for everyday dictation and older computers.',
+		id: 'whisper-tiny-en',
+		label: 'Whisper Tiny',
+		modelId: 'onnx-community/whisper-tiny.en',
+		revision: '2575352d61be1bf7225cf8f8b268a4678025fc58',
+		downloadSizeBytes: 40_000_000,
+		downloadSizeLabel: '~39 MB',
+		language: 'English',
+		description: 'Smallest and fastest option. Good for quick notes on older computers, at the cost of accuracy.',
 		license: 'MIT',
 	},
 	{
-		id: 'whisper-small',
+		id: 'whisper-base-en',
+		label: 'Whisper Base',
+		modelId: 'onnx-community/whisper-base.en',
+		revision: '51eefc0af78b103839eda9e7e4f4186acc6517fe',
+		downloadSizeBytes: 74_000_000,
+		downloadSizeLabel: '~73 MB',
+		language: 'English',
+		description: 'A reasonable middle ground for everyday dictation on a normal desktop.',
+		license: 'MIT',
+	},
+	{
+		id: 'whisper-small-en',
 		label: 'Whisper Small',
-		modelId: 'onnx-community/whisper-small',
-		revision: '36050c46d777d46dc4b5f43f6d90574fc38f8732',
-		downloadSizeBytes: 245_000_000,
-		downloadSizeLabel: '~242 MB',
-		language: 'Multilingual',
-		description: 'Best balance of accuracy, speed, and language coverage for normal desktops.',
+		modelId: 'onnx-community/whisper-small.en',
+		revision: '482fb8ba081b6e906f92efe103622316b2a0cc69',
+		downloadSizeBytes: 238_000_000,
+		downloadSizeLabel: '~238 MB',
+		language: 'English',
+		description: 'The most accurate option here, and the one to pick if you care about getting long sentences right.',
 		license: 'MIT',
 		recommended: true,
-	},
-	{
-		id: 'distil-medium-en',
-		label: 'Distil Whisper Medium',
-		modelId: 'distil-whisper/distil-medium.en',
-		revision: '6e61418885eaf4d5cc9f64e508e80ac5b4c052b7',
-		downloadSizeBytes: 390_000_000,
-		downloadSizeLabel: '~388 MB',
-		language: 'English',
-		languageOption: 'english',
-		description: 'Highest-quality English option in this catalog. Uses more memory and works best with WebGPU.',
-		license: 'MIT',
 	},
 ];
 

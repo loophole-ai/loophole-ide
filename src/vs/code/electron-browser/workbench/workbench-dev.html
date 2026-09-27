@@ -71,6 +71,33 @@
 					chatDebugTokenizer
 				;
 		"/>
+		<!--
+			Loophole: the local voice runtime. @huggingface/transformers is loaded as a
+			native ES module straight out of node_modules, and its browser build has
+			two *static* bare imports of its own:
+
+			  import * as ONNX_WEB from "onnxruntime-web/webgpu";
+			  import { Tensor }      from "onnxruntime-common";
+
+			The workbench is itself loaded as one native ES module and there is no
+			import map for bare npm specifiers, so the browser cannot resolve them and
+			the mic dies with "Failed to resolve module specifier". Both packages ship
+			in the repo, so map them here.
+
+			Kept byte-identical to workbench.html on purpose: the targets are the *.mjs*
+			builds, because the .js files beside them are UMD bundles and an ESM import
+			of a UMD file yields an empty namespace. Paths are relative to this file,
+			i.e. out/vs/code/electron-browser/workbench/, landing in the repo root
+			next to out/ - the same place _VSCODE_FILE_ROOT points at.
+		-->
+		<script type="importmap" nonce="0c6a828f1297">
+			{
+				"imports": {
+					"onnxruntime-web/webgpu": "../../../../../node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs",
+					"onnxruntime-common": "../../../../../node_modules/onnxruntime-common/dist/esm/index.js"
+				}
+			}
+		</script>
 	</head>
 
 	<body aria-label="">

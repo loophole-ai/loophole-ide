@@ -23,25 +23,24 @@
 //   import * as ONNX_WEB from "onnxruntime-web/webgpu";
 //   import { Tensor }      from "onnxruntime-common";
 //
-// Both packages ship inside resources/app/node_modules, so we install an import
-// map for them at the moment the mic is first used.
+// Both packages ship inside the app, and the workbench HTML maps both specifiers
+// to their ESM builds (see src/vs/code/electron-browser/workbench/workbench.html).
+// It has to live in the document rather than in a <script> added here on first
+// use: the workbench CSP sets `require-trusted-types-for 'script'`, which refuses
+// a plain string assigned to a script's textContent unless the policy name is
+// allowlisted, and an import map is only guaranteed to apply before the
+// document's first module load. A late, script-injected map is therefore not
+// applied at all, and the import below fails with the unhelpful
 //
-// This is deliberately NOT done in the workbench bootstrap. That code runs
-// outside the try/catch around `await import(workbenchUrl)`, so anything that
-// throws there aborts the import and leaves a black window with no renderer
-// log. Doing it here keeps a voice-only failure from ever being able to stop
-// the IDE from starting. If the map cannot be installed, the import below fails
-// with a catchable error instead of taking the app down with it.
+//   Failed to resolve module specifier "onnxruntime-web/webgpu"
 //
-// Note we must use the *web* dist: transformers.js is the Node build and
-// contains __dirname / node: imports.
+// Note we must use the *web* dist of transformers: transformers.js is the Node
+// build and contains __dirname / node: imports.
 
 type TransformersModule = typeof import('@huggingface/transformers');
 
 /** Paths relative to the app root (the sibling of `out/`). */
 const TRANSFORMERS_ENTRY = 'node_modules/@huggingface/transformers/dist/transformers.web.js';
-const ORT_WEBGPU_ENTRY = 'node_modules/onnxruntime-web/dist/ort.webgpu.min.js';
-const ORT_COMMON_ENTRY = 'node_modules/onnxruntime-common/dist/esm/index.js';
 /** Directory holding the ORT .wasm/.mjs binaries, so they are never fetched from a CDN. */
 const ORT_DIST_DIR = 'node_modules/onnxruntime-web/dist/';
 
@@ -57,68 +56,18 @@ const appRootUrl = (): string => {
 	return new URL('../', href ?? 'file:///').toString();
 };
 
-let importMapInstalled = false;
-
-/**
- * Adds a <script type="importmap"> covering the bare specifiers that the
- * Transformers browser build imports. The workbench CSP sets
- * `require-trusted-types-for 'script'`, so the JSON goes through a Trusted
- * Types policy, exactly as workbench.js does for its own CSS import map.
- */
-const installImportMap = (imports: { [specifier: string]: string }) => {
-	if (importMapInstalled) { return; }
-	if (typeof document === 'undefined') { return; }
-	importMapInstalled = true;
-
-	const json = JSON.stringify({ imports }, undefined, 2);
-	const element = document.createElement('script');
-	element.type = 'importmap';
-
-	const trustedTypes = (globalThis as {
-		trustedTypes?: {
-			createPolicy?: (name: string, rules: { createScript: (t: string) => string }) =>
-				{ createScript: (t: string) => string }
-		}
-	}).trustedTypes;
-
-	let text: string = json;
-	if (trustedTypes?.createPolicy) {
-		try {
-			// A policy name can only be registered once, hence the guard above.
-			const policy = trustedTypes.createPolicy('loopholeTransformersImportMap', {
-				createScript: (t: string) => t,
-			});
-			text = policy.createScript(json);
-		} catch {
-			// Fall through and try the raw text.
-		}
-	}
-
-	try {
-		element.textContent = text;
-		document.head.appendChild(element);
-	} catch (e) {
-		// Reset so a later attempt (e.g. after a window change) can retry.
-		importMapInstalled = false;
-		console.error('Loophole: failed to install the Transformers import map', e);
-	}
-};
-
 export const loadTransformers = async (): Promise<TransformersModule> => {
 	const root = appRootUrl();
-
-	installImportMap({
-		'onnxruntime-web/webgpu': root + ORT_WEBGPU_ENTRY,
-		'onnxruntime-common': root + ORT_COMMON_ENTRY,
-	});
 
 	// Non-literal specifier: kept as a runtime dynamic import on purpose.
 	const mod = await import(/* @vite-ignore */ root + TRANSFORMERS_ENTRY);
 	const transformers = (mod as { default?: TransformersModule }).default ?? (mod as TransformersModule);
 
-	// Keep inference fully local: without this ONNX Runtime resolves its ~25 MB
-	// wasm binaries against a public CDN, which is both a privacy leak and a
-	// hard failure when offline. They ship inside the app, so point at those.
+	// Keep inference fully local: without this ONNX Runtime resolves its wasm
+	// binaries against a public CDN, which is both a privacy leak and a hard
+	// failure when offline. They ship inside the app, next to the ORT module the
+	// import map points at, so use that directory. It has to keep the trailing
+	// slash: this is a prefix, not a directory ORT resolves against.
 	const wasm = (transformers as { env?: { backends?: { onnx?: { wasm?: { wasmPaths?: unknown } } } } }).env
 		?.backends?.onnx?.wasm;
 	if (wasm) {

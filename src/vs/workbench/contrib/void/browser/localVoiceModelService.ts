@@ -237,14 +237,15 @@ class LocalVoiceModelService {
 		if (!this.transcriber) throw new Error('The local voice model is not ready.');
 
 		const samples = await this.decodeAudioBlob(blob);
-		const model = localVoiceModelById[modelId];
+		// Every catalog model is English-only, and Transformers.js throws
+		// "Cannot specify `task` or `language` for an English-only model" if
+		// either is passed - so neither is set here. Transcription is the default
+		// task, and English is implied by the checkpoint.
 		const options: Record<string, unknown> = {
-			task: 'transcribe',
 			chunk_length_s: 30,
 			stride_length_s: 5,
 			condition_on_previous_text: false,
 		};
-		if (model.languageOption) options.language = model.languageOption;
 
 		const transcriber = this.transcriber;
 		if (!transcriber) throw new Error('The local voice model is not ready.');
@@ -339,6 +340,19 @@ class LocalVoiceModelService {
 				dtype: 'q8' as const,
 				...(allowDownload ? { progress_callback: (info: ProgressInfo) => this.handleProgress(model.id, info) } : {}),
 				device,
+				// Loophole: the ONNX Runtime build that Transformers.js pins
+				// (1.26.0-dev) has graph optimizers that crash on Whisper, so session
+				// creation fails outright with a q8 model:
+				//
+				//   TransposeDQWeightsForMatMulNBits Missing required scale: ...
+				//   SimplifiedLayerNormFusion ... get index by a name which does not exist
+				//
+				// Both are in the 'all' level, which is the default. 'basic' keeps the
+				// cheap rewrites and skips the two fusions that crash, which is all
+				// inference needs - it changes speed, not results. Verified end to end
+				// against whisper-tiny.en: the session builds and transcription returns
+				// text. Remove this once the pinned ORT version is no longer a dev build.
+				session_options: { graphOptimizationLevel: 'basic' },
 			};
 			const transcriber = (await transformers.pipeline('automatic-speech-recognition', model.modelId, options)) as unknown as VoiceTranscriber;
 			return { transcriber, device };
