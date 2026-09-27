@@ -90,7 +90,9 @@ export interface CanvasState {
 	experts: ExpertState[];
 }
 
-const DEFAULT_EXPERTS: Omit<ExpertState, 'model'>[] = [
+// `messages` is left off each entry on purpose: `resetExperts` below is the one
+// place transcripts are created, so a fresh transcript cannot be half-specified.
+const DEFAULT_EXPERTS: Omit<ExpertState, 'model' | 'messages'>[] = [
 	{ id: 'sara',  name: 'Sara',  role: 'Team Lead',      status: 'idle' },
 	{ id: 'leo',   name: 'Leo',   role: 'Researcher',     status: 'idle' },
 	{ id: 'karl',  name: 'Karl',  role: 'Engineer',       status: 'idle' },

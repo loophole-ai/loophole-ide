@@ -12,8 +12,6 @@ import {
 	IViewDescriptorService,
 } from '../../../common/views.js';
 
-import * as nls from '../../../../nls.js';
-
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
 
