@@ -23,16 +23,17 @@
 //   import * as ONNX_WEB from "onnxruntime-web/webgpu";
 //   import { Tensor }      from "onnxruntime-common";
 //
-// Both packages ship inside resources/app/node_modules, so an import map pointing
-// at their browser/ESM builds resolves them. Note we must use the *web* dist:
+// Both packages ship inside resources/app/node_modules. Those specifiers are
+// mapped in the bootstrap import map (see setupCSSImportMaps in
+// vs/code/electron-browser/workbench/workbench.ts), which is installed before
+// the workbench module is imported and is the only place the CSP and Trusted
+// Types requirements are known to hold. Note we must use the *web* dist:
 // transformers.js is the Node build and contains __dirname / node: imports.
 
 type TransformersModule = typeof import('@huggingface/transformers');
 
 /** Paths relative to the app root (the sibling of `out/`). */
 const TRANSFORMERS_ENTRY = 'node_modules/@huggingface/transformers/dist/transformers.web.js';
-const ORT_WEBGPU_ENTRY = 'node_modules/onnxruntime-web/dist/ort.webgpu.min.js';
-const ORT_COMMON_ENTRY = 'node_modules/onnxruntime-common/dist/esm/index.js';
 /** Directory holding the ORT .wasm/.mjs binaries, so they are never fetched from a CDN. */
 const ORT_DIST_DIR = 'node_modules/onnxruntime-web/dist/';
 
@@ -48,58 +49,8 @@ const appRootUrl = (): string => {
 	return new URL('../', href ?? 'file:///').toString();
 };
 
-let importMapInstalled = false;
-
-/**
- * Injects a second <script type="importmap"> for the bare specifiers that the
- * Transformers browser build imports. Multiple import maps are supported, and
- * these specifiers have not been resolved yet at the point the mic is first used.
- *
- * The workbench CSP sets `require-trusted-types-for 'script'`, so the JSON has
- * to go through a Trusted Types policy, exactly as workbench.js does for its own
- * CSS import map.
- */
-const installImportMap = (imports: { [specifier: string]: string }) => {
-	if (importMapInstalled) { return; }
-	if (typeof document === 'undefined') { return; }
-	importMapInstalled = true;
-
-	const json = JSON.stringify({ imports }, undefined, 2);
-	const element = document.createElement('script');
-	element.type = 'importmap';
-
-	const trustedTypes = (globalThis as {
-		trustedTypes?: { createPolicy?: (name: string, rules: { createScript: (t: string) => string }) => { createScript: (t: string) => string } }
-	}).trustedTypes;
-
-	let text: string = json;
-	if (trustedTypes?.createPolicy) {
-		try {
-			// A policy name can only be registered once, hence the guard above.
-			const policy = trustedTypes.createPolicy('loopholeTransformersImportMap', { createScript: (t: string) => t });
-			text = policy.createScript(json);
-		} catch {
-			// If a policy could not be created, fall through and try the raw text.
-		}
-	}
-
-	try {
-		element.textContent = text;
-		document.head.appendChild(element);
-	} catch (e) {
-		// Reset so a later attempt (e.g. after a theme/window change) can retry.
-		importMapInstalled = false;
-		console.error('Loophole: failed to install the Transformers import map', e);
-	}
-};
-
 export const loadTransformers = async (): Promise<TransformersModule> => {
 	const root = appRootUrl();
-
-	installImportMap({
-		'onnxruntime-web/webgpu': root + ORT_WEBGPU_ENTRY,
-		'onnxruntime-common': root + ORT_COMMON_ENTRY,
-	});
 
 	// Non-literal specifier: kept as a runtime dynamic import on purpose.
 	const mod = await import(/* @vite-ignore */ root + TRANSFORMERS_ENTRY);
