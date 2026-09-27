@@ -118,3 +118,6 @@ import './tokenUsageStatusBar.js'
 import './tokenUsageDialogService.js'
 // register report issue status bar
 import './reportIssueStatusBar.js'
+// register Expert Canvas (activity bar button + panel + editor tab)
+import './expertPane.js'
+import './expertCanvasEditorPane.js'
