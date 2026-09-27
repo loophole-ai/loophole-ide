@@ -137,7 +137,8 @@ export class UpdateTooltip extends Disposable {
 	}
 
 	private updateCurrentVersion() {
-		const productVersion = this.productService.version;
+		// Show the Loophole version the user knows, not the VS Code base version.
+		const productVersion = this.productService.loopholeVersion || this.productService.version;
 		if (productVersion) {
 			const currentCommitId = this.productService.commit?.substring(0, 7);
 			this.currentVersionNode.textContent = currentCommitId

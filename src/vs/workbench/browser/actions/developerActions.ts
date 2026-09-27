@@ -694,7 +694,7 @@ class PolicyDiagnosticsAction extends Action2 {
 		content += '| Property | Value |\n';
 		content += '|----------|-------|\n';
 		content += `| Generated | ${new Date().toISOString()} |\n`;
-		content += `| Product | ${productService.nameLong} ${productService.version} |\n`;
+		content += `| Product | ${productService.nameLong} ${productService.loopholeVersion || productService.version} |\n`;
 		content += `| Commit | ${productService.commit || 'n/a'} |\n\n`;
 
 		// Account information

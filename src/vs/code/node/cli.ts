@@ -102,7 +102,8 @@ export async function main(argv: string[]): Promise<void> {
 
 	// Version Info
 	else if (args.version) {
-		console.log(buildVersionMessage(product.version, product.commit));
+		// Report the Loophole version; `version` is the VS Code base version.
+		console.log(buildVersionMessage(product.loopholeVersion || product.version, product.commit));
 	}
 
 	// Shell integration
