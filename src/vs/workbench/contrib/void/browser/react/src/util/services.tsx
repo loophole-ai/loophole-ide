@@ -54,6 +54,7 @@ import { IExtensionManagementService } from '../../../../../../../platform/exten
 import { IMCPService } from '../../../../common/mcpService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
 import { ITokenUsageService } from '../../../../common/tokenUsageService.js'
+import { IDailyActivityService } from '../../../../common/dailyActivityService.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IFileDialogService } from '../../../../../../../platform/dialogs/common/dialogs.js'
 
@@ -88,7 +89,22 @@ const mcpListeners: Set<() => void> = new Set()
 
 // must call this before you can use any of the hooks below
 // this should only be called ONCE! this is the only place you don't need to dispose onDidChange. If you use state.onDidChange anywhere else, make sure to dispose it!
+
+// Loophole renders React in more than one place in the workbench DOM (the chat sidebar,
+// and the empty-editor home screen). All of those roots share this one module-level
+// accessor + state snapshot, so the wiring below must be installed exactly once no
+// matter how many roots mount or unmount. `mountFnGenerator` relies on this to decide
+// whether it owns the disposables.
+let servicesRegistered = false
+export const areServicesRegistered = () => servicesRegistered
+
 export const _registerServices = (accessor: ServicesAccessor) => {
+
+	// A second root (e.g. the empty-editor home screen) must NOT re-subscribe every
+	// listener below, and must NOT return the first root's disposables - disposing
+	// them on unmount would tear down the sidebar's state.
+	if (servicesRegistered) return [] as IDisposable[]
+	servicesRegistered = true
 
 	const disposables: IDisposable[] = []
 
@@ -233,6 +249,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IStorageService: accessor.get(IStorageService),
 		ITokenUsageService: accessor.get(ITokenUsageService),
 		IFileDialogService: accessor.get(IFileDialogService),
+		IDailyActivityService: accessor.get(IDailyActivityService),
 
 	} as const
 	return reactAccessor
