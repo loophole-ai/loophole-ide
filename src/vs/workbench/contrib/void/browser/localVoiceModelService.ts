@@ -352,7 +352,7 @@ class LocalVoiceModelService {
 				// inference needs - it changes speed, not results. Verified end to end
 				// against whisper-tiny.en: the session builds and transcription returns
 				// text. Remove this once the pinned ORT version is no longer a dev build.
-				session_options: { graphOptimizationLevel: 'basic' },
+				session_options: { graphOptimizationLevel: 'basic' as const },
 			};
 			const transcriber = (await transformers.pipeline('automatic-speech-recognition', model.modelId, options)) as unknown as VoiceTranscriber;
 			return { transcriber, device };
