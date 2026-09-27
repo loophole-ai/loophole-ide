@@ -3,10 +3,25 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt in the project root for license information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import '../styles.css';
 import { useAccessor, useIsDark, useSettingsState } from '../util/services.js';
-import { expertCanvasStore } from './expertCanvasStore.js';
+import {
+	expertCanvasStore,
+	inheritLabel,
+	modelLabel,
+	providerNamesOfOptions,
+	resolveModel,
+} from './expertCanvasStore.js';
+import { ModelOption } from '../../../../common/voidSettingsService.js';
+import { VOID_TOGGLE_SETTINGS_ACTION_ID } from '../../../voidSettingsPane.js';
+import {
+	displayInfoOfProviderName,
+	ModelSelection,
+	modelSelectionsEqual,
+	ProviderName,
+	VoidSettingsState,
+} from '../../../../common/voidSettingsTypes.js';
 
 // Action IDs — must match expertCanvasEditorPane.ts exactly
 const OPEN_EXPERT_CANVAS_TOGGLE_ACTION_ID = 'workbench.action.loophole.expertCanvas.toggle';
@@ -32,26 +47,17 @@ type ExpertDef = {
 	id: string;
 	name: string;
 	role: string;
-	defaultModel: string;
 };
 
 const EXPERTS: ExpertDef[] = [
-	{ id: 'sara',  name: 'Sara',  role: 'Team Lead',      defaultModel: 'claude-opus-5'             },
-	{ id: 'leo',   name: 'Leo',   role: 'Researcher',     defaultModel: 'claude-opus-5'             },
-	{ id: 'karl',  name: 'Karl',  role: 'Engineer',       defaultModel: 'claude-sonnet-5'           },
-	{ id: 'jake',  name: 'Jake',  role: 'QA Engineer',    defaultModel: 'claude-sonnet-5'           },
-	{ id: 'ray',   name: 'Ray',   role: 'Code Reviewer',  defaultModel: 'claude-sonnet-5'           },
-	{ id: 'nora',  name: 'Nora',  role: 'Debug Engineer', defaultModel: 'claude-opus-5'             },
-	{ id: 'elena', name: 'Elena', role: 'UI/UX Operator', defaultModel: 'claude-sonnet-5'           },
-	{ id: 'max',   name: 'Max',   role: 'Docs Writer',    defaultModel: 'claude-haiku-4-5-20251001' },
-];
-
-// Available models per provider
-const ANTHROPIC_MODELS = [
-	{ value: 'claude-opus-5',             label: 'Claude Opus 5'       },
-	{ value: 'claude-sonnet-5',           label: 'Claude Sonnet 5'     },
-	{ value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5'    },
-	{ value: 'claude-fable-5-1',          label: 'Claude Fable 5.1'    },
+	{ id: 'sara',  name: 'Sara',  role: 'Team Lead'      },
+	{ id: 'leo',   name: 'Leo',   role: 'Researcher'     },
+	{ id: 'karl',  name: 'Karl',  role: 'Engineer'       },
+	{ id: 'jake',  name: 'Jake',  role: 'QA Engineer'    },
+	{ id: 'ray',   name: 'Ray',   role: 'Code Reviewer'  },
+	{ id: 'nora',  name: 'Nora',  role: 'Debug Engineer' },
+	{ id: 'elena', name: 'Elena', role: 'UI/UX Operator' },
+	{ id: 'max',   name: 'Max',   role: 'Docs Writer'    },
 ];
 
 // ── System prompts ────────────────────────────────────────────────────────────
@@ -74,7 +80,7 @@ const STATUS_DOT: Record<string, string> = {
 	failed:  'bg-red-500',
 };
 
-function parseMention(text: string, models: Record<string, string>): { expertId: string; message: string } | null {
+function parseMention(text: string): { expertId: string; message: string } | null {
 	const match = text.match(/^@(\w+)\s*(.*)/s);
 	if (!match) return null;
 	const name = match[1].toLowerCase();
@@ -91,12 +97,20 @@ function getAtQuery(text: string, cursorPos: number): string | null {
 
 // ── Config Panel ──────────────────────────────────────────────────────────────
 const ConfigPanel = ({
-	models,
+	expertModels,
+	allOptions,
+	settingsState,
 	onModelChange,
+	onResetModels,
+	openSettings,
 	onClose,
 }: {
-	models: Record<string, string>;
-	onModelChange: (expertId: string, model: string) => void;
+	expertModels: Record<string, ModelSelection | null>;
+	allOptions: ModelOption[];
+	settingsState: VoidSettingsState;
+	onModelChange: (expertId: string, model: ModelSelection | null) => void;
+	onResetModels: () => void;
+	openSettings: () => void;
 	onClose: () => void;
 }) => (
 	<div className="absolute inset-0 z-50 flex flex-col bg-loophole-bg-2">
@@ -116,40 +130,92 @@ const ConfigPanel = ({
 
 		{/* Expert model rows */}
 		<div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
-			<p className="text-[10px] text-loophole-fg-4 mb-2">Select the model each expert uses. Changes apply to the next run.</p>
-			{EXPERTS.map(expert => (
-				<div key={expert.id} className="flex items-center gap-2">
-					<img
-						src={AVATARS[expert.id]}
-						alt={expert.name}
-						width={24} height={24}
-						className="rounded flex-shrink-0"
-						style={{ imageRendering: 'pixelated' }}
-					/>
-					<div className="flex-1 min-w-0">
-						<div className="text-xs font-medium text-loophole-fg-1">{expert.name}</div>
-						<div className="text-[10px] text-loophole-fg-4">{expert.role}</div>
+			<p className="text-[10px] text-loophole-fg-4 mb-2">
+				Pick the provider and model each expert uses, from the ones you have set up in
+				Loophole Settings. Changes apply to the next run.
+			</p>
+
+			{allOptions.length === 0 ? (
+				<div className="text-[11px] text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-3 rounded p-3">
+					No models available yet. Add a provider and model in Settings, then reopen this panel.
+					<div className="mt-2">
+						<button
+							onClick={openSettings}
+							className="text-[10px] text-loophole-fg-2 bg-loophole-bg-2 border border-loophole-border-3 rounded px-2 py-1 hover:border-loophole-border-1 transition-colors"
+						>
+							Open Settings
+						</button>
 					</div>
-					<select
-						value={models[expert.id] ?? expert.defaultModel}
-						onChange={e => onModelChange(expert.id, e.target.value)}
-						className="text-[10px] text-loophole-fg-2 bg-loophole-bg-1 border border-loophole-border-3 rounded px-1.5 py-1 outline-none hover:border-loophole-border-1 focus:border-loophole-border-1 transition-colors cursor-pointer"
-					>
-						{ANTHROPIC_MODELS.map(m => (
-							<option key={m.value} value={m.value}>{m.label}</option>
-						))}
-					</select>
 				</div>
-			))}
+			) : EXPERTS.map(expert => {
+				const chosen = expertModels[expert.id] ?? null;
+				const effective = resolveModel(chosen, settingsState);
+				const providerValue = chosen?.providerName ?? effective?.providerName ?? '';
+				const modelOptions = allOptions.filter(o => o.selection.providerName === providerValue);
+				const modelIndex = chosen ? modelOptions.findIndex(o => modelSelectionsEqual(o.selection, chosen)) : -1;
+				const modelValue = modelIndex >= 0 ? String(modelIndex) : '-1';
+				return (
+					<div key={expert.id} className="flex items-center gap-2">
+						<img
+							src={AVATARS[expert.id]}
+							alt={expert.name}
+							width={24} height={24}
+							className="rounded flex-shrink-0"
+							style={{ imageRendering: 'pixelated' }}
+						/>
+						<div className="flex-1 min-w-0">
+							<div className="text-xs font-medium text-loophole-fg-1">{expert.name}</div>
+							<div className="text-[10px] text-loophole-fg-4">{expert.role}</div>
+						</div>
+						<div className="flex flex-col gap-1 items-end flex-shrink-0">
+							<select
+								value={providerValue}
+								onChange={e => {
+									const newProvider = e.target.value as ProviderName;
+									// Switching provider invalidates the model, so jump
+									// to that provider's first available model.
+									const first = allOptions.find(o => o.selection.providerName === newProvider);
+									onModelChange(expert.id, first ? first.selection : null);
+								}}
+								className="text-[10px] text-loophole-fg-2 bg-loophole-bg-1 border border-loophole-border-3 rounded px-1.5 py-1 outline-none hover:border-loophole-border-1 focus:border-loophole-border-1 transition-colors cursor-pointer"
+							>
+								<option value="">{inheritLabel}</option>
+								{providerNamesOfOptions(allOptions).map(pn => (
+									<option key={pn} value={pn}>{displayInfoOfProviderName(pn).title}</option>
+								))}
+							</select>
+							<select
+								value={modelValue}
+								disabled={!chosen}
+								onChange={e => {
+									const picked = modelOptions[Number(e.target.value)];
+							if (picked) { onModelChange(expert.id, picked.selection); }
+								}}
+								className="text-[10px] text-loophole-fg-2 bg-loophole-bg-1 border border-loophole-border-3 rounded px-1.5 py-1 outline-none hover:border-loophole-border-1 focus:border-loophole-border-1 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default max-w-[150px]"
+							>
+								{modelIndex < 0 && <option value="-1">{inheritLabel}</option>}
+								{modelOptions.map((o, i) => (
+									<option
+										key={o.selection.modelName}
+										value={String(i)}
+									>
+										{o.name}
+									</option>
+								))}
+							</select>
+						</div>
+					</div>
+				);
+			})}
 		</div>
 
 		{/* Reset */}
 		<div className="flex-shrink-0 px-3 py-2 border-t border-loophole-border-4">
 			<button
-				onClick={() => EXPERTS.forEach(e => onModelChange(e.id, e.defaultModel))}
+				onClick={onResetModels}
 				className="text-[10px] text-loophole-fg-4 hover:text-loophole-fg-2 transition-colors"
 			>
-				Reset to defaults
+				Reset all to {inheritLabel}
 			</button>
 		</div>
 	</div>
@@ -225,17 +291,25 @@ export const ExpertCanvas = () => {
 	const [prompt, setPrompt]           = useState('');
 	const [atQuery, setAtQuery]         = useState<string | null>(null);
 
-	// Per-expert model overrides — starts from defaults
-	const [expertModels, setExpertModels] = useState<Record<string, string>>(
-		() => Object.fromEntries(EXPERTS.map(e => [e.id, e.defaultModel]))
-	);
-
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const abortRef    = useRef<string | null>(null);
 
 	useEffect(() => expertCanvasStore.subscribe(() => setStoreState({ ...expertCanvasStore.getState() })), []);
 
 	const { experts: storeExperts, isRunning } = storeState;
+
+	// Every model the user has configured, across all providers. This is the same
+	// list the chat's own model dropdown uses, so it already reflects which
+	// providers have keys and which local servers are running.
+	const allOptions = settingsState._modelOptions;
+
+	// Per-expert overrides, read from the store so the canvas tab and the
+	// sidebar stay in sync. `undefined`/null means inherit the Chat model.
+	const expertModels = useMemo(() => {
+		const out: Record<string, ModelSelection | null> = {};
+		for (const e of storeExperts) { out[e.id] = e.model; }
+		return out;
+	}, [storeExperts]);
 
 	const counts = {
 		done:    storeExperts.filter(e => e.status === 'done').length,
@@ -252,14 +326,36 @@ export const ExpertCanvas = () => {
 		accessor.get('ICommandService').executeCommand(OPEN_EXPERT_CANVAS_FRESH_ACTION_ID);
 	}, [accessor]);
 
+	const openSettings = useCallback(() => {
+		accessor.get('ICommandService').executeCommand(VOID_TOGGLE_SETTINGS_ACTION_ID);
+	}, [accessor]);
+
+	const handleModelChange = useCallback((expertId: string, model: ModelSelection | null) => {
+		expertCanvasStore.setExpertModel(expertId, model);
+	}, []);
+
+	const handleResetModels = useCallback(() => {
+		expertCanvasStore.resetModelsToDefault();
+	}, []);
+
 	// ── Core LLM call per expert ──
 	const runExpert = useCallback(async (expertId: string, userMessage: string): Promise<string> => {
 		const llmMessageService = accessor.get('ILLMMessageService');
-		const modelName = expertModels[expertId] ?? EXPERTS.find(e => e.id === expertId)!.defaultModel;
+		const modelSelection = resolveModel(expertModels[expertId] ?? null, settingsState);
 
 		expertCanvasStore.setExpertStatus(expertId, 'working');
 		expertCanvasStore.addUserMessage(expertId, userMessage);
 		expertCanvasStore.beginAssistantMessage(expertId);
+
+		if (!modelSelection) {
+			expertCanvasStore.appendToLastMessage(
+				expertId,
+				'**No model available.** Add a provider and model in Loophole Settings, then try again.',
+			);
+			expertCanvasStore.setExpertStatus(expertId, 'failed');
+			expertCanvasStore.finalizeLastMessage(expertId);
+			return '';
+		}
 
 		return new Promise<string>(resolve => {
 			let fullText = '';
@@ -268,7 +364,7 @@ export const ExpertCanvas = () => {
 				messages: [{ role: 'user', content: userMessage }],
 				separateSystemMessage: PROMPTS[expertId],
 				chatMode: null,
-				modelSelection: { providerName: 'anthropic' as const, modelName },
+				modelSelection,
 				modelSelectionOptions: undefined,
 				overridesOfModel: settingsState.overridesOfModel,
 				logging: { loggingName: `expert-${expertId}` },
@@ -288,8 +384,8 @@ export const ExpertCanvas = () => {
 				},
 				onError: ({ message }) => {
 					expertCanvasStore.setExpertStatus(expertId, 'failed');
-					// Surface the reason - the most common cause is a missing or
-					// invalid API key for the hard-coded Anthropic provider.
+					// Surface the reason, e.g. a missing API key or a local server
+					// that is not running. Otherwise the expert just shows "Failed".
 					if (message) {
 						expertCanvasStore.appendToLastMessage(expertId, `\n\n**Error:** ${message}`);
 					}
@@ -344,13 +440,13 @@ export const ExpertCanvas = () => {
 		if (!text || isRunning) return;
 		setPrompt('');
 		setAtQuery(null);
-		const mention = parseMention(text, expertModels);
+		const mention = parseMention(text);
 		if (mention) {
 			await runMention(mention.expertId, mention.message || text);
 		} else {
 			await runFullTeam(text);
 		}
-	}, [prompt, isRunning, expertModels, runMention, runFullTeam]);
+	}, [prompt, isRunning, runMention, runFullTeam]);
 
 	const handleAbort = useCallback(() => {
 		if (abortRef.current) accessor.get('ILLMMessageService').abort(abortRef.current);
@@ -370,10 +466,6 @@ export const ExpertCanvas = () => {
 		textareaRef.current?.focus();
 	}, []);
 
-	const handleModelChange = useCallback((expertId: string, model: string) => {
-		setExpertModels(prev => ({ ...prev, [expertId]: model }));
-	}, []);
-
 	// ── Render ──
 	return (
 		<div className={`@@loophole-scope ${isDark ? 'dark' : ''}`} style={{ width: '100%', height: '100%' }}>
@@ -382,8 +474,12 @@ export const ExpertCanvas = () => {
 				{/* Config panel overlay */}
 				{showConfig && (
 					<ConfigPanel
-						models={expertModels}
+						expertModels={expertModels}
+						allOptions={allOptions}
+						settingsState={settingsState}
 						onModelChange={handleModelChange}
+						onResetModels={handleResetModels}
+						openSettings={openSettings}
 						onClose={() => setShowConfig(false)}
 					/>
 				)}
@@ -441,7 +537,7 @@ export const ExpertCanvas = () => {
 								key={expert.id}
 								expert={expert}
 								status={storeExperts.find(e => e.id === expert.id)?.status ?? 'idle'}
-								model={expertModels[expert.id] ?? expert.defaultModel}
+								model={modelLabel(resolveModel(expertModels[expert.id] ?? null, settingsState))}
 								isSelected={selectedId === expert.id}
 								onClick={() => {
 									setSelectedId(p => p === expert.id ? null : expert.id);

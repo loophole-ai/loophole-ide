@@ -8,6 +8,59 @@
  * Both ExpertCanvas (sidebar) and ExpertCanvasPage (editor tab) subscribe to this.
  */
 
+import { ModelOption, VoidSettingsState } from '../../../../common/voidSettingsService.js';
+import {
+	displayInfoOfProviderName,
+	ModelSelection,
+	modelSelectionsEqual,
+	ProviderName,
+} from '../../../../common/voidSettingsTypes.js';
+
+// ── Shared model helpers ──────────────────────────────────────────────────────
+//
+// Used by both the sidebar (ExpertCanvas) and the canvas tab (ExpertCanvasPage).
+// Nothing here is provider-specific. The lists come from the user's own settings
+// (`_modelOptions`), so this works with whatever they have actually configured:
+// OpenRouter, Ollama, LM Studio, an OpenAI-compatible endpoint, or a cloud
+// provider. An expert with no explicit choice inherits the model the user picked
+// for Chat, so a fresh install needs no configuration at all.
+
+export const inheritLabel = 'Same as Chat';
+
+/** The model an expert will actually run on, or null if nothing is available. */
+export const resolveModel = (
+	expertModel: ModelSelection | null,
+	settingsState: VoidSettingsState,
+): ModelSelection | null => {
+	const options = settingsState._modelOptions;
+	if (expertModel) {
+		// The expert's model may have been removed from settings since it was
+		// chosen, so fall back rather than sending an unusable selection.
+		const stillThere = options.find(o => modelSelectionsEqual(o.selection, expertModel));
+		if (stillThere) { return stillThere.selection; }
+	}
+	const chatModel = settingsState.modelSelectionOfFeature.Chat;
+	if (chatModel) {
+		const match = options.find(o => modelSelectionsEqual(o.selection, chatModel));
+		if (match) { return match.selection; }
+	}
+	return options.length > 0 ? options[0].selection : null;
+};
+
+export const modelLabel = (selection: ModelSelection | null): string =>
+	selection
+		? `${displayInfoOfProviderName(selection.providerName).title} / ${selection.modelName}`
+		: 'No model';
+
+/** Providers that have at least one usable model, in first-seen order. */
+export const providerNamesOfOptions = (options: ModelOption[]): ProviderName[] => {
+	const seen: ProviderName[] = [];
+	for (const o of options) {
+		if (!seen.includes(o.selection.providerName)) { seen.push(o.selection.providerName); }
+	}
+	return seen;
+};
+
 export type ExpertStatus = 'idle' | 'working' | 'done' | 'failed';
 
 export interface ExpertMessage {
@@ -20,7 +73,13 @@ export interface ExpertState {
 	id: string;
 	name: string;
 	role: string;
-	model: string;
+	/**
+	 * Provider + model this expert runs on. `null` means "inherit whatever the
+	 * user has selected for Chat", which is the default so a fresh install
+	 * works with the provider they already configured. Never hard-code a
+	 * provider here - the available list comes from the user's own settings.
+	 */
+	model: ModelSelection | null;
 	status: ExpertStatus;
 	messages: ExpertMessage[];
 }
@@ -31,19 +90,19 @@ export interface CanvasState {
 	experts: ExpertState[];
 }
 
-const DEFAULT_EXPERTS: ExpertState[] = [
-	{ id: 'sara',  name: 'Sara',  role: 'Team Lead',      model: 'claude-opus-5',             status: 'idle', messages: [] },
-	{ id: 'leo',   name: 'Leo',   role: 'Researcher',     model: 'claude-opus-5',             status: 'idle', messages: [] },
-	{ id: 'karl',  name: 'Karl',  role: 'Engineer',       model: 'claude-sonnet-5',           status: 'idle', messages: [] },
-	{ id: 'jake',  name: 'Jake',  role: 'QA Engineer',    model: 'claude-sonnet-5',           status: 'idle', messages: [] },
-	{ id: 'ray',   name: 'Ray',   role: 'Code Reviewer',  model: 'claude-sonnet-5',           status: 'idle', messages: [] },
-	{ id: 'nora',  name: 'Nora',  role: 'Debug Engineer', model: 'claude-opus-5',             status: 'idle', messages: [] },
-	{ id: 'elena', name: 'Elena', role: 'UI/UX Operator', model: 'claude-sonnet-5',           status: 'idle', messages: [] },
-	{ id: 'max',   name: 'Max',   role: 'Docs Writer',    model: 'claude-haiku-4-5-20251001', status: 'idle', messages: [] },
+const DEFAULT_EXPERTS: Omit<ExpertState, 'model'>[] = [
+	{ id: 'sara',  name: 'Sara',  role: 'Team Lead',      status: 'idle' },
+	{ id: 'leo',   name: 'Leo',   role: 'Researcher',     status: 'idle' },
+	{ id: 'karl',  name: 'Karl',  role: 'Engineer',       status: 'idle' },
+	{ id: 'jake',  name: 'Jake',  role: 'QA Engineer',    status: 'idle' },
+	{ id: 'ray',   name: 'Ray',   role: 'Code Reviewer',  status: 'idle' },
+	{ id: 'nora',  name: 'Nora',  role: 'Debug Engineer', status: 'idle' },
+	{ id: 'elena', name: 'Elena', role: 'UI/UX Operator', status: 'idle' },
+	{ id: 'max',   name: 'Max',   role: 'Docs Writer',    status: 'idle' },
 ];
 
 const resetExperts = (): ExpertState[] =>
-	DEFAULT_EXPERTS.map(e => ({ ...e, messages: [], status: 'idle' as ExpertStatus }));
+	DEFAULT_EXPERTS.map(e => ({ ...e, model: null, messages: [], status: 'idle' as ExpertStatus }));
 
 class ExpertCanvasStore {
 	private state: CanvasState = {
@@ -69,12 +128,34 @@ class ExpertCanvasStore {
 
 	// ---- Mutations ----
 
-	/** Full team run — resets all experts */
+	/** Full team run — clears transcripts, but keeps each expert's chosen model. */
 	reset(goal: string) {
 		this.state = {
 			currentGoal: goal,
 			isRunning: true,
-			experts: resetExperts(),
+			experts: this.state.experts.map(e => ({
+				...e,
+				status: 'idle' as ExpertStatus,
+				messages: [],
+			})),
+		};
+		this.notify();
+	}
+
+	/** Clears transcripts everywhere and drops all model choices back to "inherit". */
+	resetModelsToDefault() {
+		this.state = {
+			...this.state,
+			experts: this.state.experts.map(e => ({ ...e, model: null })),
+		};
+		this.notify();
+	}
+
+	/** Per-expert provider + model. `null` means inherit the Chat selection. */
+	setExpertModel(expertId: string, model: ModelSelection | null) {
+		this.state = {
+			...this.state,
+			experts: this.state.experts.map(e => (e.id === expertId ? { ...e, model } : e)),
 		};
 		this.notify();
 	}

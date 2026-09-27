@@ -5,8 +5,14 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import '../styles.css';
-import { useIsDark } from '../util/services.js';
-import { expertCanvasStore, type ExpertState, type ExpertMessage } from './expertCanvasStore.js';
+import { useIsDark, useSettingsState } from '../util/services.js';
+import {
+	expertCanvasStore,
+	modelLabel,
+	resolveModel,
+	type ExpertState,
+	type ExpertMessage,
+} from './expertCanvasStore.js';
 
 // ---- Avatars ----
 import saraAvatar  from './avatars/sara.png';
@@ -190,6 +196,7 @@ const MessageBubble = ({ msg }: { msg: ExpertMessage }) => {
 
 const AgentColumn = ({ expert, isActive }: { expert: ExpertState; isActive: boolean }) => {
 	const bottomRef = useRef<HTMLDivElement>(null);
+	const settingsState = useSettingsState();
 
 	useEffect(() => {
 		bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -235,7 +242,9 @@ const AgentColumn = ({ expert, isActive }: { expert: ExpertState; isActive: bool
 
 			{/* Footer */}
 			<div className="flex-shrink-0 px-3 py-1.5 border-t border-loophole-border-4">
-				<span className="text-[10px] text-loophole-fg-4">{expert.model}</span>
+				<span className="text-[10px] text-loophole-fg-4">
+					{modelLabel(resolveModel(expert.model, settingsState))}
+				</span>
 			</div>
 		</div>
 	);
