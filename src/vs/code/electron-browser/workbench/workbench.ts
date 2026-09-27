@@ -461,29 +461,7 @@
 			return; // disabled in certain development setups
 		}
 
-		const cssModules = Array.isArray(configuration.cssModules) ? configuration.cssModules : [];
-
-		// Loophole: the local voice runtime loads @huggingface/transformers out of
-		// node_modules as a native ES module. Its browser build has two static bare
-		// imports of its own:
-		//
-		//   import * as ONNX_WEB from "onnxruntime-web/webgpu";
-		//   import { Tensor }      from "onnxruntime-common";
-		//
-		// The workbench is itself loaded as one native ES module, so the browser has
-		// no way to resolve bare npm specifiers. Map them here, into the same import
-		// map the bootstrap already installs - that is the only place where the CSP
-		// and Trusted Types requirements are known to be satisfied. Both packages
-		// ship inside the app; this only makes them reachable.
-		const loopholeNodeModules = new URL('../node_modules/', baseUrl).href;
-		const loopholeImports: Record<string, string> = {
-			'onnxruntime-web/webgpu': `${loopholeNodeModules}onnxruntime-web/dist/ort.webgpu.min.js`,
-			'onnxruntime-common': `${loopholeNodeModules}onnxruntime-common/dist/esm/index.js`,
-		};
-
-		// Always installed: the Loophole voice mappings are needed even when a
-		// build ships no CSS modules.
-		if (cssModules.length > 0) {
+		if (Array.isArray(configuration.cssModules) && configuration.cssModules.length > 0) {
 			performance.mark('code/willAddCssLoader');
 
 			globalThis._VSCODE_CSS_LOAD = function (url) {
@@ -494,26 +472,24 @@
 
 				window.document.head.appendChild(link);
 			};
-		}
 
-		const importMap: { imports: Record<string, string> } = { imports: { ...loopholeImports } };
-		for (const cssModule of cssModules) {
-			const cssUrl = new URL(cssModule, baseUrl).href;
-			const jsSrc = `globalThis._VSCODE_CSS_LOAD('${cssUrl}');\n`;
-			const blob = new Blob([jsSrc], { type: 'application/javascript' });
-			importMap.imports[cssUrl] = URL.createObjectURL(blob);
-		}
+			const importMap: { imports: Record<string, string> } = { imports: {} };
+			for (const cssModule of configuration.cssModules) {
+				const cssUrl = new URL(cssModule, baseUrl).href;
+				const jsSrc = `globalThis._VSCODE_CSS_LOAD('${cssUrl}');\n`;
+				const blob = new Blob([jsSrc], { type: 'application/javascript' });
+				importMap.imports[cssUrl] = URL.createObjectURL(blob);
+			}
 
-		const ttp = window.trustedTypes?.createPolicy('vscode-bootstrapImportMap', { createScript(value) { return value; }, });
-		const importMapSrc = JSON.stringify(importMap, undefined, 2);
-		const importMapScript = document.createElement('script');
-		importMapScript.type = 'importmap';
-		importMapScript.setAttribute('nonce', '0c6a828f1297');
-		// @ts-expect-error
-		importMapScript.textContent = ttp?.createScript(importMapSrc) ?? importMapSrc;
-		window.document.head.appendChild(importMapScript);
+			const ttp = window.trustedTypes?.createPolicy('vscode-bootstrapImportMap', { createScript(value) { return value; }, });
+			const importMapSrc = JSON.stringify(importMap, undefined, 2);
+			const importMapScript = document.createElement('script');
+			importMapScript.type = 'importmap';
+			importMapScript.setAttribute('nonce', '0c6a828f1297');
+			// @ts-expect-error
+			importMapScript.textContent = ttp?.createScript(importMapSrc) ?? importMapSrc;
+			window.document.head.appendChild(importMapScript);
 
-		if (cssModules.length > 0) {
 			performance.mark('code/didAddCssLoader');
 		}
 	}
