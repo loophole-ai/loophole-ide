@@ -25,7 +25,7 @@ import { ICommandService } from '../../../../../../../platform/commands/common/c
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
 import { estimateTokens } from '../../../../common/tokenizer.js';
-import { AlertTriangle, File, Ban, Check, ChevronRight, Dot, FileIcon, Mic, Loader2, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Paperclip } from 'lucide-react';
+import { AlertTriangle, File, Ban, Check, ChevronRight, Dot, FileIcon, Mic, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Paperclip } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage } from '../../../../common/chatThreadServiceTypes.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolName, LintErrorItem, ToolApprovalType, toolApprovalTypes } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, JumpToFileButton, JumpToTerminalButton, StatusIndicator, StatusIndicatorForApplyButton, useApplyStreamState, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -3326,9 +3326,12 @@ export const SidebarChat = () => {
 		}
 	}, [onSubmit, onAbort, isRunning])
 
+	// Sized and styled like the attach button next to it. The icon never changes:
+	// dictating only tints it red, so the button does not resize or swap glyphs
+	// under the cursor mid-sentence.
 	const voiceButton = isVoiceModelReady && !isRunning ? <button
 		type='button'
-		className={`rounded-full flex items-center justify-center ${voiceRecorder.isRecording ? 'bg-red-500 text-white' : 'bg-loophole-bg-2 text-loophole-fg-2 hover:bg-loophole-bg-3'} ${voiceRecorder.isTranscribing ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}
+		className={`flex items-center justify-center transition-colors ${voiceRecorder.isRecording ? 'text-red-500' : 'text-loophole-fg-2 opacity-60 hover:opacity-100'} ${voiceRecorder.isTranscribing ? 'cursor-wait opacity-50' : 'cursor-pointer'}`}
 		aria-label={voiceRecorder.isRecording ? 'Stop dictation' : 'Start dictation'}
 		aria-pressed={voiceRecorder.isRecording}
 		disabled={voiceRecorder.isTranscribing}
@@ -3339,7 +3342,7 @@ export const SidebarChat = () => {
 			else void voiceRecorder.start()
 		}}
 	>
-		{voiceRecorder.isTranscribing ? <Loader2 size={DEFAULT_BUTTON_SIZE} className="animate-spin" /> : voiceRecorder.isRecording ? <IconSquare size={DEFAULT_BUTTON_SIZE} /> : <Mic size={DEFAULT_BUTTON_SIZE} />}
+		<Mic size={13} strokeWidth={2} />
 	</button> : undefined
 
 	const inputChatArea = <VoidChatArea

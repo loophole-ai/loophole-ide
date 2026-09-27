@@ -18,9 +18,9 @@
  * fetches, not the full-precision weights.
  */
 export const LOCAL_VOICE_MODEL_IDS = [
-	'whisper-tiny-en',
 	'whisper-base-en',
 	'whisper-small-en',
+	'distil-medium-en',
 ] as const;
 
 export type LocalVoiceModelId = typeof LOCAL_VOICE_MODEL_IDS[number];
@@ -40,17 +40,9 @@ export type LocalVoiceModelDefinition = {
 };
 
 export const LOCAL_VOICE_MODELS: readonly LocalVoiceModelDefinition[] = [
-	{
-		id: 'whisper-tiny-en',
-		label: 'Whisper Tiny',
-		modelId: 'onnx-community/whisper-tiny.en',
-		revision: '2575352d61be1bf7225cf8f8b268a4678025fc58',
-		downloadSizeBytes: 40_000_000,
-		downloadSizeLabel: '~39 MB',
-		language: 'English',
-		description: 'Smallest and fastest option. Good for quick notes on older computers, at the cost of accuracy.',
-		license: 'MIT',
-	},
+	// Sizes are the q8 encoder + merged-decoder pair the service actually
+	// downloads, read off the model repos rather than guessed. Whisper Tiny was
+	// dropped: it is fast but its accuracy is poor enough to be unusable.
 	{
 		id: 'whisper-base-en',
 		label: 'Whisper Base',
@@ -59,7 +51,7 @@ export const LOCAL_VOICE_MODELS: readonly LocalVoiceModelDefinition[] = [
 		downloadSizeBytes: 74_000_000,
 		downloadSizeLabel: '~73 MB',
 		language: 'English',
-		description: 'A reasonable middle ground for everyday dictation on a normal desktop.',
+		description: 'The small one. Quick to download and fast enough for short sentences, but it will drop or garble longer ones.',
 		license: 'MIT',
 	},
 	{
@@ -70,9 +62,20 @@ export const LOCAL_VOICE_MODELS: readonly LocalVoiceModelDefinition[] = [
 		downloadSizeBytes: 238_000_000,
 		downloadSizeLabel: '~238 MB',
 		language: 'English',
-		description: 'The most accurate option here, and the one to pick if you care about getting long sentences right.',
+		description: 'The best balance of size and accuracy here. Handles ordinary dictation well on a normal desktop.',
 		license: 'MIT',
 		recommended: true,
+	},
+	{
+		id: 'distil-medium-en',
+		label: 'Distil Whisper Medium',
+		modelId: 'distil-whisper/distil-medium.en',
+		revision: '6e61418885eaf4d5cc9f64e508e80ac5b4c052b7',
+		downloadSizeBytes: 384_000_000,
+		downloadSizeLabel: '~384 MB',
+		language: 'English',
+		description: 'The most accurate option here, at the cost of a much longer download, more memory, and slower transcription. Best with WebGPU.',
+		license: 'MIT',
 	},
 ];
 
