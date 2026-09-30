@@ -15,8 +15,16 @@
 
 import { estimateTokens } from '../common/tokenizer.js';
 
-/** Roughly what Continue uses; keeps the request small enough to stay interactive. */
-export const MAX_PROMPT_TOKENS = 1024;
+/**
+ * Total budget for prefix + suffix.
+ *
+ * Defaults to 2048. An earlier value of 1024 was small enough that on a large file the
+ * model saw only a sliver of what the user had open - it had enough local context to
+ * finish the line but not enough to know what the line was for.
+ *
+ * Overridable per user in settings; see `GlobalSettings.autocompleteContextTokens`.
+ */
+export const DEFAULT_MAX_PROMPT_TOKENS = 2048
 
 /**
  * How the budget is split. The prefix carries the code being written and the suffix tells
@@ -25,17 +33,35 @@ export const MAX_PROMPT_TOKENS = 1024;
 export const PREFIX_PERCENTAGE = 0.35;
 export const SUFFIX_PERCENTAGE = 0.25;
 
-const MAX_PREFIX_TOKENS = Math.floor(MAX_PROMPT_TOKENS * PREFIX_PERCENTAGE);
-const MAX_SUFFIX_TOKENS = Math.floor(MAX_PROMPT_TOKENS * SUFFIX_PERCENTAGE);
-
 /** Hard line cap, so a very large window can't produce an enormous string to scan. */
-const MAX_LINES = 300;
+const MAX_LINES = 500;
+
+/**
+ * Resolve the budget for a request. Clamped so a typo in settings cannot ask for zero
+ * context (which would silently break completions) or an unbounded amount.
+ */
+export const resolveMaxPromptTokens = (userSetting: number | undefined | null): number => {
+	if (typeof userSetting !== 'number' || !Number.isFinite(userSetting)) {
+		return DEFAULT_MAX_PROMPT_TOKENS
+	}
+	return Math.max(256, Math.min(16384, Math.floor(userSetting)))
+}
+
+type Budget = { maxPrefixTokens: number, maxSuffixTokens: number }
+
+const budgetOf = (maxPromptTokens: number): Budget => ({
+	maxPrefixTokens: Math.floor(maxPromptTokens * PREFIX_PERCENTAGE),
+	maxSuffixTokens: Math.floor(maxPromptTokens * SUFFIX_PERCENTAGE),
+})
 
 /**
  * Drop whole lines from the TOP of the prefix (farthest from the cursor) until it fits.
  * We always keep the line the cursor is on.
  */
-export const prunePrefix = (prefix: string, ln: string, maxTokens: number = MAX_PREFIX_TOKENS): string => {
+export const prunePrefix = (prefix: string, ln: string, maxTokens?: number, maxPromptTokens?: number): string => {
+	const budget = budgetOf(resolveMaxPromptTokens(maxPromptTokens))
+	const limit = maxTokens ?? budget.maxPrefixTokens
+
 	let lines = prefix.split(ln);
 	if (lines.length > MAX_LINES) {
 		lines = lines.slice(-MAX_LINES);
@@ -43,7 +69,7 @@ export const prunePrefix = (prefix: string, ln: string, maxTokens: number = MAX_
 	if (lines.length <= 1) { return prefix; }
 
 	while (lines.length > 1) {
-		if (estimateTokens(lines.join(ln)) <= maxTokens) { break; }
+		if (estimateTokens(lines.join(ln)) <= limit) { break; }
 		lines = lines.slice(1);
 	}
 	return lines.join(ln);
@@ -54,7 +80,10 @@ export const prunePrefix = (prefix: string, ln: string, maxTokens: number = MAX_
  * The line directly right of the cursor is always kept - it is what decides whether the
  * cursor is at the end of a line or in the middle of one.
  */
-export const pruneSuffix = (suffix: string, ln: string, maxTokens: number = MAX_SUFFIX_TOKENS): string => {
+export const pruneSuffix = (suffix: string, ln: string, maxTokens?: number, maxPromptTokens?: number): string => {
+	const budget = budgetOf(resolveMaxPromptTokens(maxPromptTokens))
+	const limit = maxTokens ?? budget.maxSuffixTokens
+
 	let lines = suffix.split(ln);
 	if (lines.length > MAX_LINES) {
 		lines = lines.slice(0, MAX_LINES);
@@ -62,7 +91,7 @@ export const pruneSuffix = (suffix: string, ln: string, maxTokens: number = MAX_
 	if (lines.length <= 1) { return suffix; }
 
 	while (lines.length > 1) {
-		if (estimateTokens(lines.join(ln)) <= maxTokens) { break; }
+		if (estimateTokens(lines.join(ln)) <= limit) { break; }
 		lines = lines.slice(0, lines.length - 1);
 	}
 	return lines.join(ln);

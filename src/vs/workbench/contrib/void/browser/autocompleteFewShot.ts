@@ -191,11 +191,12 @@ export const extractHoleFillerCompletion = (raw: string): string => {
 	const fenceIdx = text.indexOf('```')
 	if (fenceIdx !== -1) { text = text.slice(0, fenceIdx) }
 
-	// The cursor is already sitting at the right indentation, and the caller trims
-	// surrounding whitespace anyway, so leading indentation from the model's imitation of
-	// the examples is noise.
-	text = text.replace(/^\s+/, '')
+	// Re-check: the slice above can expose a refusal that the tag wrapped.
+	if (looksLikeProse(text)) { return '' }
 
-	// re-check: the slice above can expose a refusal that the tag wrapped
-	return looksLikeProse(text) ? '' : text
+	// NOTE: leading whitespace is deliberately left alone. The examples in the prompt show
+	// the completion indented relative to the hole, and that indentation is real - it is
+	// stripped again only if the caller decides the cursor already supplies it. An earlier
+	// version trimmed it here and every block came out flush-left.
+	return text
 }

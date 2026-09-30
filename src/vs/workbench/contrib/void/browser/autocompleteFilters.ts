@@ -229,6 +229,107 @@ export const getStringUpToUnbalancedClosingParenthesis = (s: string, prefix: str
 	return s;
 };
 
+/**
+ * Trim a partially-streamed stop sequence off the end of the text.
+ *
+ * A stop sequence can arrive split across two chunks. Mid-sequence the text legitimately
+ * ends with something like `</COMP` or `<|fim`, which matches nothing in the stop list, so
+ * it would be shown to the user and then have to be retracted a moment later. This removes
+ * the fragment as soon as it appears.
+ *
+ * Only trims fragments of at least MIN_PARTIAL_LEN characters. That floor matters: `+` is a
+ * prefix of `+++++ `, so without it a completion of `a +` would have its operator chopped
+ * off mid-expression.
+ */
+const MIN_PARTIAL_LEN = 4
+
+export const trimPartialStopSequence = (text: string, sequences: readonly string[]): string => {
+	if (!text) { return '' }
+
+	let trimTo = text.length
+	for (const seq of sequences) {
+		if (seq.length <= MIN_PARTIAL_LEN) { continue }
+		// only the tail can be a partial
+		const maxFragment = Math.min(seq.length - 1, text.length)
+		for (let k = maxFragment; k >= MIN_PARTIAL_LEN; k--) {
+			if (text.endsWith(seq.slice(0, k))) {
+				trimTo = Math.min(trimTo, text.length - k)
+				break
+			}
+		}
+	}
+
+	return trimTo === text.length ? text : text.slice(0, trimTo)
+}
+
+/**
+ * The model re-emitting the part of the current line that is already on screen.
+ *
+ * With the cursor after `print(`, a chat model quite often returns the whole line
+ * `print("Hello, World!")` instead of just the part after the hole. Inserting that at the
+ * cursor yields `print(print("Hello, World!"))`. Stripping the echoed prefix is the
+ * difference between completing a line and corrupting it.
+ *
+ * Compared whitespace-insensitively, because the model rarely reproduces leading
+ * indentation exactly. Only the FIRST occurrence is removed, so a later legitimate repeat
+ * of the same text is left alone.
+ */
+export const stripEchoedLinePrefix = (text: string, lineBeforeCursor: string): string => {
+	const typed = lineBeforeCursor
+	if (!typed.trim() || !text) { return text }
+
+	// exact
+	if (text.startsWith(typed)) {
+		const rest = text.slice(typed.length)
+		return rest.trim() ? rest : text
+	}
+
+	// Whitespace-insensitive: walk both strings in parallel, skipping spaces and tabs, and
+	// require the characters to actually match. An earlier version compared only how many
+	// non-space characters each had, which matched almost any text and shredded unrelated
+	// completions.
+	let ti = 0, xi = 0
+	while (ti < typed.length) {
+		while (ti < typed.length && /[ \t]/.test(typed[ti])) { ti++ }
+		if (ti >= typed.length) { break }
+		while (xi < text.length && /[ \t]/.test(text[xi])) { xi++ }
+		if (xi >= text.length) { return text }  // completion ran out - not an echo
+		if (typed[ti] !== text[xi]) { return text } // diverged - not an echo
+		ti++
+		xi++
+	}
+	// typed was fully consumed, so the whole of it was echoed
+	while (xi < text.length && /[ \t]/.test(text[xi])) { xi++ }
+
+	const rest = text.slice(xi)
+	return rest.trim() ? rest : text
+}
+
+/**
+ * Re-indent a block that the model emitted at column 0.
+ *
+ * A block inserted on an already-indented blank line has every line after the first landing
+ * at the wrong column, because the model was imitating the hole-filler examples, which show
+ * the body relative to the hole rather than to the file.
+ *
+ * Only lines with NO leading whitespace are touched. A model that already indented a line
+ * relative to the hole was deliberate, and a line that is genuinely at column 0 (a closing
+ * brace, for instance) is left alone.
+ */
+export const indentContinuationLines = (text: string, ln: string, baseIndent: string): string => {
+	if (!baseIndent || !text.includes(ln)) { return text }
+
+	return text.split(ln).map((line, i) => {
+		if (i === 0) { return line }         // the first line lands at the cursor as-is
+		if (line.trim() === '') { return line } // blank lines stay blank
+		if (/^[ \t]/.test(line)) { return line } // model already indented it
+		// A line starting with a closing bracket is a DEDENT, not a missing indent. The
+		// suffix supplies the block's real closing brace, so it belongs at column 0.
+		if (/^[}\])>]/.test(line)) { return line }
+		return baseIndent + line
+	}).join(ln)
+}
+
 export type ApplyFiltersOptions = {
 	/** Line ending used by the document. */
 	ln: string;
@@ -243,6 +344,18 @@ export type ApplyFiltersOptions = {
 	singleLineOnly?: boolean;
 	/** Apply the bracket balance check against the prefix. */
 	prefix?: string;
+	/**
+	 * Text on the current line to the LEFT of the cursor. If the model re-emits it, it is
+	 * stripped - otherwise you get `print(print("hi"))`.
+	 */
+	prefixToTheLeftOfCursor?: string;
+	/**
+	 * Indentation of the cursor's line. Continuation lines the model left at column 0 are
+	 * shifted by this, so a block inserted on an indented line stays a block.
+	 */
+	baseIndent?: string;
+	/** Apply `indentContinuationLines`. Off for native FIM, which indents correctly itself. */
+	reindentContinuation?: boolean;
 };
 
 /**
@@ -251,10 +364,23 @@ export type ApplyFiltersOptions = {
  *   -> blank-line padding -> single-line clamp -> bracket balance
  */
 export const applyCompletionFilters = (raw: string, opts: ApplyFiltersOptions): string => {
-	const { ln, lineBelow, stopSequences, singleLineOnly, prefix } = opts;
+	const { ln, lineBelow, stopSequences, singleLineOnly, prefix, prefixToTheLeftOfCursor, baseIndent, reindentContinuation } = opts;
 
 	let text = raw;
 	if (!text) { return ''; }
+
+	// Prefix: '\n\n/* Relevant context:\n' + relevantContext + '\n*/\n' + prefix
+
+	// The model re-emitted the part of this line that is already on screen. Must run before
+	// anything else, or the duplicate gets carried into every later step.
+	if (prefixToTheLeftOfCursor !== undefined) {
+		text = stripEchoedLinePrefix(text, prefixToTheLeftOfCursor);
+	}
+
+	// Must run before the single-line clamp, which would hide the mistake.
+	if (reindentContinuation && baseIndent) {
+		text = indentContinuationLines(text, ln, baseIndent);
+	}
 
 	text = stopAtStopSequences(text, stopSequences);
 	text = stripCodeFences(text, ln);
@@ -285,6 +411,9 @@ export const applyCompletionFilters = (raw: string, opts: ApplyFiltersOptions): 
 	if (prefix !== undefined) {
 		text = getStringUpToUnbalancedClosingParenthesis(text, prefix);
 	}
+
+	// LAST, so it also catches a stop sequence left dangling by an earlier cut
+	text = trimPartialStopSequence(text, [...STOP_SEQUENCES, ...(stopSequences ?? [])]);
 
 	return text;
 };

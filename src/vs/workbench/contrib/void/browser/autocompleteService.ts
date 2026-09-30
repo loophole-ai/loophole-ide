@@ -19,7 +19,7 @@ import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { FeatureName, MultilineCompletionsMode, ProviderName } from '../common/voidSettingsTypes.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { applyCompletionFilters, getStringUpToUnbalancedClosingParenthesis } from './autocompleteFilters.js';
-import { prunePrefix, pruneSuffix } from './autocompletePromptSizing.js';
+import { prunePrefix, pruneSuffix, resolveMaxPromptTokens } from './autocompletePromptSizing.js';
 import { shouldCompleteMultiline } from './autocompleteMultiline.js';
 import { buildHoleFillerPrompt, extractHoleFillerCompletion } from './autocompleteFewShot.js';
 import { getModelCapabilities } from '../common/modelCapabilities.js';
@@ -253,15 +253,20 @@ const asSingleUserMessage = (providerName: ProviderName | undefined, text: strin
  * `insertText` on every keystroke rather than accumulating, so a revised frame simply
  * replaces the last one.
  */
-const filterStreamedText = (text: string, prefixAndSuffix: PrefixAndSuffixInfo): string => {
-	const { prefix, suffixLines } = prefixAndSuffix
+const filterStreamedText = (text: string, prefixAndSuffix: PrefixAndSuffixInfo, reindentContinuation: boolean): string => {
+	const { prefix, prefixToTheLeftOfCursor, suffixLines } = prefixAndSuffix
 	// the line *under* the cursor's line - if the model re-generates it we are duplicating
 	const lineBelow = suffixLines[1] ?? ''
+	// the indent the cursor is sitting at, so a block keeps that indent
+	const baseIndent = (prefixToTheLeftOfCursor.match(/^[ \t]*/) ?? [''])[0]
 
 	return processStartAndEndSpaces(applyCompletionFilters(text, {
 		ln: _ln,
 		lineBelow,
 		prefix,
+		prefixToTheLeftOfCursor,
+		baseIndent,
+		reindentContinuation,
 	}))
 }
 
@@ -602,15 +607,15 @@ type CompletionOptions = {
  * safety invariant that a block never replaces existing text, live in
  * ./autocompleteMultiline.ts so they can be tested directly.
  */
-const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantContext: string, justAcceptedAutocompletion: boolean, multilineCompletions: MultilineCompletionsMode): CompletionOptions => {
+const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantContext: string, justAcceptedAutocompletion: boolean, multilineCompletions: MultilineCompletionsMode, maxPromptTokens: number): CompletionOptions => {
 
 	let { prefix, suffix, prefixToTheLeftOfCursor, suffixToTheRightOfCursor, suffixLines } = prefixAndSuffix
 
 	// Size the context window by tokens rather than a flat line count. 25 lines of dense
 	// code blows the budget while 25 lines of nested indentation is nearly worthless, and
 	// the tokenizer is already available locally so this costs nothing extra.
-	prefix = prunePrefix(prefix, _ln)
-	suffix = pruneSuffix(suffix, _ln)
+	prefix = prunePrefix(prefix, _ln, undefined, maxPromptTokens)
+	suffix = pruneSuffix(suffix, _ln, undefined, maxPromptTokens)
 	suffixLines = suffix.split(_ln)
 
 	let completionOptions: CompletionOptions
@@ -819,7 +824,8 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		const relevantContext = ''
 
 		const multilineCompletions = this._settingsService.state.globalSettings.multilineCompletions ?? 'auto'
-		const { shouldGenerate, predictionType, llmPrefix, llmSuffix, stopTokens } = getCompletionOptions(prefixAndSuffix, relevantContext, justAcceptedAutocompletion, multilineCompletions)
+		const maxPromptTokens = resolveMaxPromptTokens(this._settingsService.state.globalSettings.autocompleteContextTokens)
+		const { shouldGenerate, predictionType, llmPrefix, llmSuffix, stopTokens } = getCompletionOptions(prefixAndSuffix, relevantContext, justAcceptedAutocompletion, multilineCompletions, maxPromptTokens)
 
 		if (!shouldGenerate) return []
 
@@ -904,7 +910,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 					}, MAX_TIME_TO_SHOW_PARTIAL)
 				}
 
-				const filtered = filterStreamedText(clean(fullText), prefixAndSuffix)
+				const filtered = filterStreamedText(clean(fullText), prefixAndSuffix, !supportsNativeFim)
 				newAutocompletion.insertText = filtered
 
 				// A long stretch of output where nothing at all survives filtering means
@@ -943,7 +949,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 				if (newAutocompletion.status !== 'error') {
 					newAutocompletion.status = 'finished'
 				}
-				newAutocompletion.insertText = filterStreamedText(clean(fullText), prefixAndSuffix)
+				newAutocompletion.insertText = filterStreamedText(clean(fullText), prefixAndSuffix, !supportsNativeFim)
 
 				// handle special case for predicting starting on the next line, add a newline character
 				if (newAutocompletion.type === 'multi-line-start-on-next-line') {

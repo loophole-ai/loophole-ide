@@ -1457,6 +1457,37 @@ export const Settings = () => {
 														</div>
 													</ErrorBoundary>
 
+												{/* Context budget */}
+												<ErrorBoundary>
+													<div className={`my-2 ${!settingsState.globalSettings.enableAutocomplete ? 'hidden' : ''}`}>
+														<div
+															className='text-xs text-loophole-fg-3 mb-1'
+															data-tooltip-id='loophole-tooltip'
+															data-tooltip-content='How much surrounding code to send with each suggestion. Raise it if suggestions miss what your code is doing, lower it if suggestions feel slow. 256-16384.'
+															data-tooltip-class-name='loophole-max-w-[20px]'
+														>
+															Context tokens
+														</div>
+														<input
+															type='number'
+															min={256}
+															max={16384}
+															step={256}
+															className='text-xs text-loophole-fg-3 w-full bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1'
+															value={settingsState.globalSettings.autocompleteContextTokens ?? 2048}
+															onChange={(e) => {
+																const parsed = parseInt(e.currentTarget.value, 10)
+																if (!Number.isNaN(parsed)) {
+																	// keep in step with resolveMaxPromptTokens in
+																	// browser/autocompletePromptSizing.ts. Duplicated rather than
+																	// imported so the settings bundle does not pull in the tokenizer.
+																	voidSettingsService.setGlobalSetting('autocompleteContextTokens', Math.max(256, Math.min(16384, parsed)))
+																}
+															}}
+														/>
+													</div>
+												</ErrorBoundary>
+
 												</div>
 
 											</div>

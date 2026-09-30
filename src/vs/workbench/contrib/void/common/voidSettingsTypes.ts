@@ -471,6 +471,9 @@ export type ChatMode = 'agent' | 'gather' | 'normal' | 'plan'
 /** See `GlobalSettings.multilineCompletions`. */
 export type MultilineCompletionsMode = 'auto' | 'always' | 'never'
 
+/** Default for `GlobalSettings.autocompleteContextTokens`. */
+export const DEFAULT_AUTOCOMPLETE_CONTEXT_TOKENS = 2048
+
 
 export type GlobalSettings = {
 	autoRefreshModels: boolean;
@@ -493,6 +496,13 @@ export type GlobalSettings = {
 	 * ../browser/autocompleteMultiline.ts.
 	 */
 	multilineCompletions: MultilineCompletionsMode;
+	/**
+	 * How many tokens of surrounding code to send with each autocomplete request, for
+	 * prefix and suffix combined. Raise it on large files so the model can see enough of
+	 * the surrounding code to know what the current line is for; lower it to cut latency
+	 * on a small model. Clamped to 256..16384.
+	 */
+	autocompleteContextTokens: number;
 	syncApplyToChat: boolean;
 	syncSCMToChat: boolean;
 	enableFastApply: boolean;
@@ -514,6 +524,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	aiInstructions: '',
 	enableAutocomplete: false,
 	multilineCompletions: 'auto',
+	autocompleteContextTokens: DEFAULT_AUTOCOMPLETE_CONTEXT_TOKENS,
 	syncApplyToChat: true,
 	syncSCMToChat: true,
 	enableFastApply: true,
