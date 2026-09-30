@@ -4,11 +4,12 @@
  *--------------------------------------------------------------------------------------*/
 
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { EndOfLinePreference, ITextModel } from '../../../../editor/common/model.js';
 import { Position } from '../../../../editor/common/core/position.js';
-import { InlineCompletion, } from '../../../../editor/common/languages.js';
+import { InlineCompletion, InlineCompletionEndOfLifeReasonKind, } from '../../../../editor/common/languages.js';
 import { Range } from '../../../../editor/common/core/range.js';
 import { extractCodeFromRegular } from '../common/helpers/extractCodeFromResult.js';
 import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
@@ -17,6 +18,8 @@ import { isWindows } from '../../../../base/common/platform.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { FeatureName } from '../common/voidSettingsTypes.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
+import { applyCompletionFilters, getStringUpToUnbalancedClosingParenthesis } from './autocompleteFilters.js';
+import { prunePrefix, pruneSuffix } from './autocompletePromptSizing.js';
 // import { IContextGatheringService } from './contextGatheringService.js';
 
 
@@ -33,33 +36,30 @@ A summary of autotab:
 Postprocessing
 -one common problem for all models is outputting unbalanced parentheses
 we solve this by trimming all extra closing parentheses from the generated string
-in future, should make sure parentheses are always balanced
+(./autocompleteFilters.ts also strips fences, leaked sentinels, chat preambles,
+ repeated lines, re-generation of the line below, and blank-line padding)
 
 -another problem is completing the middle of a string, eg. "const [x, CURSOR] = useState()"
 we complete up to first matchup character
 but should instead complete the whole line / block (difficult because of parenthesis accuracy)
 
--too much info is bad. usually we want to show the user 1 line, and have a preloaded response afterwards
-this should happen automatically with caching system
-should break preloaded responses into \n\n chunks
-
 Preprocessing
 - we don't generate if cursor is at end / beginning of a line (no spaces)
 - we generate 1 line if there is text to the right of cursor
 - we generate 1 line if variable declaration
-- (in many cases want to show 1 line but generate multiple)
+- the context window is sized in tokens, not lines (./autocompletePromptSizing.ts)
+- TODO add context from other files (./contextGatheringService.ts exists but is unwired
+  and needs caching + timeouts before it is safe to put on this path)
 
 State
 - cache based on prefix (and do some trimming first)
-- when press tab on one line, should have an immediate followup response
-to do this, show autocompletes before they're fully finished
+- the request streams: a filtered partial is shown as soon as the first line is
+  complete, or after MAX_TIME_TO_SHOW_PARTIAL, and later keystrokes pick up the
+  longer text from the same cache entry
+- accepted completions are evicted and stamp `_lastCompletionAccept`, which is what
+  unlocks the 'multi-line-start-on-next-line' prediction
 - [todo] remove each autotab when accepted
 !- [todo] provide type information
-
-Details
--generated results are trimmed up to 1 leading/trailing space
--prefixes are cached up to 1 trailing newline
--
 */
 
 class LRUCache<K, V> {
@@ -160,12 +160,51 @@ type Autocompletion = {
 	insertText: string,
 	requestId: string | null,
 	_newlineCount: number,
+	/** Set when the first token lands, so the partial-show deadline is measured from the
+	 *  first byte the user can actually see, not from when the request was issued. */
+	firstTokenTime: number | undefined,
+	/** True once we've decided the text is good enough and asked the model to stop. */
+	stoppedEarly: boolean,
 }
 
-const DEBOUNCE_TIME = 500
-const TIMEOUT_TIME = 60000
+/**
+ * An inline completion that remembers which cache entry (and which document) produced
+ * it, so the accept callback can find its way back to it. The editor hands the very same
+ * objects back to us in `handleEndOfLifetime`.
+ */
+type TrackedInlineCompletion = InlineCompletion & { autocompleteId: number, documentUri: string }
+
+/** How long the user must be idle before we spend a request. */
+const DEBOUNCE_TIME = 250
+
+/**
+ * Once the first token arrives, wait at most this long for a *useful* amount of text and
+ * then show it. The request keeps streaming in the background and later keystrokes pick
+ * up the longer version from the cache, so a slow model degrades into a progressive
+ * suggestion rather than into no suggestion.
+ */
+const MAX_TIME_TO_SHOW_PARTIAL = 300
+
+/**
+ * Hard ceiling on a single request. This is a backstop for a hung socket, not the normal
+ * exit - requests normally end via the stream filters or the partial-show deadline.
+ */
+const TIMEOUT_TIME = 10000
+
+/**
+ * How much raw output we will accept before deciding the model is producing something we
+ * can never show. Guards against paying for a whole essay.
+ */
+const GARBAGE_RAW_THRESHOLD = 400
+
 const MAX_CACHE_SIZE = 20
 const MAX_PENDING_REQUESTS = 2
+
+/**
+ * How long after an accept we should assume the user is chaining completions and offer
+ * the next block on the following line.
+ */
+const JUST_ACCEPTED_WINDOW = 500
 
 // postprocesses the result
 const processStartAndEndSpaces = (result: string) => {
@@ -182,6 +221,28 @@ const processStartAndEndSpaces = (result: string) => {
 		+ result.trim()
 		+ (hasTrailingSpace ? ' ' : '');
 
+}
+
+
+/**
+ * Run streamed text through the filter pipeline. Called on every chunk and again on the
+ * final text.
+ *
+ * Note a few of the filters are retroactive (see autocompleteFilters.ts), so this is not
+ * guaranteed to be a prefix-extension of its previous result. That is fine: callers re-read
+ * `insertText` on every keystroke rather than accumulating, so a revised frame simply
+ * replaces the last one.
+ */
+const filterStreamedText = (text: string, prefixAndSuffix: PrefixAndSuffixInfo): string => {
+	const { prefix, suffixLines } = prefixAndSuffix
+	// the line *under* the cursor's line - if the model re-generates it we are duplicating
+	const lineBelow = suffixLines[1] ?? ''
+
+	return processStartAndEndSpaces(applyCompletionFilters(text, {
+		ln: _ln,
+		lineBelow,
+		prefix,
+	}))
 }
 
 
@@ -227,40 +288,7 @@ function getIsSubsequence({ of, subsequence }: { of: string, subsequence: string
 }
 
 
-function getStringUpToUnbalancedClosingParenthesis(s: string, prefix: string): string {
-
-	const pairs: Record<string, string> = { ')': '(', '}': '{', ']': '[' };
-
-	// process all bracets in prefix
-	let stack: string[] = []
-	const firstOpenIdx = prefix.search(/[[({]/);
-	if (firstOpenIdx !== -1) {
-		const brackets = prefix.slice(firstOpenIdx).split('').filter(c => '()[]{}'.includes(c));
-
-		for (const bracket of brackets) {
-			if (bracket === '(' || bracket === '{' || bracket === '[') {
-				stack.push(bracket);
-			} else {
-				if (stack.length > 0 && stack[stack.length - 1] === pairs[bracket]) {
-					stack.pop();
-				} else {
-					stack.push(bracket);
-				}
-			}
-		}
-	}
-
-	// iterate through each character
-	for (let i = 0; i < s.length; i++) {
-		const char = s[i];
-
-		if (char === '(' || char === '{' || char === '[') { stack.push(char); }
-		else if (char === ')' || char === '}' || char === ']') {
-			if (stack.length === 0 || stack.pop() !== pairs[char]) { return s.substring(0, i); }
-		}
-	}
-	return s;
-}
+// bracket balancing now lives in ./autocompleteFilters.ts so it can be unit tested
 
 
 // further trim the autocompletion
@@ -531,13 +559,14 @@ type CompletionOptions = {
 }
 const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantContext: string, justAcceptedAutocompletion: boolean): CompletionOptions => {
 
-	let { prefix, suffix, prefixToTheLeftOfCursor, suffixToTheRightOfCursor, suffixLines, prefixLines } = prefixAndSuffix
+	let { prefix, suffix, prefixToTheLeftOfCursor, suffixToTheRightOfCursor, suffixLines } = prefixAndSuffix
 
-	// trim prefix and suffix to not be very large
-	suffixLines = suffix.split(_ln).slice(0, 25)
-	prefixLines = prefix.split(_ln).slice(-25)
-	prefix = prefixLines.join(_ln)
-	suffix = suffixLines.join(_ln)
+	// Size the context window by tokens rather than a flat line count. 25 lines of dense
+	// code blows the budget while 25 lines of nested indentation is nearly worthless, and
+	// the tokenizer is already available locally so this costs nothing extra.
+	prefix = prunePrefix(prefix, _ln)
+	suffix = pruneSuffix(suffix, _ln)
+	suffixLines = suffix.split(_ln)
 
 	let completionOptions: CompletionOptions
 
@@ -629,12 +658,11 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 	async _provideInlineCompletionItems(
 		model: ITextModel,
 		position: Position,
+		token: CancellationToken,
 	): Promise<InlineCompletion[]> {
 
 		const isEnabled = this._settingsService.state.globalSettings.enableAutocomplete
 		if (!isEnabled) return []
-
-		const testMode = false
 
 		const docUriStr = model.uri.fsPath;
 
@@ -674,36 +702,28 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		// if there is a cached autocompletion, return it
 		if (cachedAutocompletion && autocompletionMatchup) {
 
-			console.log('AA')
-
-
-			// console.log('id: ' + cachedAutocompletion.id)
-
 			if (cachedAutocompletion.status === 'finished') {
-				console.log('A1')
-
-				const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position, debug: true })
-				return inlineCompletions
+				const completions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position })
+				return this._track(completions, cachedAutocompletion.id, docUriStr)
 
 			} else if (cachedAutocompletion.status === 'pending') {
-				console.log('A2')
-
 				try {
+					// resolves as soon as there is enough text to be worth showing
+					// (MAX_TIME_TO_SHOW_PARTIAL), not when the model finishes
 					await cachedAutocompletion.llmPromise;
-					const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position })
-					return inlineCompletions
+					const completions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position })
+					return this._track(completions, cachedAutocompletion.id, docUriStr)
 
 				} catch (e) {
 					this._autocompletionsOfDocument[docUriStr].delete(cachedAutocompletion.id)
-					console.error('Error creating autocompletion (1): ' + e)
 				}
 
-			} else if (cachedAutocompletion.status === 'error') {
-				console.log('A3')
-			} else {
-				console.log('A4')
 			}
 
+			// Either the request errored, or a pending one failed. Drop it, otherwise it
+			// keeps matching the prefix and suppresses every future suggestion in this
+			// file until the LRU happens to evict it.
+			this._autocompletionsOfDocument[docUriStr].delete(cachedAutocompletion.id)
 			return []
 		}
 
@@ -712,21 +732,18 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		// wait DEBOUNCE_TIME for the user to stop typing
 		const thisTime = Date.now()
 
-		const justAcceptedAutocompletion = thisTime - this._lastCompletionAccept < 500
+		const justAcceptedAutocompletion = thisTime - this._lastCompletionAccept < JUST_ACCEPTED_WINDOW
 
 		this._lastCompletionStart = thisTime
-		const didTypingHappenDuringDebounce = await new Promise((resolve, reject) =>
+		const didTypingHappenDuringDebounce = await new Promise<boolean>((resolve) =>
 			setTimeout(() => {
-				if (this._lastCompletionStart === thisTime) {
-					resolve(false)
-				} else {
-					resolve(true)
-				}
+				resolve(this._lastCompletionStart !== thisTime)
 			}, DEBOUNCE_TIME)
 		)
 
-		// if more typing happened, then do not go forwards with the request
-		if (didTypingHappenDuringDebounce) {
+		// the editor moved on (or the user typed) while we were waiting - this request is
+		// already stale, so don't spend it
+		if (didTypingHappenDuringDebounce || token.isCancellationRequested) {
 			return []
 		}
 
@@ -753,16 +770,11 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		// const relevantSnippetsList = await this._contextGatheringService.readCachedSnippets(model, position, 3);
 		// const relevantSnippetsList = this._contextGatheringService.getCachedSnippets();
 		// const relevantSnippets = relevantSnippetsList.map((text) => `${text}`).join('\n-------------------------------\n')
-		// console.log('@@---------------------\n' + relevantSnippets)
 		const relevantContext = ''
 
 		const { shouldGenerate, predictionType, llmPrefix, llmSuffix, stopTokens } = getCompletionOptions(prefixAndSuffix, relevantContext, justAcceptedAutocompletion)
 
 		if (!shouldGenerate) return []
-
-		if (testMode && this._autocompletionId !== 0) { // TODO remove this
-			return []
-		}
 
 
 
@@ -781,9 +793,9 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 			insertText: '',
 			requestId: null,
 			_newlineCount: 0,
+			firstTokenTime: undefined,
+			stoppedEarly: false,
 		}
-
-		console.log('starting autocomplete...', predictionType)
 
 		const featureName: FeatureName = 'Autocomplete'
 		const overridesOfModel = this._settingsService.state.overridesOfModel
@@ -791,7 +803,32 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		const modelSelectionOptions = modelSelection ? this._settingsService.state.optionsOfModelSelection[featureName][modelSelection.providerName]?.[modelSelection.modelName] : undefined
 
 		// set parameters of `newAutocompletion` appropriately
+		//
+		// The promise below is a "there is something worth showing" signal, not a
+		// "the request finished" signal. It is resolved either as soon as a filtered
+		// partial survives the filters, or when the stream ends. Callers read
+		// `insertText` directly, so a later keystroke that hits the cache gets whatever
+		// has streamed in since - the suggestion grows instead of restarting.
 		newAutocompletion.llmPromise = new Promise((resolve, reject) => {
+
+			let settled = false
+			const settle = (fn: () => void) => {
+				if (settled) { return }
+				settled = true
+				fn()
+			}
+
+			// Once a partial has been handed over the suggestion is already on screen, so a
+			// later failure of the same request must NOT poison the cache entry - that would
+			// retract good text the user is looking at.
+			const fail = (message: string) => {
+				if (settled) { return }
+				newAutocompletion.status = 'error'
+				settle(() => reject(message))
+			}
+
+			// deadline for showing a partial, armed once the first token lands
+			let partialTimer: ReturnType<typeof setTimeout> | undefined = undefined
 
 			const requestId = this._llmMessageService.sendLLMMessage({
 				messagesType: 'FIMMessage',
@@ -806,57 +843,92 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 				modelSelectionOptions,
 				overridesOfModel,
 				logging: { loggingName: 'Autocomplete' },
-				onText: () => { }, // unused in FIMMessage
-				// onText: async ({ fullText, newText }) => {
 
-				// 	newAutocompletion.insertText = fullText
+				onText: ({ fullText }) => {
+					if (settled) { return }
+					if (newAutocompletion.status !== 'pending') { return }
 
-				// 	// count newlines in newText
-				// 	const numNewlines = newText.match(/\n|\r\n/g)?.length || 0
-				// 	newAutocompletion._newlineCount += numNewlines
+					if (newAutocompletion.firstTokenTime === undefined) {
+						newAutocompletion.firstTokenTime = Date.now()
+						// Measure the partial-show budget from the first byte the model
+						// actually produced, not from when the request went out.
+						partialTimer = setTimeout(() => {
+							if (!settled && newAutocompletion.insertText) {
+								settle(() => resolve(newAutocompletion.insertText))
+							}
+						}, MAX_TIME_TO_SHOW_PARTIAL)
+					}
 
-				// 	// if too many newlines, resolve up to last newline
-				// 	if (newAutocompletion._newlineCount > 10) {
-				// 		const lastNewlinePos = fullText.lastIndexOf('\n')
-				// 		newAutocompletion.insertText = fullText.substring(0, lastNewlinePos)
-				// 		resolve(newAutocompletion.insertText)
-				// 		return
-				// 	}
+					const filtered = filterStreamedText(fullText, prefixAndSuffix)
+					newAutocompletion.insertText = filtered
 
-				// 	// if (!getAutocompletionMatchup({ prefix: this._lastPrefix, autocompletion: newAutocompletion })) {
-				// 	// 	reject('LLM response did not match user\'s text.')
-				// 	// }
-				// },
+					// A long stretch of output where nothing at all survives filtering means
+					// the model is not writing code - prose, a reflog, a wall of markdown.
+					// Nothing later will be showable either, so stop paying for it.
+					//
+					// Note this deliberately does NOT trigger on "the filtered text did not
+					// grow": that is a false positive whenever a chunk is pure whitespace
+					// or is entirely chopped off by a trailing filter.
+					if (!filtered && fullText.length > GARBAGE_RAW_THRESHOLD) {
+						newAutocompletion.stoppedEarly = true
+						newAutocompletion.status = 'finished'
+						if (newAutocompletion.requestId) {
+							this._llmMessageService.abort(newAutocompletion.requestId)
+						}
+						return
+					}
+
+					// Hand over a partial as soon as the first line is *complete* - a newline
+					// has arrived behind it. Waiting for that means the retroactive filters
+					// (fence unwrapping, preamble removal) have already fired, so we do not
+					// flash "Here is the code:" and then replace it a frame later.
+					//
+					// A genuinely single-line completion never gets a second line, so the
+					// partial-show timer is the backstop for that case.
+					if (partialTimer !== undefined && filtered && newAutocompletion.type !== 'multi-line-start-on-next-line') {
+						if (filtered.includes(_ln)) {
+							settle(() => resolve(newAutocompletion.insertText))
+						}
+					}
+				},
+
 				onFinalMessage: ({ fullText }) => {
 
-					// console.log('____res: ', JSON.stringify(newAutocompletion.insertText))
-
+					if (partialTimer !== undefined) { clearTimeout(partialTimer) }
 					newAutocompletion.endTime = Date.now()
-					newAutocompletion.status = 'finished'
-					const [text, _] = extractCodeFromRegular({ text: fullText, recentlyAddedTextLen: 0 })
-					newAutocompletion.insertText = processStartAndEndSpaces(text)
+					if (newAutocompletion.status !== 'error') {
+						newAutocompletion.status = 'finished'
+					}
+					newAutocompletion.insertText = filterStreamedText(fullText, prefixAndSuffix)
 
 					// handle special case for predicting starting on the next line, add a newline character
 					if (newAutocompletion.type === 'multi-line-start-on-next-line') {
 						newAutocompletion.insertText = _ln + newAutocompletion.insertText
 					}
 
-					resolve(newAutocompletion.insertText)
-
+					settle(() => resolve(newAutocompletion.insertText))
 				},
 				onError: ({ message }) => {
+					if (partialTimer !== undefined) { clearTimeout(partialTimer) }
 					newAutocompletion.endTime = Date.now()
-					newAutocompletion.status = 'error'
-					reject(message)
+					fail(message)
 				},
-				onAbort: () => { reject('Aborted autocomplete') },
+				onAbort: () => {
+					if (partialTimer !== undefined) { clearTimeout(partialTimer) }
+					if (settled) { return }
+					// an abort before anything was shown is a normal, successful outcome as
+					// far as the user is concerned - keep whatever text arrived
+					newAutocompletion.status = 'finished'
+					settle(() => resolve(newAutocompletion.insertText))
+				},
 			})
 			newAutocompletion.requestId = requestId
 
-			// if the request hasnt resolved in TIMEOUT_TIME seconds, reject it
+			// backstop for a request that never produces a token or a final message
 			setTimeout(() => {
+				if (partialTimer !== undefined) { clearTimeout(partialTimer) }
 				if (newAutocompletion.status === 'pending') {
-					reject('Timeout receiving message to LLM.')
+					fail('Timeout receiving message to LLM.')
 				}
 			}, TIMEOUT_TIME)
 
@@ -870,18 +942,39 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		// show autocompletion
 		try {
 			await newAutocompletion.llmPromise
-			// console.log('id: ' + newAutocompletion.id)
 
 			const autocompletionMatchup: AutocompletionMatchupBounds = { startIdx: 0, startLine: 0, startCharacter: 0 }
-			const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: newAutocompletion, prefixAndSuffix, position })
-			return inlineCompletions
+			const completions = toInlineCompletions({ autocompletionMatchup, autocompletion: newAutocompletion, prefixAndSuffix, position })
+			return this._track(completions, newAutocompletion.id, docUriStr)
 
 		} catch (e) {
 			this._autocompletionsOfDocument[docUriStr].delete(newAutocompletion.id)
-			console.error('Error creating autocompletion (2): ' + e)
 			return []
 		}
 
+	}
+
+	/**
+	 * Tag the returned items with the id of the cache entry that produced them, so the
+	 * accept callback can find it. The editor hands the very same objects back to us.
+	 */
+	private _track(completions: InlineCompletion[], autocompleteId: number, docUriStr: string): TrackedInlineCompletion[] {
+		return completions.map(c => ({ ...c, autocompleteId, documentUri: docUriStr }))
+	}
+
+	/**
+	 * Called when the user accepts a suggestion. Two things depend on this:
+	 *  - `_lastCompletionAccept` unlocks the "continue on the next line" prediction, which
+	 *    is what makes accepting a line chain into a block instead of going quiet.
+	 *  - the accepted entry is evicted, so the next keystroke starts from a clean cache.
+	 */
+	private _onAutocompletionAccepted(completions: unknown, item: unknown): void {
+		this._lastCompletionAccept = Date.now()
+
+		const tracked = item as Partial<TrackedInlineCompletion> | undefined
+		if (tracked?.autocompleteId === undefined || tracked?.documentUri === undefined) { return; }
+
+		this._autocompletionsOfDocument[tracked.documentUri]?.delete(tracked.autocompleteId)
 	}
 
 	constructor(
@@ -895,13 +988,20 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 
 		this._register(this._langFeatureService.inlineCompletionsProvider.register('*', {
 			provideInlineCompletions: async (model, position, context, token) => {
-				const items = await this._provideInlineCompletionItems(model, position)
-
-				// console.log('item: ', items?.[0]?.insertText)
+				const items = await this._provideInlineCompletionItems(model, position, token)
 				return { items: items, }
 			},
 			handleItemDidShow: (_completions: any, _item: any, _updatedInsertText: string) => {
-				// no-op: acceptance tracking handled elsewhere
+				// no-op
+			},
+			handleEndOfLifetime: (completions: any, item: any, reason: any) => {
+				// The accept signal we were missing. Without this the
+				// `multi-line-start-on-next-line` path was unreachable, because
+				// `_lastCompletionAccept` was never written, and accepted completions
+				// were never evicted from the cache.
+				if (reason?.kind === InlineCompletionEndOfLifeReasonKind.Accepted) {
+					this._onAutocompletionAccepted(completions, item)
+				}
 			},
 			disposeInlineCompletions: (_completions: any) => {
 				// no-op
