@@ -439,6 +439,14 @@ export const applyCompletionFilters = (raw: string, opts: ApplyFiltersOptions): 
 	}
 
 	if (singleLineOnly) {
+		// A single-line prediction is inserted at a zero-width cursor on the current line, so
+		// a leading newline would render the whole thing on the NEXT line. Strip leading
+		// newlines first - otherwise the clamp below would truncate the completion to nothing,
+		// because the first newline is at index 0.
+		let lead = 0;
+		while (lead < text.length && (text[lead] === '\n' || text[lead] === '\r')) { lead++; }
+		if (lead > 0) { text = text.slice(lead); }
+
 		const nl = text.indexOf(ln);
 		if (nl !== -1) { text = text.slice(0, nl); }
 	}

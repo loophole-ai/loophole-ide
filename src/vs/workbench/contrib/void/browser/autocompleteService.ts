@@ -253,7 +253,7 @@ const asSingleUserMessage = (providerName: ProviderName | undefined, text: strin
  * `insertText` on every keystroke rather than accumulating, so a revised frame simply
  * replaces the last one.
  */
-const filterStreamedText = (text: string, prefixAndSuffix: PrefixAndSuffixInfo, reindentContinuation: boolean): string => {
+const filterStreamedText = (text: string, prefixAndSuffix: PrefixAndSuffixInfo, predictionType: AutocompletionPredictionType, reindentContinuation: boolean): string => {
 	const { prefix, prefixToTheLeftOfCursor, suffixLines } = prefixAndSuffix
 	// the line *under* the cursor's line - if the model re-generates it we are duplicating
 	const lineBelow = suffixLines[1] ?? ''
@@ -267,6 +267,10 @@ const filterStreamedText = (text: string, prefixAndSuffix: PrefixAndSuffixInfo, 
 		prefixToTheLeftOfCursor,
 		baseIndent,
 		reindentContinuation,
+		// Only a block prediction may span lines. Everything else is inserted at a zero-width
+		// cursor on the current line, so a newline in the reply would push the whole suggestion
+		// onto the next line. This was previously never passed, so the invariant was unenforced.
+		singleLineOnly: predictionType !== 'multi-line-start-on-next-line',
 	}))
 }
 
@@ -638,6 +642,9 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 	const isLineEmpty = !prefixToTheLeftOfCursor.trim() && !suffixToTheRightOfCursor.trim()
 	const isLinePrefixEmpty = removeAllWhitespace(prefixToTheLeftOfCursor).length === 0
 
+	// How much of the current line is already typed. Decides whether "redo the suffix" applies.
+	const suffixChars = removeAllWhitespace(suffixToTheRightOfCursor).length
+
 	// TODO add context to prefix
 	// llmPrefix = '\n\n/* Relevant context:\n' + relevantContext + '\n*/\n' + llmPrefix
 
@@ -664,8 +671,16 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 			stopTokens: allLinebreakSymbols
 		}
 	}
-	// if suffix is 3 or fewer characters, attempt to complete the line ignorning it
-	else if (removeAllWhitespace(suffixToTheRightOfCursor).length <= 3) {
+	// Redo the line ignoring what is already on it - but ONLY when there is something to
+	// ignore.
+	//
+	// This condition used to be "<= 3", which is also true of 0. So a line that was already
+	// complete up to the cursor (print("Hello World" with nothing after it) took this branch,
+	// which drops the rest of the current line from llmSuffix. That moves the model's FIM hole
+	// to "end of this line -> start of the next one", so the model bridges the gap with a
+	// newline and the suggestion renders on the following line instead of in place.
+	// suffixChars > 0 is the missing guard.
+	else if (suffixChars > 0 && suffixChars <= 3) {
 		const suffixLinesIgnoringThisLine = suffixLines.slice(1)
 		const suffixStringIgnoringThisLine = suffixLinesIgnoringThisLine.length === 0 ? '' : _ln + suffixLinesIgnoringThisLine.join(_ln)
 		completionOptions = {
@@ -924,7 +939,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 					}, MAX_TIME_TO_SHOW_PARTIAL)
 				}
 
-				const filtered = filterStreamedText(clean(fullText), prefixAndSuffix, !supportsNativeFim)
+				const filtered = filterStreamedText(clean(fullText), prefixAndSuffix, newAutocompletion.type, !supportsNativeFim)
 				newAutocompletion.insertText = filtered
 
 				// A long stretch of output where nothing at all survives filtering means
@@ -963,7 +978,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 				if (newAutocompletion.status !== 'error') {
 					newAutocompletion.status = 'finished'
 				}
-				newAutocompletion.insertText = filterStreamedText(clean(fullText), prefixAndSuffix, !supportsNativeFim)
+				newAutocompletion.insertText = filterStreamedText(clean(fullText), prefixAndSuffix, newAutocompletion.type, !supportsNativeFim)
 
 				// handle special case for predicting starting on the next line, add a newline character
 				if (newAutocompletion.type === 'multi-line-start-on-next-line') {
