@@ -468,6 +468,9 @@ export const isFeatureNameDisabled = (featureName: FeatureName, settingsState: V
 
 export type ChatMode = 'agent' | 'gather' | 'normal' | 'plan'
 
+/** See `GlobalSettings.multilineCompletions`. */
+export type MultilineCompletionsMode = 'auto' | 'always' | 'never'
+
 
 export type GlobalSettings = {
 	autoRefreshModels: boolean;
@@ -477,6 +480,19 @@ export type GlobalSettings = {
 	autoSetupMlx: boolean;
 	aiInstructions: string;
 	enableAutocomplete: boolean;
+	/**
+	 * Whether autocomplete may return a whole block instead of a single line.
+	 * - `auto`   : a block where the position implies one - a blank line, after `{`, after
+	 *             a python/`case` colon, after `else`/`do`/`try`/`finally`, or when chaining
+	 *             off a completion you just accepted
+	 * - `always` : a block wherever it is safe to insert one
+	 * - `never`  : always a single line
+	 *
+	 * A block is only ever offered when nothing sits to the right of the cursor, so `always`
+	 * still will not overwrite the rest of your line. The decision lives in
+	 * ../browser/autocompleteMultiline.ts.
+	 */
+	multilineCompletions: MultilineCompletionsMode;
 	syncApplyToChat: boolean;
 	syncSCMToChat: boolean;
 	enableFastApply: boolean;
@@ -497,6 +513,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	autoSetupMlx: true,
 	aiInstructions: '',
 	enableAutocomplete: false,
+	multilineCompletions: 'auto',
 	syncApplyToChat: true,
 	syncSCMToChat: true,
 	enableFastApply: true,

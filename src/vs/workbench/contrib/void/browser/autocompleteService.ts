@@ -16,10 +16,11 @@ import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { isWindows } from '../../../../base/common/platform.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
-import { FeatureName } from '../common/voidSettingsTypes.js';
+import { FeatureName, MultilineCompletionsMode } from '../common/voidSettingsTypes.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { applyCompletionFilters, getStringUpToUnbalancedClosingParenthesis } from './autocompleteFilters.js';
 import { prunePrefix, pruneSuffix } from './autocompletePromptSizing.js';
+import { shouldCompleteMultiline } from './autocompleteMultiline.js';
 // import { IContextGatheringService } from './contextGatheringService.js';
 
 
@@ -301,6 +302,12 @@ const postprocessAutocompletion = ({ autocompletionMatchup, autocompletion, pref
 	let startIdx = autocompletionMatchup.startIdx
 	let endIdx = generatedMiddle.length // exclusive bounds
 
+	// Defensive: a matchup computed against a partially-streamed multi-line completion can
+	// land outside the text we now hold. Clamping is always safe (a negative start would
+	// otherwise slice from the end of the string).
+	startIdx = Math.max(0, Math.min(startIdx, generatedMiddle.length))
+	endIdx = Math.max(startIdx, endIdx)
+
 	// const naiveReturnValue = generatedMiddle.slice(startIdx)
 	// console.log('naiveReturnValue: ', JSON.stringify(naiveReturnValue))
 	// return [{ insertText: naiveReturnValue, }]
@@ -344,9 +351,11 @@ const postprocessAutocompletion = ({ autocompletionMatchup, autocompletion, pref
 	}
 
 	const restOfLineToGenerate = generatedMiddle.slice(startIdx).split(_ln)[0] ?? ''
-	// condition to complete as a single line completion
+	// Clamp to one line - but NEVER for a block prediction, or we would chop the block
+	// down to its first line, which is exactly what a multi-line completion must not do.
 	if (
-		prefixToTheLeftOfCursor.trim()
+		autocompletion.type !== 'multi-line-start-on-next-line'
+		&& prefixToTheLeftOfCursor.trim()
 		&& !suffixToTheRightOfCursor.trim()
 		&& restOfLineToGenerate.trim()
 	) {
@@ -416,6 +425,17 @@ const toInlineCompletions = ({ autocompletionMatchup, autocompletion, prefixAndS
 			// console.log('show____', trimmedInsertText, rangeToReplace)
 		}
 	}
+
+	// The editor requires that a completion containing a line break replaces a range which
+	// ends at the end of a line - a zero-width range makes multi-line ghost text render in
+	// the wrong place (or not at all). This costs nothing because a block prediction is
+	// only ever produced when the line suffix is already empty.
+	if (trimmedInsertText.includes(_ln)) {
+		rangeToReplace = new Range(position.lineNumber, position.column, position.lineNumber, Number.MAX_SAFE_INTEGER)
+	}
+
+	// nothing survived post-processing - showing empty ghost text is worse than showing none
+	if (!trimmedInsertText) { return [] }
 
 	return [{
 		insertText: trimmedInsertText,
@@ -557,7 +577,13 @@ type CompletionOptions = {
 	llmSuffix: string,
 	stopTokens: string[],
 }
-const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantContext: string, justAcceptedAutocompletion: boolean): CompletionOptions => {
+
+/**
+ * Should this position get a block rather than a line? The decision itself, and the
+ * safety invariant that a block never replaces existing text, live in
+ * ./autocompleteMultiline.ts so they can be tested directly.
+ */
+const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantContext: string, justAcceptedAutocompletion: boolean, multilineCompletions: MultilineCompletionsMode): CompletionOptions => {
 
 	let { prefix, suffix, prefixToTheLeftOfCursor, suffixToTheRightOfCursor, suffixLines } = prefixAndSuffix
 
@@ -573,20 +599,21 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 	// if line is empty, do multiline completion
 	const isLineEmpty = !prefixToTheLeftOfCursor.trim() && !suffixToTheRightOfCursor.trim()
 	const isLinePrefixEmpty = removeAllWhitespace(prefixToTheLeftOfCursor).length === 0
-	const isLineSuffixEmpty = removeAllWhitespace(suffixToTheRightOfCursor).length === 0
 
 	// TODO add context to prefix
 	// llmPrefix = '\n\n/* Relevant context:\n' + relevantContext + '\n*/\n' + llmPrefix
 
-	// if we just accepted an autocompletion, predict a multiline completion starting on the next line
-	if (justAcceptedAutocompletion && isLineSuffixEmpty) {
-		const prefixWithNewline = prefix + _ln
+	// a block prediction gets first refusal, and is the only one that may span lines
+	if (shouldCompleteMultiline(multilineCompletions, prefixAndSuffix, justAcceptedAutocompletion)) {
 		completionOptions = {
 			predictionType: 'multi-line-start-on-next-line',
 			shouldGenerate: true,
-			llmPrefix: prefixWithNewline,
+			// ask the model to begin on a new line; the prepended newline is stripped again
+			// in postprocessing when the cursor is already sitting on a fresh line
+			llmPrefix: prefix + _ln,
 			llmSuffix: suffix,
-			stopTokens: [`${_ln}${_ln}`] // double newlines
+			// stop at a blank line, so we get one coherent block rather than the whole file
+			stopTokens: [`${_ln}${_ln}`]
 		}
 	}
 	// if the current line is empty, predict a single-line completion
@@ -772,7 +799,8 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		// const relevantSnippets = relevantSnippetsList.map((text) => `${text}`).join('\n-------------------------------\n')
 		const relevantContext = ''
 
-		const { shouldGenerate, predictionType, llmPrefix, llmSuffix, stopTokens } = getCompletionOptions(prefixAndSuffix, relevantContext, justAcceptedAutocompletion)
+		const multilineCompletions = this._settingsService.state.globalSettings.multilineCompletions ?? 'auto'
+		const { shouldGenerate, predictionType, llmPrefix, llmSuffix, stopTokens } = getCompletionOptions(prefixAndSuffix, relevantContext, justAcceptedAutocompletion, multilineCompletions)
 
 		if (!shouldGenerate) return []
 

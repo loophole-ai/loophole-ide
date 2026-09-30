@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'; // Added useRef import just in case it was missed, though likely already present
-import { ProviderName, SettingName, displayInfoOfSettingName, providerNames, VoidStatefulModelInfo, customSettingNamesOfProvider, RefreshableProviderName, refreshableProviderNames, displayInfoOfProviderName, nonlocalProviderNames, localProviderNames, ollamaProviderNames, mlxProviderNames, appleProviderNames, otherLocalProviderNames, GlobalSettingName, featureNames, displayInfoOfFeatureName, isProviderNameDisabled, FeatureName, hasDownloadButtonsOnModelsProviderNames, subTextMdOfProviderName } from '../../../../common/voidSettingsTypes.js'
+import { ProviderName, SettingName, displayInfoOfSettingName, providerNames, VoidStatefulModelInfo, customSettingNamesOfProvider, RefreshableProviderName, refreshableProviderNames, displayInfoOfProviderName, nonlocalProviderNames, localProviderNames, ollamaProviderNames, mlxProviderNames, appleProviderNames, otherLocalProviderNames, GlobalSettingName, featureNames, displayInfoOfFeatureName, isProviderNameDisabled, FeatureName, hasDownloadButtonsOnModelsProviderNames, subTextMdOfProviderName, MultilineCompletionsMode } from '../../../../common/voidSettingsTypes.js'
 import { os } from '../../../../common/helpers/systemInfo.js'
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
@@ -24,6 +24,22 @@ import { MCPServer } from '../../../../common/mcpServiceTypes.js';
 import { useMCPServiceState } from '../util/services.js';
 import { OPT_OUT_KEY, PROJECT_MEMORY_STORAGE_KEY } from '../../../../common/storageKeys.js';
 import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js';
+
+
+const MULTILINE_COMPLETIONS_OPTIONS: MultilineCompletionsMode[] = ['auto', 'always', 'never']
+
+const MULTILINE_COMPLETIONS_LABELS: Record<MultilineCompletionsMode, string> = {
+	'auto': 'Auto',
+	'always': 'Always',
+	'never': 'Never',
+}
+
+const MULTILINE_COMPLETIONS_DETAILS: Record<MultilineCompletionsMode, string> = {
+	'auto': 'Suggest a block on a blank line, after an opening brace, or when chaining completions.',
+	'always': 'Suggest a block wherever it is safe to insert one.',
+	'never': 'Always suggest a single line.',
+}
+
 
 type Tab =
 	| 'models'
@@ -1414,6 +1430,30 @@ export const Settings = () => {
 													<ErrorBoundary>
 														<div className={`my-2 ${!settingsState.globalSettings.enableAutocomplete ? 'hidden' : ''}`}>
 															<ModelDropdown featureName={'Autocomplete'} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1' />
+														</div>
+													</ErrorBoundary>
+
+													{/* Multi-line completions */}
+													<ErrorBoundary>
+														<div className={`my-2 ${!settingsState.globalSettings.enableAutocomplete ? 'hidden' : ''}`}>
+															<div
+																className='text-xs text-loophole-fg-3 mb-1'
+																data-tooltip-id='loophole-tooltip'
+																data-tooltip-content='Whether Tab can suggest a whole block instead of a single line. Auto offers a block on a blank line, after an opening brace, or when chaining completions. A block is never offered when there is text to the right of the cursor.'
+																data-tooltip-class-name='loophole-max-w-[20px]'
+															>
+																Multi-line suggestions
+															</div>
+															<VoidCustomDropdownBox
+																options={MULTILINE_COMPLETIONS_OPTIONS}
+																selectedOption={settingsState.globalSettings.multilineCompletions ?? 'auto'}
+																onChangeOption={(newVal) => voidSettingsService.setGlobalSetting('multilineCompletions', newVal)}
+																getOptionDisplayName={(val) => MULTILINE_COMPLETIONS_LABELS[val]}
+																getOptionDropdownName={(val) => MULTILINE_COMPLETIONS_LABELS[val]}
+																getOptionDropdownDetail={(val) => MULTILINE_COMPLETIONS_DETAILS[val]}
+																getOptionsEqual={(a, b) => a === b}
+																className='text-xs text-loophole-fg-3'
+															/>
 														</div>
 													</ErrorBoundary>
 

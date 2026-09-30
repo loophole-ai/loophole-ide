@@ -125,20 +125,35 @@ export const stopAtRepeatingLines = (text: string, ln: string, maxRun = 3): stri
 };
 
 /**
+ * Are these two lines close enough that one is the model re-emitting the other?
+ *
+ * Deliberately much stricter than a plain "one is a prefix of the other": in a block
+ * completion a generated `return user;` must NOT be treated as a re-emission of a
+ * `return` further down the file, which a prefix test would happily do and which would
+ * silently truncate the block. So: exact match, or a prefix that differs only by a
+ * character or two of trailing punctuation.
+ */
+const isNearDuplicateLine = (a: string, b: string): boolean => {
+	if (a === b) { return true }
+	const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a]
+	if (shorter.length < 5) { return false }
+	return longer.startsWith(shorter) && (longer.length - shorter.length) <= 2
+}
+
+/**
  * The model re-generating the line that is already below the cursor. If the line under
- * the cursor is non-empty, a generated line that starts with it (or vice versa) means we
- * are about to duplicate text the user already has.
+ * the cursor is non-empty, a generated line that is a near-duplicate of it means we are
+ * about to duplicate text the user already has.
  */
 export const stopAtLineBelow = (text: string, ln: string, lineBelow: string): string => {
 	const target = lineBelow.trim();
-	// very short lines produce false positives ("}", "});", "return x")
-	if (target.length <= 4) { return text; }
+	if (target === '') { return text; }
 
 	const lines = text.split(ln);
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i].trim();
 		if (line === '') { continue; }
-		if (line.startsWith(target) || target.startsWith(line)) {
+		if (isNearDuplicateLine(line, target)) {
 			return lines.slice(0, i).join(ln);
 		}
 	}
