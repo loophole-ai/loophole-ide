@@ -48,6 +48,11 @@ const STOP_SEQUENCES: readonly string[] = [
 	// codellama / seed / codestral
 	'<PRE>', '<SUF>', '<MID>', '</MID>', '<EOT>',
 	'[PREFIX]', '[SUFFIX]', '+++++ ',
+	// Fragments of the few-shot hole-filler prompt. No real code contains these, and if one
+	// reaches the user it means the model is narrating the instructions instead of
+	// completing. They are cut here as well as rejected upstream, so they cannot survive on
+	// the native FIM path either.
+	'<QUERY>', '</QUERY>', '{{FILL_HERE}}', '{{HOLE_NAME}}',
 ];
 
 /**
@@ -233,15 +238,17 @@ export const getStringUpToUnbalancedClosingParenthesis = (s: string, prefix: str
  * Trim a partially-streamed stop sequence off the end of the text.
  *
  * A stop sequence can arrive split across two chunks. Mid-sequence the text legitimately
- * ends with something like `</COMP` or `<|fim`, which matches nothing in the stop list, so
+ * ends with something like `</CO` or `<|fim`, which matches nothing in the stop list, so
  * it would be shown to the user and then have to be retracted a moment later. This removes
  * the fragment as soon as it appears.
  *
- * Only trims fragments of at least MIN_PARTIAL_LEN characters. That floor matters: `+` is a
- * prefix of `+++++ `, so without it a completion of `a +` would have its operator chopped
- * off mid-expression.
+ * The floor is 3 characters, not 4. `</CO` is exactly 4 and the shorter sequences
+ * (`<PRE>`, `<EOT>`, `<SUF>`) are only 5-6 long, so a higher floor leaves visible fragments
+ * of the most common cases. The floor still has to be well above 1, because `+` is a prefix
+ * of `+++++ ` and without one a completion of `a +` would have its operator chopped off
+ * mid-expression. 3 characters is not a plausible ending for real code on its own.
  */
-const MIN_PARTIAL_LEN = 4
+const MIN_PARTIAL_LEN = 3
 
 export const trimPartialStopSequence = (text: string, sequences: readonly string[]): string => {
 	if (!text) { return '' }

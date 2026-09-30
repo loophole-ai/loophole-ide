@@ -152,6 +152,33 @@ const looksLikeProse = (text: string): boolean => {
 }
 
 /**
+ * Fragments that only ever appear in THIS prompt, never in real code.
+ *
+ * If any of these turn up in a reply, the model is not filling the hole - it is reading the
+ * instructions and talking about them. That is exactly what happens on an empty file, where
+ * the query is a bare `{{FILL_HERE}}` with nothing around it and the model decides it has
+ * been given an impossible task. The reply is then a complaint about the prompt, not code.
+ *
+ * A completion containing any of these is discarded outright rather than trimmed, because
+ * once the model has lost the plot the rest of the reply is not worth showing either.
+ */
+const PROMPT_ECHO_MARKERS: readonly string[] = [
+	'<QUERY>',
+	'</QUERY>',
+	'{{FILL_HERE}}',
+	'{{HOLE_NAME}}',
+	'## EXAMPLE QUERY',
+	'## CORRECT COMPLETION',
+	'You are a HOLE FILLER',
+	'TASK: Fill the',
+]
+
+const isPromptEcho = (text: string): boolean => {
+	const head = text.slice(0, 600)
+	return PROMPT_ECHO_MARKERS.some(marker => head.includes(marker))
+}
+
+/**
  * Pull the completion out of the model's reply.
  *
  * Because the prompt ends with an unclosed tag, the normal case needs no work at all - the
@@ -164,6 +191,9 @@ const looksLikeProse = (text: string): boolean => {
  */
 export const extractHoleFillerCompletion = (raw: string): string => {
 	if (!raw) { return '' }
+
+	// the model is answering about the prompt, not filling the hole
+	if (isPromptEcho(raw)) { return '' }
 
 	let text = raw
 

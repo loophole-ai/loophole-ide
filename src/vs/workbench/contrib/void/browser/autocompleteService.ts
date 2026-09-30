@@ -618,6 +618,20 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 	suffix = pruneSuffix(suffix, _ln, undefined, maxPromptTokens)
 	suffixLines = suffix.split(_ln)
 
+	// An empty (or whitespace-only) file has nothing to fill a hole with. Sending it anyway
+	// wastes a request and, on the few-shot path, reliably produces a reply about the prompt
+	// itself rather than code - a chat model handed a bare hole decides the task is
+	// impossible and says so.
+	if (!prefix.trim() && !suffix.trim()) {
+		return {
+			predictionType: 'do-not-predict',
+			shouldGenerate: false,
+			llmPrefix: prefix,
+			llmSuffix: suffix,
+			stopTokens: [],
+		}
+	}
+
 	let completionOptions: CompletionOptions
 
 	// if line is empty, do multiline completion
