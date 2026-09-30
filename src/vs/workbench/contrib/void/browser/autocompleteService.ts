@@ -16,11 +16,14 @@ import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { isWindows } from '../../../../base/common/platform.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
-import { FeatureName, MultilineCompletionsMode } from '../common/voidSettingsTypes.js';
+import { FeatureName, MultilineCompletionsMode, ProviderName } from '../common/voidSettingsTypes.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { applyCompletionFilters, getStringUpToUnbalancedClosingParenthesis } from './autocompleteFilters.js';
 import { prunePrefix, pruneSuffix } from './autocompletePromptSizing.js';
 import { shouldCompleteMultiline } from './autocompleteMultiline.js';
+import { buildHoleFillerPrompt, extractHoleFillerCompletion } from './autocompleteFewShot.js';
+import { getModelCapabilities } from '../common/modelCapabilities.js';
+import type { LLMChatMessage } from '../common/sendLLMMessageTypes.js';
 // import { IContextGatheringService } from './contextGatheringService.js';
 
 
@@ -222,6 +225,22 @@ const processStartAndEndSpaces = (result: string) => {
 		+ result.trim()
 		+ (hasTrailingSpace ? ' ' : '');
 
+}
+
+
+/**
+ * Wrap a prompt as a single user message in the shape the provider expects.
+ *
+ * Gemini is the odd one out: its native API takes `parts`, and the provider path casts
+ * `contents` straight through with no conversion, so a `{role, content}` message would be
+ * rejected. Everything else (Anthropic, OpenAI and the OpenAI-compatible providers) accepts
+ * `content` directly.
+ */
+const asSingleUserMessage = (providerName: ProviderName | undefined, text: string): LLMChatMessage => {
+	if (providerName === 'gemini') {
+		return { role: 'user', parts: [{ text }] }
+	}
+	return { role: 'user', content: text }
 }
 
 
@@ -830,6 +849,14 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		const modelSelection = this._settingsService.state.modelSelectionOfFeature[featureName]
 		const modelSelectionOptions = modelSelection ? this._settingsService.state.optionsOfModelSelection[featureName][modelSelection.providerName]?.[modelSelection.modelName] : undefined
 
+		// Native FIM ("prefix" + "suffix" on a /completions route) is both faster and more
+		// accurate, so use it whenever the model has it. Anthropic, OpenAI, Gemini and the
+		// rest have no such route and hard-error with "does not support FIM", so they get
+		// the few-shot hole filler instead - slower, but it works.
+		const supportsNativeFim = !!modelSelection && getModelCapabilities(
+			modelSelection.providerName, modelSelection.modelName, overridesOfModel
+		).supportsFIM
+
 		// set parameters of `newAutocompletion` appropriately
 		//
 		// The promise below is a "there is something worth showing" signal, not a
@@ -858,98 +885,122 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 			// deadline for showing a partial, armed once the first token lands
 			let partialTimer: ReturnType<typeof setTimeout> | undefined = undefined
 
-			const requestId = this._llmMessageService.sendLLMMessage({
-				messagesType: 'FIMMessage',
-				messages: this._convertToLLMMessageService.prepareFIMMessage({
-					messages: {
-						prefix: llmPrefix,
-						suffix: llmSuffix,
-						stopTokens: stopTokens,
+			// The hole filler replies as chat-shaped text, so unwrap it before the shared
+			// filters run. A no-op on the native FIM path.
+			const clean = (text: string) => supportsNativeFim ? text : extractHoleFillerCompletion(text)
+
+			const onText = ({ fullText }: { fullText: string }) => {
+				if (settled) { return }
+				if (newAutocompletion.status !== 'pending') { return }
+
+				if (newAutocompletion.firstTokenTime === undefined) {
+					newAutocompletion.firstTokenTime = Date.now()
+					// Measure the partial-show budget from the first byte the model
+					// actually produced, not from when the request was issued.
+					partialTimer = setTimeout(() => {
+						if (!settled && newAutocompletion.insertText) {
+							settle(() => resolve(newAutocompletion.insertText))
+						}
+					}, MAX_TIME_TO_SHOW_PARTIAL)
+				}
+
+				const filtered = filterStreamedText(clean(fullText), prefixAndSuffix)
+				newAutocompletion.insertText = filtered
+
+				// A long stretch of output where nothing at all survives filtering means
+				// the model is not writing code - prose, a reflog, a wall of markdown.
+				// Nothing later will be showable either, so stop paying for it.
+				//
+				// Note this deliberately does NOT trigger on "the filtered text did not
+				// grow": that is a false positive whenever a chunk is pure whitespace
+				// or is entirely chopped off by a trailing filter.
+				if (!filtered && fullText.length > GARBAGE_RAW_THRESHOLD) {
+					newAutocompletion.stoppedEarly = true
+					newAutocompletion.status = 'finished'
+					if (newAutocompletion.requestId) {
+						this._llmMessageService.abort(newAutocompletion.requestId)
 					}
-				}),
+					return
+				}
+
+				// Hand over a partial as soon as the first line is *complete* - a newline
+				// has arrived behind it. Waiting for that means the retroactive filters
+				// (fence unwrapping, preamble removal) have already fired, so we do not
+				// flash "Here is the code:" and then replace it a frame later.
+				//
+				// A genuinely single-line completion never gets a second line, so the
+				// partial-show timer is the backstop for that case.
+				if (partialTimer !== undefined && filtered && newAutocompletion.type !== 'multi-line-start-on-next-line') {
+					if (filtered.includes(_ln)) {
+						settle(() => resolve(newAutocompletion.insertText))
+					}
+				}
+			}
+
+			const onFinalMessage = ({ fullText }: { fullText: string }) => {
+				if (partialTimer !== undefined) { clearTimeout(partialTimer) }
+				newAutocompletion.endTime = Date.now()
+				if (newAutocompletion.status !== 'error') {
+					newAutocompletion.status = 'finished'
+				}
+				newAutocompletion.insertText = filterStreamedText(clean(fullText), prefixAndSuffix)
+
+				// handle special case for predicting starting on the next line, add a newline character
+				if (newAutocompletion.type === 'multi-line-start-on-next-line') {
+					newAutocompletion.insertText = _ln + newAutocompletion.insertText
+				}
+
+				settle(() => resolve(newAutocompletion.insertText))
+			}
+
+			const onError = ({ message }: { message: string }) => {
+				if (partialTimer !== undefined) { clearTimeout(partialTimer) }
+				newAutocompletion.endTime = Date.now()
+				fail(message)
+			}
+
+			const onAbort = () => {
+				if (partialTimer !== undefined) { clearTimeout(partialTimer) }
+				if (settled) { return }
+				// an abort before anything was shown is a normal, successful outcome as
+				// far as the user is concerned - keep whatever text arrived
+				newAutocompletion.status = 'finished'
+				settle(() => resolve(newAutocompletion.insertText))
+			}
+
+			// everything except the message itself, which differs per transport
+			const commonParams = {
 				modelSelection,
 				modelSelectionOptions,
 				overridesOfModel,
 				logging: { loggingName: 'Autocomplete' },
+				onText,
+				onFinalMessage,
+				onError,
+				onAbort,
+			}
 
-				onText: ({ fullText }) => {
-					if (settled) { return }
-					if (newAutocompletion.status !== 'pending') { return }
-
-					if (newAutocompletion.firstTokenTime === undefined) {
-						newAutocompletion.firstTokenTime = Date.now()
-						// Measure the partial-show budget from the first byte the model
-						// actually produced, not from when the request went out.
-						partialTimer = setTimeout(() => {
-							if (!settled && newAutocompletion.insertText) {
-								settle(() => resolve(newAutocompletion.insertText))
-							}
-						}, MAX_TIME_TO_SHOW_PARTIAL)
-					}
-
-					const filtered = filterStreamedText(fullText, prefixAndSuffix)
-					newAutocompletion.insertText = filtered
-
-					// A long stretch of output where nothing at all survives filtering means
-					// the model is not writing code - prose, a reflog, a wall of markdown.
-					// Nothing later will be showable either, so stop paying for it.
-					//
-					// Note this deliberately does NOT trigger on "the filtered text did not
-					// grow": that is a false positive whenever a chunk is pure whitespace
-					// or is entirely chopped off by a trailing filter.
-					if (!filtered && fullText.length > GARBAGE_RAW_THRESHOLD) {
-						newAutocompletion.stoppedEarly = true
-						newAutocompletion.status = 'finished'
-						if (newAutocompletion.requestId) {
-							this._llmMessageService.abort(newAutocompletion.requestId)
+			const requestId = supportsNativeFim
+				? this._llmMessageService.sendLLMMessage({
+					...commonParams,
+					messagesType: 'FIMMessage',
+					messages: this._convertToLLMMessageService.prepareFIMMessage({
+						messages: {
+							prefix: llmPrefix,
+							suffix: llmSuffix,
+							stopTokens: stopTokens,
 						}
-						return
-					}
-
-					// Hand over a partial as soon as the first line is *complete* - a newline
-					// has arrived behind it. Waiting for that means the retroactive filters
-					// (fence unwrapping, preamble removal) have already fired, so we do not
-					// flash "Here is the code:" and then replace it a frame later.
-					//
-					// A genuinely single-line completion never gets a second line, so the
-					// partial-show timer is the backstop for that case.
-					if (partialTimer !== undefined && filtered && newAutocompletion.type !== 'multi-line-start-on-next-line') {
-						if (filtered.includes(_ln)) {
-							settle(() => resolve(newAutocompletion.insertText))
-						}
-					}
-				},
-
-				onFinalMessage: ({ fullText }) => {
-
-					if (partialTimer !== undefined) { clearTimeout(partialTimer) }
-					newAutocompletion.endTime = Date.now()
-					if (newAutocompletion.status !== 'error') {
-						newAutocompletion.status = 'finished'
-					}
-					newAutocompletion.insertText = filterStreamedText(fullText, prefixAndSuffix)
-
-					// handle special case for predicting starting on the next line, add a newline character
-					if (newAutocompletion.type === 'multi-line-start-on-next-line') {
-						newAutocompletion.insertText = _ln + newAutocompletion.insertText
-					}
-
-					settle(() => resolve(newAutocompletion.insertText))
-				},
-				onError: ({ message }) => {
-					if (partialTimer !== undefined) { clearTimeout(partialTimer) }
-					newAutocompletion.endTime = Date.now()
-					fail(message)
-				},
-				onAbort: () => {
-					if (partialTimer !== undefined) { clearTimeout(partialTimer) }
-					if (settled) { return }
-					// an abort before anything was shown is a normal, successful outcome as
-					// far as the user is concerned - keep whatever text arrived
-					newAutocompletion.status = 'finished'
-					settle(() => resolve(newAutocompletion.insertText))
-				},
-			})
+					}),
+				})
+				: this._llmMessageService.sendLLMMessage({
+					...commonParams,
+					messagesType: 'chatMessages',
+					messages: [asSingleUserMessage(modelSelection?.providerName, buildHoleFillerPrompt(llmPrefix, llmSuffix, _ln))],
+					// no tools and no system message: the few-shot prompt is the entire
+					// instruction, and a system prompt on top of it dilutes the examples
+					separateSystemMessage: undefined,
+					chatMode: null,
+				})
 			newAutocompletion.requestId = requestId
 
 			// backstop for a request that never produces a token or a final message

@@ -11,7 +11,7 @@ import { registerSingleton, InstantiationType } from '../../../../platform/insta
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IMetricsService } from './metricsService.js';
-import { defaultProviderSettings, getModelCapabilities, ModelOverrides } from './modelCapabilities.js';
+import { defaultProviderSettings, ModelOverrides } from './modelCapabilities.js';
 import { VOID_SETTINGS_STORAGE_KEY } from './storageKeys.js';
 import { isLocalVoiceModelId } from './localVoiceModelTypes.js';
 import { isMacintosh } from '../../../../base/common/platform.js';
@@ -114,7 +114,11 @@ export const modelFilterOfFeatureName: {
 		) => boolean;
 		emptyMessage: null | { message: string, priority: 'always' | 'fallback' }
 	} } = {
-	'Autocomplete': { filter: (o, opts) => getModelCapabilities(o.providerName, o.modelName, opts.overridesOfModel).supportsFIM, emptyMessage: { message: 'No models support FIM', priority: 'always' } },
+	// Every model is offered. FIM models are faster and more accurate because they take a
+	// real `prefix` + `suffix`; the rest fall back to a few-shot prompt, which costs more
+	// tokens per keystroke but works. Previously this filtered to FIM-only, which left
+	// Anthropic and OpenAI users with "No models support FIM" and no autocomplete at all.
+	'Autocomplete': { filter: () => true, emptyMessage: null, },
 	'Chat': { filter: o => true, emptyMessage: null, },
 	'Ctrl+K': { filter: o => true, emptyMessage: null, },
 	'Apply': { filter: o => true, emptyMessage: null, },

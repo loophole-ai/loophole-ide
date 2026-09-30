@@ -37,8 +37,8 @@ const STOP_SEQUENCES: readonly string[] = [
 	// is unwrapped by stripCodeFences; killing it here would truncate the whole completion
 	// to the empty string. Stray fences are caught by LINES_TO_STOP_AT instead.
 	'</code>',
-	'</COMPLION>',
-	'<COMPLION>',
+	'</COMPLETION>',
+	'<COMPLETION>',
 	'// Explanation:',
 	// FIM sentinels from the model families we route through /completions
 	'<|fim_prefix|>', '<|fim_suffix|>', '<|fim_middle|>', '<|fim_hole|>',

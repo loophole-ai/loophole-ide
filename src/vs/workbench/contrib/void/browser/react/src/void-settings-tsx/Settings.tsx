@@ -1406,10 +1406,10 @@ export const Settings = () => {
 													<span
 														className='hover:brightness-110'
 														data-tooltip-id='loophole-tooltip'
-														data-tooltip-content='We recommend using the largest qwen2.5-coder model you can with Ollama (try qwen2.5-coder:3b).'
+														data-tooltip-content='A dedicated FIM autocomplete model is fastest - try the largest qwen2.5-coder you can run locally. Any other model works too, including Claude and GPT, but without FIM support a longer prompt is sent on every keystroke, so suggestions arrive more slowly.'
 														data-tooltip-class-name='loophole-max-w-[20px]'
 													>
-														Only works with FIM models.*
+														FIM models are fastest. Others work too, just slower.
 													</span>
 												</div>
 
