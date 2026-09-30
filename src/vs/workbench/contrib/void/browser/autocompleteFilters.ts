@@ -40,20 +40,38 @@ const STOP_SEQUENCES: readonly string[] = [
 	'</COMPLETION>',
 	'<COMPLETION>',
 	'// Explanation:',
-	// FIM sentinels from the model families we route through /completions
-	'<|fim_prefix|>', '<|fim_suffix|>', '<|fim_middle|>', '<|fim_hole|>',
-	'<|repo_name|>', '<|file_sep|>', '<|file_separator|>', '<|endoftext|>',
-	'<|endoftext|>', '<|end▁of▁sentence|>', '<|eot_id|>',
+	// FIM sentinels from the model families we route through /completions.
+	// The chat-marker family matters most in practice: qwen2.5-coder is the model we
+	// recommend, and it will happily emit <|im_start|> / <|im_end|> / <|fim_pad|> at the
+	// end of a completion if nothing stops it.
+	'<|fim_prefix|>', '<|fim_suffix|>', '<|fim_middle|>', '<|fim_hole|>', '<|fim_pad|>',
+	'<|repo_name|>', '<|file_sep|>', '<|file_separator|>',
+	'<|endoftext|>', '<|end▁of▁sentence|>', '<|end▁of▁text|>', '<|eot_id|>', '<|eom_id|>',
+	'<|begin_of_text|>', '<|end_of_text|>',
+	'<|im_start|>', '<|im_end|>', '<|start_header_id|>', '<|end_header_id|>',
+	'<|system|>', '<|user|>', '<|assistant|>',
 	'<｜fim▁begin｜>', '<｜fim▁hole｜>', '<｜fim▁end｜>',
 	// codellama / seed / codestral
 	'<PRE>', '<SUF>', '<MID>', '</MID>', '<EOT>',
 	'[PREFIX]', '[SUFFIX]', '+++++ ',
+	// Python-family models emit this as a header and never close it
+	'#- coding: utf-8',
 	// Fragments of the few-shot hole-filler prompt. No real code contains these, and if one
 	// reaches the user it means the model is narrating the instructions instead of
 	// completing. They are cut here as well as rejected upstream, so they cannot survive on
 	// the native FIM path either.
 	'<QUERY>', '</QUERY>', '{{FILL_HERE}}', '{{HOLE_NAME}}',
 ];
+
+/**
+ * Tag-shaped sentinels are matched case-insensitively.
+ *
+ * Models are inconsistent about casing - `</COMPLETION>`, `</Completion>` and `</completion>`
+ * all turn up - and a case-sensitive list simply misses the variants it did not enumerate.
+ * Only sequences that open with `<` or `[` qualify, so this can never affect real code
+ * (`+++++ ` and the Python header stay exact).
+ */
+const isTagShaped = (seq: string): boolean => seq.startsWith('<') || seq.startsWith('[');
 
 /**
  * Full lines that mean the model has started writing something other than code.
@@ -94,10 +112,13 @@ const looksLikeCode = (line: string): boolean => CODE_STRUCTURE_CHARS.test(line)
 
 /** Truncate at the first occurrence of any stop sequence. */
 export const stopAtStopSequences = (text: string, extra: readonly string[] = []): string => {
+	// lowercased once and reused, rather than once per sequence
+	const haystack = text.toLowerCase()
+
 	let earliest = -1;
 	for (const seq of [...STOP_SEQUENCES, ...extra]) {
 		if (!seq) { continue; }
-		const idx = text.indexOf(seq);
+		const idx = isTagShaped(seq) ? haystack.indexOf(seq.toLowerCase()) : text.indexOf(seq);
 		if (idx !== -1 && (earliest === -1 || idx < earliest)) {
 			earliest = idx;
 		}
@@ -254,12 +275,19 @@ export const trimPartialStopSequence = (text: string, sequences: readonly string
 	if (!text) { return '' }
 
 	let trimTo = text.length
+	// lowercased once and reused, so the per-sequence loop does not reallocate
+	const haystack = text.toLowerCase()
 	for (const seq of sequences) {
 		if (seq.length <= MIN_PARTIAL_LEN) { continue }
+		// tag-shaped sentinels are matched case-insensitively; see isTagShaped
+		const caseInsensitive = isTagShaped(seq)
+		const needle = caseInsensitive ? seq.toLowerCase() : seq
 		// only the tail can be a partial
 		const maxFragment = Math.min(seq.length - 1, text.length)
 		for (let k = maxFragment; k >= MIN_PARTIAL_LEN; k--) {
-			if (text.endsWith(seq.slice(0, k))) {
+			const fragment = needle.slice(0, k)
+			const ends = caseInsensitive ? haystack.endsWith(fragment) : text.endsWith(fragment)
+			if (ends) {
 				trimTo = Math.min(trimTo, text.length - k)
 				break
 			}
