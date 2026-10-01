@@ -16,7 +16,7 @@ import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { isWindows } from '../../../../base/common/platform.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
-import { FeatureName, MultilineCompletionsMode, ProviderName } from '../common/voidSettingsTypes.js';
+import { FeatureName, MultilineCompletionsMode } from '../common/voidSettingsTypes.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { applyCompletionFilters, getStringUpToUnbalancedClosingParenthesis } from './autocompleteFilters.js';
 import { prunePrefix, pruneSuffix, resolveMaxPromptTokens } from './autocompletePromptSizing.js';
