@@ -86,6 +86,29 @@ export type ListParams_Internal<ModelResponse> = ModelListParams<ModelResponse>
  */
 const AUTOCOMPLETE_MAX_TOKENS = 4096
 
+/**
+ * Temperature for one autocomplete completion.
+ *
+ * Autocomplete previously sent no temperature at all, so the provider default of 1.0
+ * applied. That is a sampling temperature: a code model given freedom to pick among
+ * plausible next tokens wanders, restates the line it is on, and invents code that does
+ * not follow from the context. It reads as the model "not knowing the context", but the
+ * context is fine - the sampling is simply too loose for text that has one right answer.
+ *
+ * Continue sets the same value, and for the same reason, in
+ * core/autocomplete/CompletionProvider.ts:
+ *
+ *   // Set temperature (but don't override)
+ *   if (llm.completionOptions.temperature === undefined) {
+ *     llm.completionOptions.temperature = 0.01;
+ *   }
+ *
+ * Not 0, because a token with probability ~0.01 still has to be reachable for the
+ * occasional valid completion; a hard 0 makes the model unable to escape a repetition
+ * it has already entered.
+ */
+const AUTOCOMPLETE_TEMPERATURE = 0.01
+
 const invalidApiKeyMessage = (providerName: ProviderName) => `Invalid ${displayInfoOfProviderName(providerName).title} API key.`
 
 /**
@@ -159,6 +182,38 @@ const parseHeadersJSON = (s: string | undefined): Record<string, string | null |
 	} catch (e) {
 		throw new Error(`Error parsing OpenAI-Compatible headers: ${s} is not a valid JSON.`)
 	}
+}
+
+/**
+ * Base URL and API key for a provider's OpenAI-compatible surface, plus any extra headers.
+ *
+ * Mirrors the branches in newOpenAICompatibleSDK so a request can be posted to a path the
+ * SDK helper does not expose - FIM needs fim/completions, not the /completions that
+ * `openai.completions.create` always targets.
+ */
+const openAICompatibleEndpointOf = ({ settingsOfProvider, providerName }: { settingsOfProvider: SettingsOfProvider, providerName: ProviderName }): { baseUrl: string, apiKey: string, headers: Record<string, string | null | undefined> } => {
+	if (providerName === 'openAI') {
+		return { baseUrl: 'https://api.openai.com/v1', apiKey: settingsOfProvider.openAI.apiKey, headers: {} }
+	}
+	if (providerName === 'deepseek') {
+		return { baseUrl: 'https://api.deepseek.com', apiKey: settingsOfProvider.deepseek.apiKey, headers: {} }
+	}
+	if (providerName === 'openAICompatible') {
+		const c = settingsOfProvider.openAICompatible
+		return { baseUrl: c.endpoint, apiKey: c.apiKey, headers: parseHeadersJSON(c.headersJSON) ?? {} }
+	}
+	// the local servers, which need no real key
+	const localEndpoint = (endpoint: string) => ({ baseUrl: `${endpoint}/v1`, apiKey: 'noop', headers: {} })
+	switch (providerName) {
+		case 'ollama': return localEndpoint(settingsOfProvider.ollama.endpoint)
+		case 'vLLM': return localEndpoint(settingsOfProvider.vLLM.endpoint)
+		case 'liteLLM': return localEndpoint(settingsOfProvider.liteLLM.endpoint)
+		case 'lmStudio': return localEndpoint(settingsOfProvider.lmStudio.endpoint)
+		case 'mlx': return localEndpoint(settingsOfProvider.mlx.endpoint)
+		default: break
+	}
+	// remaining providers keep the SDK's own default base URL and auth
+	return { baseUrl: '', apiKey: '', headers: {} }
 }
 
 const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName }: { settingsOfProvider: SettingsOfProvider, providerName: ProviderName }) => {
@@ -297,26 +352,87 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 		return
 	}
 
-	const openai = await newOpenAICompatibleSDK({ providerName, settingsOfProvider })
-	openai.completions
-		.create({
-			model: modelName,
-			prompt: rawPrompt ?? prefix,
-			// an empty suffix keeps the payload shape valid for servers that validate it,
-			// but must not duplicate the rendered suffix
-			...(rawPrompt ? {} : { suffix: suffix }),
-			stop: stopTokens,
-			max_tokens: AUTOCOMPLETE_MAX_TOKENS,
-			...additionalOpenAIPayload,
-		})
-		.then(async response => {
-			const fullText = response.choices[0]?.text
-			onFinalMessage({ fullText, fullReasoning: '', anthropicReasoning: null });
-		})
-		.catch(error => {
-			if (error instanceof OpenAI.APIError && error.status === 401) { onError({ message: invalidApiKeyMessage(providerName), fullError: error }); }
-			else { onError({ message: error + '', fullError: error }); }
-		})
+	// Continue posts FIM to fim/completions, NOT /completions - see
+	// core/llm/llms/OpenAI.ts:_streamFim, which builds "fim/completions" off apiBase.
+	// /completions is the plain text-completion route, and a model trained for FIM does
+	// not reliably fill a suffix there. That is why only codestral worked: it goes
+	// through the Mistral SDK's fimComplete, which targets the right endpoint itself.
+	//
+	// DeepSeek is the one exception Continue makes, in core/llm/llms/Deepseek.ts: its FIM
+	// endpoint is beta/completions rather than fim/completions.
+	//
+	// Ollama, llama.cpp and some vLLM builds expose only /completions, so the second path
+	// is kept as a fallback rather than being an error - a 404 or 405 means "no such
+	// endpoint here", and any other status is a real answer that must be surfaced.
+	//
+	// Posted through openAITolerantFetch rather than openai.completions.create, because
+	// that helper always targets /completions and the SDK's request options are not
+	// verifiable from here. openAITolerantFetch is the project's existing error-formatting
+	// wrapper, so a failed response still reads the way other providers' errors do.
+	const fimPaths = providerName === 'deepseek'
+		? ['beta/completions', 'completions']
+		: ['fim/completions', 'completions']
+
+	const body = {
+		model: modelName,
+		prompt: rawPrompt ?? prefix,
+		// an empty suffix keeps the payload shape valid for servers that validate it,
+		// but must not duplicate the rendered suffix
+		...(rawPrompt ? {} : { suffix: suffix }),
+		stop: stopTokens,
+		max_tokens: AUTOCOMPLETE_MAX_TOKENS,
+		temperature: AUTOCOMPLETE_TEMPERATURE,
+		...additionalOpenAIPayload,
+	}
+
+	const { baseUrl: rawBaseUrl, apiKey, headers: extraHeaders } = openAICompatibleEndpointOf({ providerName, settingsOfProvider })
+	// an empty baseUrl means "use the SDK default", which only OpenAI reaches here
+	const baseUrl = rawBaseUrl || 'https://api.openai.com/v1'
+
+	let lastError: unknown = undefined
+
+	for (const path of fimPaths) {
+		try {
+			const res = await openAITolerantFetch(`${baseUrl.replace(/\/+$/, '')}/${path}`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
+					...extraHeaders,
+				},
+				body: JSON.stringify(body),
+			} as Parameters<typeof globalThis.fetch>[1])
+
+			// 404/405 means this server has no endpoint at that path, so the next one is
+			// worth trying. Every other status is a real answer and must be surfaced -
+			// including 401, which the SDK would otherwise have formatted for us.
+			if (res.status === 404 || res.status === 405) {
+				lastError = new Error(`${path} returned ${res.status}`)
+				continue
+			}
+
+			if (!res.ok) {
+				const errText = await res.text().catch(() => '')
+				onError({
+					message: res.status === 401 ? invalidApiKeyMessage(providerName) : (errText || `HTTP ${res.status} from ${path}`),
+					fullError: errText,
+				})
+				return
+			}
+
+			const json = await res.json() as { choices?: { text?: string }[] }
+			onFinalMessage({ fullText: json.choices?.[0]?.text ?? '', fullReasoning: '', anthropicReasoning: null })
+			return
+		} catch (error) {
+			onError({ message: error + '', fullError: error })
+			return
+		}
+	}
+
+	onError({
+		message: `This server exposes no FIM endpoint. Tried ${fimPaths.join(' and ')}.`,
+		fullError: lastError,
+	})
 }
 
 
@@ -834,6 +950,7 @@ const sendMistralFIM = ({ messages, onFinalMessage, onError, settingsOfProvider,
 			suffix: messages.suffix,
 			stream: false,
 			maxTokens: AUTOCOMPLETE_MAX_TOKENS,
+			temperature: AUTOCOMPLETE_TEMPERATURE,
 			stop: messages.stopTokens,
 		})
 		.then(async response => {
