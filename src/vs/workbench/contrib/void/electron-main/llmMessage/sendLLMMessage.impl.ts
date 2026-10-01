@@ -185,6 +185,17 @@ const parseHeadersJSON = (s: string | undefined): Record<string, string | null |
 }
 
 /**
+ * Coerce a caught or collected value into an Error, since OnError wants Error | null.
+ *
+ * Values here are already Errors in the normal case; this only matters for the ones that
+ * are not, such as a response body read as text.
+ */
+const asErrorOrNull = (value: unknown): Error | null => {
+	if (value === undefined || value === null) { return null }
+	return value instanceof Error ? value : new Error(String(value))
+}
+
+/**
  * Flatten the SDK HeadersLike into a plain record.
  *
  * `defaultHeaders` is HeadersLike: the SDK buildHeaders accepts a plain object, an
@@ -406,7 +417,7 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 		...plainHeadersOf(openai.defaultHeaders),
 	}
 
-	let lastError: unknown = undefined
+	let lastError: Error | undefined = undefined
 
 	for (const path of fimPaths) {
 		try {
@@ -428,7 +439,7 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 				const errText = await res.text().catch(() => '')
 				onError({
 					message: res.status === 401 ? invalidApiKeyMessage(providerName) : (errText || `HTTP ${res.status} from ${path}`),
-					fullError: errText,
+					fullError: errText ? new Error(errText) : null,
 				})
 				return
 			}
@@ -437,14 +448,14 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 			onFinalMessage({ fullText: json.choices?.[0]?.text ?? '', fullReasoning: '', anthropicReasoning: null })
 			return
 		} catch (error) {
-			onError({ message: error + '', fullError: error })
+			onError({ message: error + '', fullError: asErrorOrNull(error) })
 			return
 		}
 	}
 
 	onError({
 		message: `This server exposes no FIM endpoint. Tried ${fimPaths.join(' and ')}.`,
-		fullError: lastError,
+		fullError: asErrorOrNull(lastError),
 	})
 }
 
