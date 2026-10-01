@@ -499,17 +499,36 @@ const getPrefixAndSuffixInfo = (model: ITextModel, position: Position): PrefixAn
 
 }
 
-const getIndex = (str: string, line: number, char: number) => {
-	return str.split(_ln).slice(0, line).join(_ln).length + (line > 0 ? 1 : 0) + char;
-}
-const getLastLine = (s: string): string => {
-	const matches = s.match(new RegExp(`[^${_ln}]*$`))
-	return matches ? matches[0] : ''
+/**
+ * Offset in the raw `insertText` that a character count in the trimmed middle maps to.
+ *
+ * `removeLeftTabsAndTrimEnds` is `s.replace(/^\s+/gm, '')` - it deletes only the whitespace
+ * at the START of each line. Interior whitespace survives, and so does trailing
+ * whitespace on the final line. So to map a trimmed offset back onto the raw text,
+ * walk forward skipping the whitespace run at each line start and counting
+ * everything else, until `charCount` surviving characters have been seen.
+ *
+ * Deliberately walks the raw text instead of splitting the trimmed text on `_ln`:
+ * the trimmer strips the `\r` of a `\r\n` as well, so under Windows line endings the trimmed
+ * text holds lone `\r` and reads as a single line.
+ */
+const rawOffsetOfTrimmedIndex = (rawMiddle: string, charCount: number): number => {
+	if (charCount <= 0) { return 0 }
+	let seen = 0
+	let i = 0
+	while (i < rawMiddle.length) {
+		const atLineStart = i === 0 || /^\s/.test(rawMiddle[i - 1])
+		if (atLineStart && /\s/.test(rawMiddle[i])) { i++; continue }
+		if (seen === charCount) { break }
+		seen++
+		i++
+	}
+	return Math.min(i, rawMiddle.length)
 }
 
+
 type AutocompletionMatchupBounds = {
-	startLine: number,
-	startCharacter: number,
+	/** Index into the raw `autocompletion.insertText`, where the new text begins. */
 	startIdx: number,
 }
 // returns the startIdx of the match if there is a match, or undefined if there is no match
@@ -538,44 +557,25 @@ const getAutocompletionMatchup = ({ prefix, autocompletion }: { prefix: string, 
 		return undefined
 	}
 
-	// reverse map to find position wrt `autocompletion.result`
-	const lineStart =
-		trimmedCurrentPrefix.split(_ln).length -
-		trimmedCompletionPrefix.split(_ln).length;
+	// How much of the middle the user has already typed, as a plain character
+	// count. This is the same quantity Continue computes in GeneratorReuseManager,
+	// and unlike the line/character reconstruction it replaced, it cannot disagree
+	// with the strings it was derived from.
+	const typedAheadChars = trimmedCurrentPrefix.length - trimmedCompletionPrefix.length
 
-	if (lineStart < 0) {
+	if (typedAheadChars < 0) {
 		// console.log('@undefined3')
-
-		console.error('Error: No line found.');
-		return undefined;
-	}
-	const currentPrefixLine = getLastLine(trimmedCurrentPrefix)
-	const completionPrefixLine = lineStart === 0 ? getLastLine(trimmedCompletionPrefix) : ''
-	const completionMiddleLine = autocompletion.insertText.split(_ln)[lineStart]
-	const fullCompletionLine = completionPrefixLine + completionMiddleLine
-
-	// console.log('currentPrefixLine', currentPrefixLine)
-	// console.log('completionPrefixLine', completionPrefixLine)
-	// console.log('completionMiddleLine', completionMiddleLine)
-
-	const charMatchIdx = fullCompletionLine.indexOf(currentPrefixLine)
-	if (charMatchIdx < 0) {
-		// console.log('@undefined4', charMatchIdx)
-
-		console.error('Warning: Found character with negative index. This should never happen.')
 		return undefined
 	}
 
-	const character = (charMatchIdx +
-		currentPrefixLine.length
-		- completionPrefixLine.length
-	)
+	if (typedAheadChars > trimmedCompletionMiddle.length) {
+		// console.log('@undefined4')
+		return undefined
+	}
 
-	const startIdx = getIndex(autocompletion.insertText, lineStart, character)
+	const startIdx = rawOffsetOfTrimmedIndex(autocompletion.insertText, typedAheadChars)
 
 	return {
-		startLine: lineStart,
-		startCharacter: character,
 		startIdx,
 	}
 
@@ -1061,7 +1061,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		try {
 			await newAutocompletion.llmPromise
 
-			const autocompletionMatchup: AutocompletionMatchupBounds = { startIdx: 0, startLine: 0, startCharacter: 0 }
+			const autocompletionMatchup: AutocompletionMatchupBounds = { startIdx: 0 }
 			const completions = toInlineCompletions({ autocompletionMatchup, autocompletion: newAutocompletion, prefixAndSuffix, position })
 			return this._track(completions, newAutocompletion.id, docUriStr)
 
