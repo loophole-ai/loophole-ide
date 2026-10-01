@@ -185,46 +185,34 @@ const parseHeadersJSON = (s: string | undefined): Record<string, string | null |
 }
 
 /**
- * Base URL and API key for a provider's OpenAI-compatible surface, plus any extra headers.
+ * Flatten the SDK HeadersLike into a plain record.
  *
- * Mirrors the branches in newOpenAICompatibleSDK so a request can be posted to a path the
- * SDK helper does not expose - FIM needs fim/completions, not the /completions that
- * `openai.completions.create` always targets.
+ * `defaultHeaders` is HeadersLike: the SDK buildHeaders accepts a plain object, an
+ * array of [name, value] pairs, or a Headers instance
+ * (node_modules/openai/internal/headers.js), so spreading it would yield nothing useful
+ * in the last two cases.
  */
-const openAICompatibleEndpointOf = ({ settingsOfProvider, providerName }: { settingsOfProvider: SettingsOfProvider, providerName: ProviderName }): { baseUrl: string, apiKey: string, headers: Record<string, string | null | undefined> } => {
-	// Hosted providers, transcribed from the matching branch in newOpenAICompatibleSDK
-	// below. deepseek deliberately has no /v1 here: its FIM endpoint is beta/completions
-	// off the bare host (core/llm/llms/Deepseek.ts), which new URL() resolves by
-	// REPLACING the last path segment, so api.deepseek.com/v1 would silently become
-	// api.deepseek.com/beta. Stripping /v1 up front and joining by string gives the same
-	// result without depending on that resolution rule.
-	switch (providerName) {
-		case 'openAI': return { baseUrl: 'https://api.openai.com/v1', apiKey: settingsOfProvider.openAI.apiKey, headers: {} }
-		case 'deepseek': return { baseUrl: 'https://api.deepseek.com', apiKey: settingsOfProvider.deepseek.apiKey, headers: {} }
-		case 'openRouter': return { baseUrl: 'https://openrouter.ai/api/v1', apiKey: settingsOfProvider.openRouter.apiKey, headers: {} }
-		case 'groq': return { baseUrl: 'https://api.groq.com/openai/v1', apiKey: settingsOfProvider.groq.apiKey, headers: {} }
-		case 'xAI': return { baseUrl: 'https://api.x.ai/v1', apiKey: settingsOfProvider.xAI.apiKey, headers: {} }
-		case 'mistral': return { baseUrl: 'https://api.mistral.ai/v1', apiKey: settingsOfProvider.mistral.apiKey, headers: {} }
-		case 'openAICompatible': {
-			const c = settingsOfProvider.openAICompatible
-			return { baseUrl: c.endpoint, apiKey: c.apiKey, headers: parseHeadersJSON(c.headersJSON) ?? {} }
+const plainHeadersOf = (headers: unknown): Record<string, string> => {
+	if (!headers) { return {} }
+	const HeadersCtor = (globalThis as { Headers?: new () => unknown }).Headers
+	if (HeadersCtor && headers instanceof HeadersCtor) {
+		return Object.fromEntries((headers as unknown as { entries(): Iterable<[string, string]> }).entries())
+	}
+	if (Array.isArray(headers)) {
+		const out: Record<string, string> = {}
+		for (const pair of headers as [string, string][]) {
+			if (Array.isArray(pair) && typeof pair[0] === 'string' && pair[1] != null) { out[pair[0]] = String(pair[1]) }
 		}
-		default: break
+		return out
 	}
-	// The local servers, which need no real key. Same branches as newOpenAICompatibleSDK.
-	const localEndpoint = (endpoint: string) => ({ baseUrl: `${endpoint}/v1`, apiKey: 'noop', headers: {} })
-	switch (providerName) {
-		case 'ollama': return localEndpoint(settingsOfProvider.ollama.endpoint)
-		case 'vLLM': return localEndpoint(settingsOfProvider.vLLM.endpoint)
-		case 'liteLLM': return localEndpoint(settingsOfProvider.liteLLM.endpoint)
-		case 'lmStudio': return localEndpoint(settingsOfProvider.lmStudio.endpoint)
-		case 'mlx': return localEndpoint(settingsOfProvider.mlx.endpoint)
-		case 'appleFoundationModels': return localEndpoint(settingsOfProvider.appleFoundationModels.endpoint)
-		default: break
+	if (typeof headers === 'object') {
+		const out: Record<string, string> = {}
+		for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
+			if (v != null) { out[k] = String(v) }
+		}
+		return out
 	}
-	// Nothing left unhandled: providers such as googleVertex, microsoftAzure and
-	// awsBedrock have their own transports and never reach this function.
-	throw new Error(`No FIM endpoint is defined for provider "${providerName}".`)
+	return {}
 }
 
 const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName }: { settingsOfProvider: SettingsOfProvider, providerName: ProviderName }) => {
@@ -396,7 +384,27 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 		...additionalOpenAIPayload,
 	}
 
-	const { baseUrl, apiKey, headers: extraHeaders } = openAICompatibleEndpointOf({ providerName, settingsOfProvider })
+	// The base URL and the credentials are read off the SDK client rather than from a
+	// second table of provider URLs. newOpenAICompatibleSDK is the single place that knows
+	// every provider's base URL, and keeping a parallel copy here is exactly how groq, xAI
+	// and openRouter ended up pointing at localhost.
+	//
+	// openAI passes no baseURL of its own - the SDK fills in https://api.openai.com/v1 -
+	// and reading it back off the client returns that resolved value.
+	const baseUrl = String(openai.baseURL ?? '')
+	if (!baseUrl) {
+		onError({ message: `Could not resolve a base URL for provider "${providerName}".`, fullError: null })
+		return
+	}
+	// Bearer auth, matching what the SDK's bearerAuth() sends for these clients. Read off
+	// the client rather than re-derived from the settings, so it cannot disagree with the
+	// key the chat path is already using. openrouter's ranking headers and a user's own
+	// headersJSON on openAICompatible arrive via defaultHeaders.
+	const requestHeaders = {
+		'Content-Type': 'application/json',
+		...(openai.apiKey ? { 'Authorization': `Bearer ${openai.apiKey}` } : {}),
+		...plainHeadersOf(openai.defaultHeaders),
+	}
 
 	let lastError: unknown = undefined
 
@@ -404,11 +412,7 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 		try {
 			const res = await openAITolerantFetch(`${baseUrl.replace(/\/+$/, '')}/${path}`, {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
-					...extraHeaders,
-				},
+				headers: requestHeaders,
 				body: JSON.stringify(body),
 			} as Parameters<typeof globalThis.fetch>[1])
 
