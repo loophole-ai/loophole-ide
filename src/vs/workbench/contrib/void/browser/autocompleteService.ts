@@ -230,6 +230,20 @@ const processStartAndEndSpaces = (result: string) => {
 
 
 /**
+ * Comment token for the file, inferred from its opening lines.
+ *
+ * Only used to spot an empty comment line and a snippet path header, so a guess is enough -
+ * `//` covers JS/TS/Java/Go/Rust/C/C++/`C#`, `#` covers Python/Ruby/shell/YAML. Guessing
+ * wrong costs nothing beyond those two filters not firing.
+ */
+const _commentSyntaxOf = (prefix: string): string | undefined => {
+	// a hash anywhere near the top of the file is a strong signal
+	if (/(^|\n)\s*#/.test(prefix.slice(0, 2000))) { return '#' }
+	if (/(^|\n)\s*\/\//.test(prefix.slice(0, 2000))) { return '//' }
+	return undefined
+}
+
+/**
  * Run streamed text through the filter pipeline. Called on every chunk and again on the
  * final text.
  *
@@ -239,7 +253,7 @@ const processStartAndEndSpaces = (result: string) => {
  * replaces the last one.
  */
 const filterStreamedText = (text: string, prefixAndSuffix: PrefixAndSuffixInfo, predictionType: AutocompletionPredictionType, reindentContinuation: boolean): string => {
-	const { prefix, prefixToTheLeftOfCursor, suffixLines } = prefixAndSuffix
+	const { prefix, prefixToTheLeftOfCursor, suffix, suffixLines } = prefixAndSuffix
 	// the line *under* the cursor's line - if the model re-generates it we are duplicating
 	const lineBelow = suffixLines[1] ?? ''
 	// the indent the cursor is sitting at, so a block keeps that indent
@@ -252,6 +266,12 @@ const filterStreamedText = (text: string, prefixAndSuffix: PrefixAndSuffixInfo, 
 		prefixToTheLeftOfCursor,
 		baseIndent,
 		reindentContinuation,
+		// lets stopAtSimilarLine cut when the model drifts back toward the text that is
+		// already to the right of the cursor
+		suffix,
+		// single-line comments of the languages we are most likely completing in. Used only
+		// to recognise an empty "//" and a snippet "// Path: " header.
+		commentSyntax: _commentSyntaxOf(prefix),
 		// Only a block prediction may span lines. Everything else is inserted at a zero-width
 		// cursor on the current line, so a newline in the reply would push the whole suggestion
 		// onto the next line. This was previously never passed, so the invariant was unenforced.

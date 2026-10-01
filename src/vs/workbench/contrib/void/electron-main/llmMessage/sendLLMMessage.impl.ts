@@ -70,6 +70,22 @@ type SendFIMParams_Internal = InternalCommonMessageParams & { messages: LLMFIMMe
 export type ListParams_Internal<ModelResponse> = ModelListParams<ModelResponse>
 
 
+/**
+ * Ceiling on tokens generated for one autocomplete completion.
+ *
+ * Continue uses the same number (DEFAULT_MAX_TOKENS in core/llm/constants.ts). It is a
+ * backstop, not the normal way a completion ends - generation normally stops on one of the
+ * semantic boundaries in autocompleteFilters.ts, which is what keeps a long completion from
+ * being cut mid-statement.
+ *
+ * This was 300, roughly 10-14 lines of code. Past that the reply was truncated partway
+ * through a statement, and getStringUpToUnbalancedClosingParenthesis cannot repair that: it
+ * only looks for a mismatched CLOSING bracket, so an unclosed opener with no closer coming
+ * passes straight through. Accepting the completion then inserted something like
+ * "const unpaid =" with the function left unterminated.
+ */
+const AUTOCOMPLETE_MAX_TOKENS = 4096
+
 const invalidApiKeyMessage = (providerName: ProviderName) => `Invalid ${displayInfoOfProviderName(providerName).title} API key.`
 
 /**
@@ -290,7 +306,7 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 			// but must not duplicate the rendered suffix
 			...(rawPrompt ? {} : { suffix: suffix }),
 			stop: stopTokens,
-			max_tokens: 300,
+			max_tokens: AUTOCOMPLETE_MAX_TOKENS,
 			...additionalOpenAIPayload,
 		})
 		.then(async response => {
@@ -817,7 +833,7 @@ const sendMistralFIM = ({ messages, onFinalMessage, onError, settingsOfProvider,
 			prompt: messages.prefix,
 			suffix: messages.suffix,
 			stream: false,
-			maxTokens: 300,
+			maxTokens: AUTOCOMPLETE_MAX_TOKENS,
 			stop: messages.stopTokens,
 		})
 		.then(async response => {

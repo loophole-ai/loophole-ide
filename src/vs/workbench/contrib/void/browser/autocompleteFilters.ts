@@ -365,6 +365,141 @@ export const indentContinuationLines = (text: string, ln: string, baseIndent: st
 	}).join(ln)
 }
 
+/* ---------------------------------------------------------------------------------------
+ * The remaining stages of Continue's StreamTransformPipeline.
+ *
+ * Transcribed from continue-main/core/autocomplete/filtering/streamTransforms/{charStream,lineStream}.ts
+ * Continue runs these as generators over a line stream; here they are whole-string transforms
+ * that return the truncated text. Their `fullStop()` callback has no counterpart - by the time
+ * these run the request has already finished, so there is nothing left to cancel.
+ *
+ * Continue's token ceiling is DEFAULT_MAX_TOKENS = 4096 (core/llm/constants.ts) and it is
+ * only ever a backstop: generation normally ends on one of the boundaries below, which is
+ * why a long completion is chopped at a semantic boundary rather than mid-statement. The
+ * filters above already covered stopAtStopSequences, stopAtLines, stopAtLinesExact and
+ * stopAtRepeatingLines; these are the rest.
+ * ------------------------------------------------------------------------------------ */
+
+/** Levenshtein distance. Continue uses the `fastest-levenshtein` package for this. */
+const editDistance = (a: string, b: string): number => {
+	if (a === b) { return 0 }
+	if (!a.length) { return b.length }
+	if (!b.length) { return a.length }
+
+	let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+	for (let i = 1; i <= a.length; i++) {
+		const cur = [i]
+		for (let j = 1; j <= b.length; j++) {
+			cur[j] = Math.min(
+				prev[j] + 1,                                        // deletion
+				cur[j - 1] + 1,                                     // insertion
+				prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),     // substitution
+			)
+		}
+		prev = cur
+	}
+	return prev[b.length]
+}
+
+/**
+ * Are these two lines near-identical, i.e. is the model re-emitting the other?
+ *
+ * Continue: lineStream.ts. Lines of 4 characters or fewer are never considered repeated,
+ * because `}` and `});` legitimately recur and cutting on them would truncate most blocks.
+ */
+export const lineIsRepeated = (a: string, b: string): boolean => {
+	if (a.length <= 4 || b.length <= 4) { return false }
+	return editDistance(a.trim(), b.trim()) / b.trim().length < 0.1
+}
+
+/** Does this line end in something that closes a construct? */
+const BRACKET_ENDING_CHARS = [')', ']', '}', ';']
+const isBracketEnding = (line: string): boolean =>
+	line.trim().split('').some(char => BRACKET_ENDING_CHARS.includes(char))
+
+/**
+ * Stop when the completion produces the line that already sits below the cursor.
+ *
+ * Unlike `stopAtLineBelow`, which requires a near-duplicate, this is Continue's fuzzy
+ * version: a line within 10% edit distance of the one below ends the completion, which
+ * catches the model drifting back toward text the user already has.
+ *
+ * The bracket-ending exemption is deliberate and load-bearing: closing braces repeat
+ * constantly in real code, so an exact match on one must be allowed through. Note that
+ * Continue tests `nextLine === line` before yielding, so a completion whose FIRST line
+ * equals the line below yields the empty string. That is faithful rather than useful -
+ * in practice the line below the cursor is empty or a closing brace, so it does not arise.
+ */
+export const stopAtSimilarLine = (text: string, ln: string, line: string): string => {
+	const trimmedLine = line.trim()
+	if (trimmedLine === '') { return text }
+	const lineIsBracketEnding = isBracketEnding(trimmedLine)
+
+	const kept: string[] = [];
+	for (const nextLine of text.split(ln)) {
+		if (lineIsBracketEnding && trimmedLine === nextLine.trim()) { kept.push(nextLine); continue }
+		if (nextLine === line) { break }
+		if (lineIsRepeated(nextLine, trimmedLine)) { break }
+		kept.push(nextLine);
+	}
+	return kept.join(ln);
+}
+
+/**
+ * Stop when the completion runs into the start of the suffix.
+ *
+ * The model has regenerated the document text that is already to the right of the cursor.
+ * Continue only applies this when the suffix is at least `sequenceLength` characters, since
+ * a short suffix is too weak a signal to cut on.
+ */
+export const stopAtStartOfSuffix = (text: string, suffix: string, sequenceLength = 20): string => {
+	if (suffix.length < sequenceLength) { return text }
+	const targetPart = suffix.trimStart().slice(0, Math.floor(sequenceLength * 1.5))
+	const idx = text.indexOf(targetPart)
+	return idx === -1 ? text : text.slice(0, idx)
+}
+
+/** Drop a comment line that carries no text, e.g. a bare `//`. */
+export const avoidEmptyComments = (text: string, ln: string, comment?: string): string => {
+	if (!comment) { return text }
+	return text.split(ln).filter(line => line.trim() !== comment).join(ln);
+}
+
+/**
+ * Drop a snippet path header.
+ *
+ * Snippets get inserted as comments opening with `// Path: <PATH>`, and the model
+ * sometimes copies the pattern. Continue matches that prefix literally, so prose starting
+ * the same way is dropped too; kept verbatim rather than tightened.
+ */
+export const avoidPathLine = (text: string, ln: string, comment?: string): string => {
+	if (!comment) { return text }
+	const needle = `${comment} Path: `
+	return text.split(ln).filter(line => !line.startsWith(needle)).join(ln);
+}
+
+const PREFIXES_TO_SKIP: readonly string[] = ['<COMPLETION>']
+
+/** Strip a template prefix from the first line, e.g. a leading `<COMPLETION>`. */
+export const skipPrefixes = (text: string, ln: string): string => {
+	const lines = text.split(ln);
+	if (lines.length === 0) { return text }
+	const match = PREFIXES_TO_SKIP.find(prefix => lines[0].startsWith(prefix));
+	if (match) { lines[0] = lines[0].slice(match.length); }
+	return lines.join(ln);
+}
+
+// Continue's noDoubleNewLine is NOT applied here. It returns at the first blank line,
+// which would reduce 'a\n\n\n\n\n\nb' to 'a' and eat the trailing newline of every
+// completion that ends on one. collapseBlankLineRuns already handles blank-line padding,
+// and it collapses a run to a single blank line rather than truncating at the first.
+
+// Continue's removeTrailingWhitespace is NOT applied here. It turns 'total + ' into
+// 'total +', and the trailing space is load-bearing: on a single-line prediction it tells
+// the editor the completion is unfinished, so the cursor lands after the space and typing
+// continues naturally. Trimming it makes 'total + ' look complete and drops the cursor
+// back onto the operator.
+
 export type ApplyFiltersOptions = {
 	/** Line ending used by the document. */
 	ln: string;
@@ -391,6 +526,12 @@ export type ApplyFiltersOptions = {
 	baseIndent?: string;
 	/** Apply `indentContinuationLines`. Off for native FIM, which indents correctly itself. */
 	reindentContinuation?: boolean;
+	/** The line below the cursor, for `stopAtSimilarLine`. Falls back to lineBelow if unset. */
+	lineBelowForSimilarity?: string;
+	/** The suffix to the right of the cursor, for `stopAtStartOfSuffix`. */
+	suffix?: string;
+	/** Single-line comment token for the file's language, e.g. `//`. */
+	commentSyntax?: string;
 };
 
 /**
@@ -399,7 +540,7 @@ export type ApplyFiltersOptions = {
  *   -> blank-line padding -> single-line clamp -> bracket balance
  */
 export const applyCompletionFilters = (raw: string, opts: ApplyFiltersOptions): string => {
-	const { ln, lineBelow, stopSequences, singleLineOnly, prefix, prefixToTheLeftOfCursor, baseIndent, reindentContinuation } = opts;
+	const { ln, lineBelow, stopSequences, singleLineOnly, prefix, prefixToTheLeftOfCursor, baseIndent, reindentContinuation, lineBelowForSimilarity, suffix, commentSyntax } = opts;
 
 	let text = raw;
 	if (!text) { return ''; }
@@ -425,6 +566,20 @@ export const applyCompletionFilters = (raw: string, opts: ApplyFiltersOptions): 
 	text = stopAtRepeatingLines(text, ln);
 	text = stopAtLineBelow(text, ln, lineBelow);
 	text = collapseBlankLineRuns(text, ln);
+
+	// Continue's remaining boundaries, in its pipeline order. These are what let a long
+	// completion end on a semantic boundary instead of at the token ceiling, which is how
+	// it avoids inserting half a statement.
+	text = skipPrefixes(text, ln);
+	text = avoidEmptyComments(text, ln, commentSyntax);
+	text = avoidPathLine(text, ln, commentSyntax);
+	if (!singleLineOnly) {
+		// a single-line prediction is clamped at the first newline anyway
+		text = stopAtSimilarLine(text, ln, lineBelowForSimilarity ?? lineBelow);
+	}
+	if (suffix !== undefined) {
+		text = stopAtStartOfSuffix(text, suffix);
+	}
 
 	// The whole-line stop list, checked after the char pass so stray sentinels are gone.
 	// Any remaining fence line is a stray opener (` ```ts `, ` ```python `), because
