@@ -192,17 +192,26 @@ const parseHeadersJSON = (s: string | undefined): Record<string, string | null |
  * `openai.completions.create` always targets.
  */
 const openAICompatibleEndpointOf = ({ settingsOfProvider, providerName }: { settingsOfProvider: SettingsOfProvider, providerName: ProviderName }): { baseUrl: string, apiKey: string, headers: Record<string, string | null | undefined> } => {
-	if (providerName === 'openAI') {
-		return { baseUrl: 'https://api.openai.com/v1', apiKey: settingsOfProvider.openAI.apiKey, headers: {} }
+	// Hosted providers, transcribed from the matching branch in newOpenAICompatibleSDK
+	// below. deepseek deliberately has no /v1 here: its FIM endpoint is beta/completions
+	// off the bare host (core/llm/llms/Deepseek.ts), which new URL() resolves by
+	// REPLACING the last path segment, so api.deepseek.com/v1 would silently become
+	// api.deepseek.com/beta. Stripping /v1 up front and joining by string gives the same
+	// result without depending on that resolution rule.
+	switch (providerName) {
+		case 'openAI': return { baseUrl: 'https://api.openai.com/v1', apiKey: settingsOfProvider.openAI.apiKey, headers: {} }
+		case 'deepseek': return { baseUrl: 'https://api.deepseek.com', apiKey: settingsOfProvider.deepseek.apiKey, headers: {} }
+		case 'openRouter': return { baseUrl: 'https://openrouter.ai/api/v1', apiKey: settingsOfProvider.openRouter.apiKey, headers: {} }
+		case 'groq': return { baseUrl: 'https://api.groq.com/openai/v1', apiKey: settingsOfProvider.groq.apiKey, headers: {} }
+		case 'xAI': return { baseUrl: 'https://api.x.ai/v1', apiKey: settingsOfProvider.xAI.apiKey, headers: {} }
+		case 'mistral': return { baseUrl: 'https://api.mistral.ai/v1', apiKey: settingsOfProvider.mistral.apiKey, headers: {} }
+		case 'openAICompatible': {
+			const c = settingsOfProvider.openAICompatible
+			return { baseUrl: c.endpoint, apiKey: c.apiKey, headers: parseHeadersJSON(c.headersJSON) ?? {} }
+		}
+		default: break
 	}
-	if (providerName === 'deepseek') {
-		return { baseUrl: 'https://api.deepseek.com', apiKey: settingsOfProvider.deepseek.apiKey, headers: {} }
-	}
-	if (providerName === 'openAICompatible') {
-		const c = settingsOfProvider.openAICompatible
-		return { baseUrl: c.endpoint, apiKey: c.apiKey, headers: parseHeadersJSON(c.headersJSON) ?? {} }
-	}
-	// the local servers, which need no real key
+	// The local servers, which need no real key. Same branches as newOpenAICompatibleSDK.
 	const localEndpoint = (endpoint: string) => ({ baseUrl: `${endpoint}/v1`, apiKey: 'noop', headers: {} })
 	switch (providerName) {
 		case 'ollama': return localEndpoint(settingsOfProvider.ollama.endpoint)
@@ -210,10 +219,12 @@ const openAICompatibleEndpointOf = ({ settingsOfProvider, providerName }: { sett
 		case 'liteLLM': return localEndpoint(settingsOfProvider.liteLLM.endpoint)
 		case 'lmStudio': return localEndpoint(settingsOfProvider.lmStudio.endpoint)
 		case 'mlx': return localEndpoint(settingsOfProvider.mlx.endpoint)
+		case 'appleFoundationModels': return localEndpoint(settingsOfProvider.appleFoundationModels.endpoint)
 		default: break
 	}
-	// remaining providers keep the SDK's own default base URL and auth
-	return { baseUrl: '', apiKey: '', headers: {} }
+	// Nothing left unhandled: providers such as googleVertex, microsoftAzure and
+	// awsBedrock have their own transports and never reach this function.
+	throw new Error(`No FIM endpoint is defined for provider "${providerName}".`)
 }
 
 const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName }: { settingsOfProvider: SettingsOfProvider, providerName: ProviderName }) => {
@@ -385,9 +396,7 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 		...additionalOpenAIPayload,
 	}
 
-	const { baseUrl: rawBaseUrl, apiKey, headers: extraHeaders } = openAICompatibleEndpointOf({ providerName, settingsOfProvider })
-	// an empty baseUrl means "use the SDK default", which only OpenAI reaches here
-	const baseUrl = rawBaseUrl || 'https://api.openai.com/v1'
+	const { baseUrl, apiKey, headers: extraHeaders } = openAICompatibleEndpointOf({ providerName, settingsOfProvider })
 
 	let lastError: unknown = undefined
 
