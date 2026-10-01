@@ -1024,7 +1024,13 @@ const sendOllamaFIM = ({ messages, onFinalMessage, onError, settingsOfProvider, 
 		suffix: messages.suffix,
 		options: {
 			stop: messages.stopTokens,
-			num_predict: 300, // max tokens
+			// Continue passes the same two values here (Ollama.ts:_getModelFileParams):
+			// num_predict from maxTokens and the completion temperature. Without them Ollama
+			// falls back to temperature 1.0, which is what makes a code completion wander
+			// and repeat itself, and num_predict was hardcoded to 300 so the ceiling raised
+			// elsewhere never applied here.
+			num_predict: AUTOCOMPLETE_MAX_TOKENS,
+			temperature: AUTOCOMPLETE_TEMPERATURE,
 			// repeat_penalty: 1,
 		},
 		raw: true,
