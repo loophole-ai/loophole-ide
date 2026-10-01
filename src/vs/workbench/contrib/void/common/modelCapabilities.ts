@@ -79,6 +79,9 @@ export const defaultProviderSettings = {
 
 export const defaultModelsOfProvider = {
 	openAI: [ // https://platform.openai.com/docs/models
+		'gpt-6-astra',
+		'gpt-6-sol',
+		'gpt-6-luna',
 		'gpt-5.6', // alias → gpt-5.6-sol
 		'gpt-5.6-terra',
 		'gpt-5.6-luna',
@@ -88,6 +91,8 @@ export const defaultModelsOfProvider = {
 		'gpt-5.4-nano',
 	],
 	anthropic: [ // https://docs.anthropic.com/en/docs/about-claude/models/overview
+		'claude-fable-5-1',
+		'claude-opus-5-5',
 		'claude-fable-5',
 		'claude-opus-5',
 		'claude-sonnet-5',
@@ -100,6 +105,8 @@ export const defaultModelsOfProvider = {
 		'claude-3-7-sonnet-latest',
 	],
 	xAI: [ // https://docs.x.ai/developers/models
+		'grok-4.7',
+		'grok-build-0.1',
 		'grok-4.6',
 		'grok-4.5',
 		'grok-4.3',
@@ -120,6 +127,7 @@ export const defaultModelsOfProvider = {
 		'gemini-2.5-flash-lite',
 	],
 	deepseek: [ // https://api-docs.deepseek.com/quick_start/pricing
+		'deepseek-flash',
 		'deepseek-v4-flash',
 		'deepseek-v4-pro',
 	],
@@ -131,22 +139,25 @@ export const defaultModelsOfProvider = {
 	mlx: [], // autodetected — mlx_lm.server
 	appleFoundationModels: [], // autodetected via afm /v1/models (model id: `foundation`)
 	openRouter: [ // https://openrouter.ai/models — one model per provider
-		'anthropic/claude-fable-5',
+		'anthropic/claude-fable-5.1',
+		'anthropic/claude-opus-5.5',
 		'google/gemini-3.8-flash',
-		'openai/gpt-5.6',
-		'x-ai/grok-4.6',
+		'openai/gpt-6-astra',
+		'x-ai/grok-4.7',
 		'qwen/qwen3-235b-a22b',
-		'deepseek/deepseek-v4-pro',
-		'z-ai/glm-5.2',
+		'deepseek/deepseek-v4.1-flash',
+		'z-ai/glm-5.3',
 	],
 	groq: [ // https://console.groq.com/docs/models
 		'openai/gpt-oss-120b',
 		'openai/gpt-oss-20b',
+		'qwen/qwen3.8-27b',
 		'qwen/qwen3.6-27b',
 		'groq/compound',
 		'groq/compound-mini',
 	],
 	mistral: [ // https://docs.mistral.ai/getting-started/models/models_overview/
+		'zai-glm-5-3',
 		'zai-glm-5-2',
 		'mistral-large-latest',
 		'mistral-medium-latest',
@@ -576,10 +587,40 @@ const anthropicAdaptiveThinkingCapabilities = {
 }
 
 const anthropicModelOptions = {
+	'claude-fable-5-1': { // https://platform.claude.com/docs/en/models/fable-5-1/overview
+		contextWindow: 1_000_000,
+		reservedOutputTokenSpace: 128_000,
+		cost: { input: 10.00, cache_read: 0.25, cache_write: 12.50, output: 50.00 },
+		downloadable: false,
+		supportsFIM: false,
+		specialToolFormat: 'anthropic-style',
+		supportsSystemMessage: 'separated',
+		reasoningCapabilities: anthropicAdaptiveThinkingCapabilities,
+	},
+	'claude-mythos-5-1': { // invite-only (Project Glasswing) - same specs as Fable 5.1
+		contextWindow: 1_000_000,
+		reservedOutputTokenSpace: 128_000,
+		cost: { input: 10.00, cache_read: 0.25, cache_write: 12.50, output: 50.00 },
+		downloadable: false,
+		supportsFIM: false,
+		specialToolFormat: 'anthropic-style',
+		supportsSystemMessage: 'separated',
+		reasoningCapabilities: anthropicAdaptiveThinkingCapabilities,
+	},
 	'claude-fable-5': { // https://docs.anthropic.com/en/docs/about-claude/models/overview
 		contextWindow: 1_000_000,
 		reservedOutputTokenSpace: 128_000,
 		cost: { input: 10.00, cache_read: 1.00, cache_write: 12.50, output: 50.00 },
+		downloadable: false,
+		supportsFIM: false,
+		specialToolFormat: 'anthropic-style',
+		supportsSystemMessage: 'separated',
+		reasoningCapabilities: anthropicAdaptiveThinkingCapabilities,
+	},
+	'claude-opus-5-5': { // https://docs.anthropic.com/en/docs/about-claude/models/overview - adaptive, default effort medium
+		contextWindow: 1_000_000,
+		reservedOutputTokenSpace: 128_000,
+		cost: { input: 4.00, cache_read: 0.20, cache_write: 5.00, output: 20.00 },
 		downloadable: false,
 		supportsFIM: false,
 		specialToolFormat: 'anthropic-style',
@@ -699,7 +740,10 @@ const anthropicSettings: VoidStaticProviderInfo = {
 	modelOptionsFallback: (modelName) => {
 		const lower = modelName.toLowerCase()
 		let fallbackName: keyof typeof anthropicModelOptions | null = null
-		if (lower.includes('fable-5') || lower.includes('fable5')) fallbackName = 'claude-fable-5'
+		if (lower.includes('fable-5-1') || lower.includes('fable-5.1') || lower.includes('fable5.1')) fallbackName = 'claude-fable-5-1'
+		else if (lower.includes('mythos-5-1') || lower.includes('mythos-5.1') || lower.includes('mythos5.1')) fallbackName = 'claude-mythos-5-1'
+		else if (lower.includes('fable-5') || lower.includes('fable5')) fallbackName = 'claude-fable-5'
+		else if (lower.includes('opus-5-5') || lower.includes('opus-5.5') || lower.includes('opus5.5')) fallbackName = 'claude-opus-5-5'
 		else if (lower.includes('opus-5') || lower.includes('opus5')) fallbackName = 'claude-opus-5'
 		else if (lower.includes('opus-4-8') || lower.includes('opus-4.8')) fallbackName = 'claude-opus-4-8'
 		else if (lower.includes('sonnet-5') || lower.includes('sonnet5')) fallbackName = 'claude-sonnet-5'
@@ -734,7 +778,53 @@ const openAI56ReasoningEffortCapabilities = {
 	reasoningSlider: { type: 'effort_slider' as const, values: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' },
 }
 
+// GPT-6 Astra: low / medium / high / xhigh / max (no "none") - https://developers.openai.com/api/docs/models/gpt-6-astra
+const openAI6ReasoningEffortCapabilities = {
+	supportsReasoning: true as const,
+	canTurnOffReasoning: false,
+	canIOReasoning: false,
+	reasoningSlider: { type: 'effort_slider' as const, values: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' },
+}
+
+// GPT-6 Sol / Luna: none / low / medium (default) / high / xhigh / max - https://developers.openai.com/api/docs/models/gpt-6-sol
+const openAI6SolLunaReasoningEffortCapabilities = {
+	supportsReasoning: true as const,
+	canTurnOffReasoning: false,
+	canIOReasoning: false,
+	reasoningSlider: { type: 'effort_slider' as const, values: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' },
+}
+
 const openAIModelOptions = { // https://platform.openai.com/docs/pricing
+	'gpt-6-astra': { // flagship - https://developers.openai.com/api/docs/models/gpt-6-astra
+		contextWindow: 1_050_000,
+		reservedOutputTokenSpace: 128_000,
+		cost: { input: 10.00, output: 50.00, cache_read: 1.00, cache_write: 12.50 },
+		downloadable: false,
+		supportsFIM: false,
+		specialToolFormat: 'openai-style',
+		supportsSystemMessage: 'developer-role',
+		reasoningCapabilities: openAI6ReasoningEffortCapabilities,
+	},
+	'gpt-6-sol': { // coding / agents - https://developers.openai.com/api/docs/models/gpt-6-sol
+		contextWindow: 1_050_000,
+		reservedOutputTokenSpace: 128_000,
+		cost: { input: 2.00, output: 10.00, cache_read: 0.20, cache_write: 2.50 },
+		downloadable: false,
+		supportsFIM: false,
+		specialToolFormat: 'openai-style',
+		supportsSystemMessage: 'developer-role',
+		reasoningCapabilities: openAI6SolLunaReasoningEffortCapabilities,
+	},
+	'gpt-6-luna': { // high-volume - https://developers.openai.com/api/docs/models/gpt-6-luna
+		contextWindow: 1_050_000,
+		reservedOutputTokenSpace: 128_000,
+		cost: { input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.125 },
+		downloadable: false,
+		supportsFIM: false,
+		specialToolFormat: 'openai-style',
+		supportsSystemMessage: 'developer-role',
+		reasoningCapabilities: openAI6SolLunaReasoningEffortCapabilities,
+	},
 	'gpt-5.6': { // alias → gpt-5.6-sol (flagship) — https://developers.openai.com/api/docs/models
 		contextWindow: 1_050_000,
 		reservedOutputTokenSpace: 128_000,
@@ -834,7 +924,12 @@ const openAISettings: VoidStaticProviderInfo = {
 	modelOptionsFallback: (modelName) => {
 		const lower = modelName.toLowerCase()
 		let fallbackName: keyof typeof openAIModelOptions | null = null
-		if (lower.includes('gpt-5.6') || lower.includes('gpt5.6')) {
+		if (lower.includes('gpt-6') || lower.includes('gpt6') || lower.includes('astra')) {
+			if (lower.includes('luna')) fallbackName = 'gpt-6-luna'
+			else if (lower.includes('sol')) fallbackName = 'gpt-6-sol'
+			else fallbackName = 'gpt-6-astra'
+		}
+		else if (lower.includes('gpt-5.6') || lower.includes('gpt5.6')) {
 			if (lower.includes('terra')) fallbackName = 'gpt-5.6-terra'
 			else if (lower.includes('luna')) fallbackName = 'gpt-5.6-luna'
 			else fallbackName = 'gpt-5.6'
@@ -879,6 +974,32 @@ const xAI46ReasoningEffortCapabilities = {
 const xAIModelOptions = {
 	// https://docs.x.ai/docs/guides/reasoning#reasoning
 	// https://docs.x.ai/developers/models
+	'grok-4.7': { // https://docs.x.ai/developers/models/grok-4.7
+		contextWindow: 500_000,
+		reservedOutputTokenSpace: null,
+		cost: { input: 2.00, cache_read: 0.50, output: 6.00 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style',
+		reasoningCapabilities: xAI46ReasoningEffortCapabilities,
+	},
+	'grok-build-0.1': { // https://docs.x.ai/developers/models/grok-build-0.1
+		contextWindow: 256_000,
+		reservedOutputTokenSpace: null,
+		cost: { input: 1.00, cache_read: 0.20, output: 2.00 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style',
+		// Coding/agentic model. It reasons, but xAI's reasoning guide does not list it as
+		// accepting reasoning_effort, so no slider (sending it would 400).
+		reasoningCapabilities: {
+			supportsReasoning: true as const,
+			canTurnOffReasoning: false,
+			canIOReasoning: false,
+		},
+	},
 	'grok-4.6': { // https://docs.x.ai/developers/models/grok-4.6
 		contextWindow: 500_000,
 		reservedOutputTokenSpace: null,
@@ -951,12 +1072,14 @@ const xAISettings: VoidStaticProviderInfo = {
 			else if (lower.includes('non-reasoning') || lower.includes('non_reasoning')) fallbackName = 'grok-4.20-0309-non-reasoning'
 			else fallbackName = 'grok-4.20-0309-reasoning'
 		}
+		else if (lower.includes('grok-build') || lower.includes('grok_build')) fallbackName = 'grok-build-0.1'
+		else if (lower.includes('grok-4.7') || lower.includes('grok4.7')) fallbackName = 'grok-4.7'
 		else if (lower.includes('grok-4.6') || lower.includes('grok4.6')) fallbackName = 'grok-4.6'
 		else if (lower.includes('grok-4.5') || lower.includes('grok4.5')) fallbackName = 'grok-4.5'
 		else if (lower.includes('grok-4.3') || lower.includes('grok4.3')) fallbackName = 'grok-4.3'
-		else if (lower.includes('grok-4') || lower.includes('grok4')) fallbackName = 'grok-4.6'
-		else if (lower.includes('grok-2') || lower.includes('grok-3')) fallbackName = 'grok-4.6'
-		else if (lower.includes('grok')) fallbackName = 'grok-4.6'
+		else if (lower.includes('grok-4') || lower.includes('grok4')) fallbackName = 'grok-4.7'
+		else if (lower.includes('grok-2') || lower.includes('grok-3')) fallbackName = 'grok-4.7'
+		else if (lower.includes('grok')) fallbackName = 'grok-4.7'
 		if (fallbackName) return { modelName: fallbackName, recognizedModelName: fallbackName, ...xAIModelOptions[fallbackName] }
 		return null
 	},
@@ -1165,6 +1288,16 @@ const geminiSettings: VoidStaticProviderInfo = {
 
 // ---------------- DEEPSEEK API ----------------
 const deepseekModelOptions = {
+	'deepseek-flash': { // DeepSeek-V4.1-Flash - https://api-docs.deepseek.com/quick_start/pricing
+		contextWindow: 1_000_000,
+		reservedOutputTokenSpace: 384_000,
+		cost: { cache_read: 0.003, input: 0.15, output: 0.60 },
+		downloadable: false,
+		supportsFIM: true,
+		specialToolFormat: 'openai-style',
+		supportsSystemMessage: 'system-role',
+		reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: true, openSourceThinkTags: ['<think>', '</think>'] },
+	},
 	'deepseek-v4-flash': { // recommended — thinking + non-thinking modes — https://api-docs.deepseek.com/quick_start/pricing
 		contextWindow: 1_000_000,
 		reservedOutputTokenSpace: 384_000,
@@ -1221,7 +1354,27 @@ const mistralReasoningEffortCapabilities = {
 	openSourceThinkTags: ['<think>', '</think>'] as [string, string],
 }
 
+// GLM 5.3: thinking cannot be disabled; official efforts are low / high / max (default max).
+// https://z.ai/blog/glm-5.3 - Mistral hosts it unmodified: https://docs.mistral.ai/models/zai-glm-5-3
+const glm53ReasoningEffortCapabilities = {
+	supportsReasoning: true as const,
+	canIOReasoning: true,
+	canTurnOffReasoning: false,
+	reasoningSlider: { type: 'effort_slider' as const, values: ['low', 'high', 'max'], default: 'max' },
+	openSourceThinkTags: ['<think>', '</think>'] as [string, string],
+}
+
 const mistralModelOptions = { // https://docs.mistral.ai/getting-started/models/models_overview/
+	'zai-glm-5-3': { // Z.ai GLM 5.3 - https://docs.mistral.ai/models/zai-glm-5-3
+		contextWindow: 1_000_000,
+		reservedOutputTokenSpace: 128_000,
+		cost: { input: 1.40, cache_read: 0.14, output: 4.40 },
+		supportsFIM: false,
+		specialToolFormat: 'openai-style',
+		downloadable: { sizeGb: 'not-known' },
+		supportsSystemMessage: 'system-role',
+		reasoningCapabilities: glm53ReasoningEffortCapabilities,
+	},
 	'zai-glm-5-2': { // Z.ai GLM 5.2 — https://docs.mistral.ai/models/zai-glm-5-2
 		contextWindow: 1_000_000,
 		reservedOutputTokenSpace: 128_000,
@@ -1326,7 +1479,10 @@ const mistralSettings: VoidStaticProviderInfo = {
 	modelOptionsFallback: (modelName) => {
 		const lower = modelName.toLowerCase()
 		let fallbackName: keyof typeof mistralModelOptions | null = null
-		if (lower.includes('glm')) fallbackName = 'zai-glm-5-2'
+		if (lower.includes('glm')) {
+			if (lower.includes('5.2') || lower.includes('5-2')) fallbackName = 'zai-glm-5-2'
+			else fallbackName = 'zai-glm-5-3'
+		}
 		else if (lower.includes('codestral')) fallbackName = 'codestral-latest'
 		else if (lower.includes('devstral')) fallbackName = 'devstral-medium-latest'
 		else if (lower.includes('ministral')) {
@@ -1368,6 +1524,16 @@ const groqModelOptions = { // https://console.groq.com/docs/models, https://groq
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		reasoningCapabilities: openAIReasoningEffortCapabilities,
+	},
+	'qwen/qwen3.8-27b': { // preview - https://console.groq.com/docs/models
+		contextWindow: 131_042,
+		reservedOutputTokenSpace: 16_384,
+		cost: { input: 0.80, output: 4.00 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style',
+		reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: true, openSourceThinkTags: ['<think>', '</think>'] },
 	},
 	'qwen/qwen3.6-27b': { // preview — replacement for qwen3-32b / llama-3.3 — https://console.groq.com/docs/models
 		contextWindow: 131_072,
@@ -1437,8 +1603,9 @@ const groqSettings: VoidStaticProviderInfo = {
 		else if (lower.includes('compound')) fallbackName = 'groq/compound'
 		else if (lower.includes('gpt-oss') && (lower.includes('120') || lower.includes('120b'))) fallbackName = 'openai/gpt-oss-120b'
 		else if (lower.includes('gpt-oss') && (lower.includes('20') || lower.includes('20b'))) fallbackName = 'openai/gpt-oss-20b'
+		else if (lower.includes('qwen3.8') || lower.includes('qwen3-8')) fallbackName = 'qwen/qwen3.8-27b'
 		else if (lower.includes('qwen3.6') || lower.includes('qwen3-6')) fallbackName = 'qwen/qwen3.6-27b'
-		else if (lower.includes('qwen3') || lower.includes('qwen-3')) fallbackName = 'qwen/qwen3.6-27b'
+		else if (lower.includes('qwen3') || lower.includes('qwen-3')) fallbackName = 'qwen/qwen3.8-27b'
 		else if (lower.includes('llama-3.3') || lower.includes('llama3.3')) fallbackName = 'llama-3.3-70b-versatile'
 		else if (lower.includes('llama-3.1') || lower.includes('llama3.1')) fallbackName = 'llama-3.1-8b-instant'
 		if (fallbackName) return { modelName: fallbackName, recognizedModelName: fallbackName, ...groqModelOptions[fallbackName] }
@@ -1694,8 +1861,20 @@ const liteLLMSettings: VoidStaticProviderInfo = { // https://docs.litellm.ai/doc
 
 // ---------------- OPENROUTER ----------------
 const openRouterModelOptions_assumingOpenAICompat = {
+	'anthropic/claude-fable-5.1': {
+		...anthropicModelOptions['claude-fable-5-1'],
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style',
+		downloadable: false,
+	},
 	'anthropic/claude-fable-5': {
 		...anthropicModelOptions['claude-fable-5'],
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style',
+		downloadable: false,
+	},
+	'anthropic/claude-opus-5.5': {
+		...anthropicModelOptions['claude-opus-5-5'],
 		supportsSystemMessage: 'system-role',
 		specialToolFormat: 'openai-style',
 		downloadable: false,
@@ -1754,12 +1933,28 @@ const openRouterModelOptions_assumingOpenAICompat = {
 		specialToolFormat: 'openai-style',
 		downloadable: false,
 	},
+	'openai/gpt-6-astra': {
+		...openAIModelOptions['gpt-6-astra'],
+		downloadable: false,
+	},
+	'openai/gpt-6-sol': {
+		...openAIModelOptions['gpt-6-sol'],
+		downloadable: false,
+	},
+	'openai/gpt-6-luna': {
+		...openAIModelOptions['gpt-6-luna'],
+		downloadable: false,
+	},
 	'openai/gpt-5.6': {
 		...openAIModelOptions['gpt-5.6'],
 		downloadable: false,
 	},
 	'openai/gpt-5.5': {
 		...openAIModelOptions['gpt-5.5'],
+		downloadable: false,
+	},
+	'x-ai/grok-4.7': {
+		...xAIModelOptions['grok-4.7'],
 		downloadable: false,
 	},
 	'x-ai/grok-4.6': {
@@ -1774,8 +1969,16 @@ const openRouterModelOptions_assumingOpenAICompat = {
 		...mistralModelOptions['devstral-medium-latest'],
 		downloadable: false,
 	},
+	'z-ai/glm-5.3': {
+		...mistralModelOptions['zai-glm-5-3'],
+		downloadable: false,
+	},
 	'z-ai/glm-5.2': {
 		...mistralModelOptions['zai-glm-5-2'],
+		downloadable: false,
+	},
+	'deepseek/deepseek-v4.1-flash': {
+		...deepseekModelOptions['deepseek-flash'],
 		downloadable: false,
 	},
 	'deepseek/deepseek-v4-pro': {
