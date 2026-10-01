@@ -75,6 +75,17 @@ export type LLMFIMMessage = {
 	prefix: string;
 	suffix: string;
 	stopTokens: string[];
+	/**
+	 * A fully-rendered prompt, used INSTEAD of prefix/suffix.
+	 *
+	 * For models with no native FIM route: the caller renders the model's own FIM tokens
+	 * (see autocompleteFimTemplates) into a single string and we send that as the prompt
+	 * with no suffix. Sent as a raw completion, not a chat turn, so no role markers or
+	 * system prompt are injected around it - the model sees exactly the template.
+	 *
+	 * When present, `supportsFIM` is not consulted and `suffix` is ignored.
+	 */
+	rawPrompt?: string;
 }
 
 

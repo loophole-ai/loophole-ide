@@ -21,9 +21,8 @@ import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { applyCompletionFilters, getStringUpToUnbalancedClosingParenthesis } from './autocompleteFilters.js';
 import { prunePrefix, pruneSuffix, resolveMaxPromptTokens } from './autocompletePromptSizing.js';
 import { shouldCompleteMultiline } from './autocompleteMultiline.js';
-import { buildHoleFillerPrompt, extractHoleFillerCompletion } from './autocompleteFewShot.js';
+import { getTemplateForModel, universalStopTokens } from './autocompleteFimTemplates.js';
 import { getModelCapabilities } from '../common/modelCapabilities.js';
-import type { LLMChatMessage } from '../common/sendLLMMessageTypes.js';
 // import { IContextGatheringService } from './contextGatheringService.js';
 
 
@@ -225,22 +224,8 @@ const processStartAndEndSpaces = (result: string) => {
 		+ result.trim()
 		+ (hasTrailingSpace ? ' ' : '');
 
-}
 
 
-/**
- * Wrap a prompt as a single user message in the shape the provider expects.
- *
- * Gemini is the odd one out: its native API takes `parts`, and the provider path casts
- * `contents` straight through with no conversion, so a `{role, content}` message would be
- * rejected. Everything else (Anthropic, OpenAI and the OpenAI-compatible providers) accepts
- * `content` directly.
- */
-const asSingleUserMessage = (providerName: ProviderName | undefined, text: string): LLMChatMessage => {
-	if (providerName === 'gemini') {
-		return { role: 'user', parts: [{ text }] }
-	}
-	return { role: 'user', content: text }
 }
 
 
@@ -892,6 +877,21 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 			modelSelection.providerName, modelSelection.modelName, overridesOfModel
 		).supportsFIM
 
+		// When the model has no native FIM route we render the prompt ourselves using
+		// Continue's per-model template, so the model still sees proper hole markers.
+		// Continue does exactly this in CompletionStreamer:
+		//   llm.supportsFim() ? streamFim(prefix, suffix) : streamComplete(prompt, {raw:true})
+		const template = getTemplateForModel(modelSelection?.modelName ?? '')
+		const renderedPrompt = supportsNativeFim ? '' : template.template(
+			llmPrefix,
+			llmSuffix,
+			model.uri.path.split('/').pop() ?? '',
+			'', // reponame: only used by Continue's multi-file templates, unused here
+		)
+		const templateStopTokens = supportsNativeFim
+			? []
+			: [...new Set([...template.stop, ...universalStopTokens(modelSelection?.modelName ?? ''), ...stopTokens])]
+
 		// set parameters of `newAutocompletion` appropriately
 		//
 		// The promise below is a "there is something worth showing" signal, not a
@@ -920,9 +920,9 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 			// deadline for showing a partial, armed once the first token lands
 			let partialTimer: ReturnType<typeof setTimeout> | undefined = undefined
 
-			// The hole filler replies as chat-shaped text, so unwrap it before the shared
-			// filters run. A no-op on the native FIM path.
-			const clean = (text: string) => supportsNativeFim ? text : extractHoleFillerCompletion(text)
+			// Sent as a raw completion, so the reply IS the completion - there is no wrapper
+			// tag to unwrap. Kept as a hook because the chat-model path can still narrate.
+			const clean = (text: string) => text
 
 			const onText = ({ fullText }: { fullText: string }) => {
 				if (settled) { return }
@@ -1029,12 +1029,16 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 				})
 				: this._llmMessageService.sendLLMMessage({
 					...commonParams,
-					messagesType: 'chatMessages',
-					messages: [asSingleUserMessage(modelSelection?.providerName, buildHoleFillerPrompt(llmPrefix, llmSuffix, _ln))],
-					// no tools and no system message: the few-shot prompt is the entire
-					// instruction, and a system prompt on top of it dilutes the examples
-					separateSystemMessage: undefined,
-					chatMode: null,
+					messagesType: 'FIMMessage',
+					messages: {
+						prefix: llmPrefix,
+						suffix: llmSuffix,
+						// Continue's templates render the model's own FIM tokens around the hole
+						// (or a few-shot hole filler for chat models). Sent as a raw
+						// completion so no chat wrapper is injected around it.
+						rawPrompt: renderedPrompt,
+						stopTokens: templateStopTokens,
+					},
 				})
 			newAutocompletion.requestId = requestId
 

@@ -259,7 +259,11 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName }: { se
 }
 
 
-const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens }, onFinalMessage, onError, settingsOfProvider, modelName: modelName_, _setAborter, providerName, overridesOfModel }: SendFIMParams_Internal) => {
+const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens, rawPrompt }, onFinalMessage, onError, settingsOfProvider, modelName: modelName_, _setAborter, providerName, overridesOfModel }: SendFIMParams_Internal) => {
+
+	// A fully-rendered prompt (model-specific FIM tokens already applied) is sent as a raw
+	// completion: one prompt string, no suffix, and crucially no chat wrapper - no role
+	// markers and no injected system prompt around the template.
 
 	const {
 		modelName,
@@ -267,7 +271,9 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 		additionalOpenAIPayload,
 	} = getModelCapabilities(providerName, modelName_, overridesOfModel)
 
-	if (!supportsFIM) {
+	// A raw prompt has already had the right FIM tokens applied, so the model needs no
+	// native FIM route and supportsFIM is irrelevant.
+	if (!rawPrompt && !supportsFIM) {
 		if (modelName === modelName_)
 			onError({ message: `Model ${modelName} does not support FIM.`, fullError: null })
 		else
@@ -279,8 +285,10 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 	openai.completions
 		.create({
 			model: modelName,
-			prompt: prefix,
-			suffix: suffix,
+			prompt: rawPrompt ?? prefix,
+			// an empty suffix keeps the payload shape valid for servers that validate it,
+			// but must not duplicate the rendered suffix
+			...(rawPrompt ? {} : { suffix: suffix }),
 			stop: stopTokens,
 			max_tokens: 300,
 			...additionalOpenAIPayload,
