@@ -383,6 +383,10 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 		? ['beta/completions', 'completions']
 		: ['fim/completions', 'completions']
 
+	// Built here so the base URL, API key and provider headers can be read off it - this is
+	// the one place that knows every provider's base URL.
+	const openai = await newOpenAICompatibleSDK({ providerName, settingsOfProvider })
+
 	const body = {
 		model: modelName,
 		prompt: rawPrompt ?? prefix,
