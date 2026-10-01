@@ -1082,12 +1082,18 @@ export const sendLLMMessageToProviderImplementation = {
 	},
 	openAI: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params),
-		sendFIM: null,
+		// Wired so a rendered FIM template (rawPrompt) can reach /completions for
+		// models with no native FIM route. _sendOpenAICompatibleFIM only rejects
+		// when there is neither a rawPrompt nor native support.
+		sendFIM: (params) => _sendOpenAICompatibleFIM(params),
 		list: null,
 	},
 	xAI: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params),
-		sendFIM: null,
+		// Wired so a rendered FIM template (rawPrompt) can reach /completions for
+		// models with no native FIM route. _sendOpenAICompatibleFIM only rejects
+		// when there is neither a rawPrompt nor native support.
+		sendFIM: (params) => _sendOpenAICompatibleFIM(params),
 		list: null,
 	},
 	gemini: {
@@ -1122,12 +1128,18 @@ export const sendLLMMessageToProviderImplementation = {
 	},
 	deepseek: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params),
-		sendFIM: null,
+		// Wired so a rendered FIM template (rawPrompt) can reach /completions for
+		// models with no native FIM route. _sendOpenAICompatibleFIM only rejects
+		// when there is neither a rawPrompt nor native support.
+		sendFIM: (params) => _sendOpenAICompatibleFIM(params),
 		list: null,
 	},
 	groq: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params),
-		sendFIM: null,
+		// Wired so a rendered FIM template (rawPrompt) can reach /completions for
+		// models with no native FIM route. _sendOpenAICompatibleFIM only rejects
+		// when there is neither a rawPrompt nor native support.
+		sendFIM: (params) => _sendOpenAICompatibleFIM(params),
 		list: null,
 	},
 

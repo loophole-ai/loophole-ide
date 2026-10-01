@@ -1406,7 +1406,7 @@ export const Settings = () => {
 													<span
 														className='hover:brightness-110'
 														data-tooltip-id='loophole-tooltip'
-														data-tooltip-content='A dedicated FIM autocomplete model is fastest - try the largest qwen2.5-coder you can run locally. Any other model works too, including Claude and GPT, but without FIM support a longer prompt is sent on every keystroke, so suggestions arrive more slowly.'
+														data-tooltip-content='Only models trained for fill-in-the-middle are listed, because a model without it cannot tell where your cursor is. Recommended: qwen2.5-coder:7b (small, fast), qwen3-coder:30b (best quality at 24GB), or codestral-latest via the Mistral API (hosted, ~$0.30 per million tokens).'
 														data-tooltip-class-name='loophole-max-w-[20px]'
 													>
 														FIM models are fastest. Others work too, just slower.

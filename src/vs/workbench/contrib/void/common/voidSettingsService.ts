@@ -11,7 +11,7 @@ import { registerSingleton, InstantiationType } from '../../../../platform/insta
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IMetricsService } from './metricsService.js';
-import { defaultProviderSettings, ModelOverrides } from './modelCapabilities.js';
+import { defaultProviderSettings, getModelCapabilities, ModelOverrides } from './modelCapabilities.js';
 import { VOID_SETTINGS_STORAGE_KEY } from './storageKeys.js';
 import { isLocalVoiceModelId } from './localVoiceModelTypes.js';
 import { isMacintosh } from '../../../../base/common/platform.js';
@@ -118,7 +118,22 @@ export const modelFilterOfFeatureName: {
 	// real `prefix` + `suffix`; the rest fall back to a few-shot prompt, which costs more
 	// tokens per keystroke but works. Previously this filtered to FIM-only, which left
 	// Anthropic and OpenAI users with "No models support FIM" and no autocomplete at all.
-	'Autocomplete': { filter: () => true, emptyMessage: null, },
+	/**
+	 * Only FIM-capable models are offered. A model without fill-in-the-middle training
+	 * cannot tell where the cursor is, so suggestions are noticeably worse - and picking
+	 * one used to produce a hard "does not support FIM" error rather than a bad suggestion,
+	 * which is a worse way to learn the same thing.
+	 *
+	 * Native FIM is preferred; models without it are still usable via a rendered FIM
+	 * template, so this filter keys off the capability flag rather than the provider.
+	 */
+	'Autocomplete': {
+		filter: (o, opts) => getModelCapabilities(o.providerName, o.modelName, opts.overridesOfModel).supportsFIM,
+		emptyMessage: {
+			message: 'No FIM-capable models found. Pull one of the recommended models to enable autocomplete - qwen2.5-coder:7b is a good starting point, or codestral-latest via the Mistral API.',
+			priority: 'always',
+		},
+	},
 	'Chat': { filter: o => true, emptyMessage: null, },
 	'Ctrl+K': { filter: o => true, emptyMessage: null, },
 	'Apply': { filter: o => true, emptyMessage: null, },

@@ -370,11 +370,37 @@ const openSourceModelOptions_assumingOAICompat = {
 		contextWindow: 128_000, reservedOutputTokenSpace: 8_192,
 	},
 	'qwen3': {
-		supportsFIM: false, // replaces QwQ
+		supportsFIM: false, // replaces QwQ. NOTE: plain qwen3 is NOT FIM-trained - only the Coder line is, see qwen3coder below.
 		supportsSystemMessage: 'system-role',
 		reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: true, openSourceThinkTags: ['<think>', '</think>'] },
 		contextWindow: 32_768, reservedOutputTokenSpace: 8_192,
 	},
+	/**
+	 * Qwen3-Coder. Unlike plain Qwen3, FIM is supported in every version of this line
+	 * (QwenLM/Qwen3-Coder). 30B-A3B is a 3B-active mixture-of-experts, so it runs at
+	 * roughly 3B speed on a 24GB card while being far more capable than the dense 7B.
+	 */
+	'qwen3coder': {
+		supportsFIM: true,
+		supportsSystemMessage: 'system-role',
+		reasoningCapabilities: false,
+		contextWindow: 256_000, reservedOutputTokenSpace: 8_192,
+	},
+	/**
+	 * The models worth actually using for autocomplete, smallest first. Every one of these
+	 * is FIM-trained - that is the whole point of the list.
+	 *
+	 * Autocomplete shows only FIM-capable models, so this doubles as the shortlist a user
+	 * should reach for. Chosen to span the useful range:
+	 *
+	 *   qwen2.5-coder:3b   - fastest, lowest memory. Fine for shell scripts and config.
+	 *   qwen2.5-coder:7b   - the sweet spot. Dense, fast, handles most languages well.
+	 *   qwen3-coder:30b    - 3B-active MoE at ~24GB. The quality/speed winner.
+	 *   codestral-latest   - Mistral, purpose-built for FIM (94.1 FIM score). Hosted.
+	 *
+	 * StarCoder2 (15B) and CodeGemma (2B) are also FIM and remain selectable; they are
+	 * simply not in the recommended set.
+	 */
 	// FIM only
 	'starcoder2': {
 		supportsFIM: true,
@@ -483,6 +509,9 @@ const extensiveModelOptionsFallback: VoidStaticProviderInfo['modelOptionsFallbac
 	if (lower.includes('llama')) return toFallback(openSourceModelOptions_assumingOAICompat, 'llama4-scout')
 
 	if (lower.includes('qwen') && lower.includes('2.5') && lower.includes('coder')) return toFallback(openSourceModelOptions_assumingOAICompat, 'qwen2.5coder')
+	// Qwen3-Coder is FIM-trained in every version; plain Qwen3 is not. Check "coder" first so
+	// qwen3-coder:30b does not fall through to the non-FIM qwen3 entry.
+	if (lower.includes('qwen') && lower.includes('3') && lower.includes('coder')) return toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3coder')
 	if (lower.includes('qwen') && lower.includes('3')) return toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3')
 	if (lower.includes('qwen')) return toFallback(openSourceModelOptions_assumingOAICompat, 'qwen3')
 	if (lower.includes('qwq')) { return toFallback(openSourceModelOptions_assumingOAICompat, 'qwq') }
@@ -1962,4 +1991,39 @@ export const getSendableReasoningInfo = (
 	}
 
 	return null
+}
+
+/* ---------------------------------------------------------------------------------------
+ * Recommended models for autocomplete.
+ * ------------------------------------------------------------------------------------ */
+
+/**
+ * The shortlist of models worth using for autocomplete, smallest first.
+ *
+ * Autocomplete only offers FIM-capable models, and FIM is the single biggest factor in
+ * suggestion quality - a model without it is guessing where the cursor is. These five span
+ * the range from "runs anywhere" to "best quality", so most users can pick one and move on:
+ *
+ *   qwen2.5-coder:3b   tiny and fast. Shell scripts, config, glue code.
+ *   qwen2.5-coder:7b   the sweet spot for most machines.
+ *   qwen3-coder:30b    3B-active MoE, roughly 3B speed at 30B quality. Best default.
+ *   codestral-latest   Mistral, built for FIM (94.1 FIM score). Hosted API.
+ *
+ * Matching is deliberately substring-based and case-insensitive, so a provider-prefixed id
+ * like "qwen/qwen2.5-coder-7b" or a ":q4_K_M" quantisation suffix still matches.
+ */
+export const RECOMMENDED_FIM_MODEL_SUBSTRINGS: readonly string[] = [
+	'qwen2.5-coder:3b',
+	'qwen2.5-coder:7b',
+	'qwen2.5-coder-3b',
+	'qwen2.5-coder-7b',
+	'qwen3-coder:30b',
+	'qwen3-coder-30b',
+	'codestral',
+]
+
+/** True when a model is on the recommended autocomplete shortlist. */
+export const isRecommendedFimModel = (modelName: string): boolean => {
+	const lower = modelName.toLowerCase()
+	return RECOMMENDED_FIM_MODEL_SUBSTRINGS.some(sub => lower.includes(sub.toLowerCase()))
 }
