@@ -18,7 +18,7 @@
 //   session.idle   -> end of turn
 //   todo.updated   -> a synthetic tool message showing the model's plan
 
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, IDisposable } from '../../../../base/common/lifecycle.js';
 import { IModelService } from '../../../../editor/common/services/model.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
@@ -76,7 +76,7 @@ export type StartEngineTurnOpts = {
 	sink: IEngineChatSink;
 };
 
-export interface IKiloAgentChatRunner {
+export interface IKiloAgentChatRunner extends IDisposable {
 	readonly _serviceBrand: undefined;
 	/** Sends a turn and resolves once the engine reports the session idle. */
 	startTurn(opts: StartEngineTurnOpts): Promise<void>;
@@ -247,18 +247,7 @@ class KiloAgentChatRunner extends Disposable implements IKiloAgentChatRunner {
 		turn.sink.addMessage(result.message);
 	}
 
-	private toolResultText(state: any): string {
-		if (!state) return '';
-		if (state.status === 'error') {
-			return String(state.error?.data?.message ?? state.error?.name ?? state.error?.message ?? 'The tool failed');
-		}
-		const content = state.content;
-		if (Array.isArray(content)) {
-			return content.map((c: any) => (typeof c === 'string' ? c : (c?.text ?? JSON.stringify(c)))).join('\n');
-		}
-		if (typeof state.result === 'string') return state.result;
-		return content ? JSON.stringify(content) : '';
-	}
+	
 
 	private onPermissionAsked(props: Record<string, any>): void {
 		const requestID: string = props.id ?? props.requestID;

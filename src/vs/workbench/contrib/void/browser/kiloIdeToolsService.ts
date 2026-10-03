@@ -183,7 +183,8 @@ class KiloIdeToolsService extends Disposable implements IKiloIdeToolsService {
 					if (!this.terminalToolService.persistentTerminalExists(terminalId)) {
 						await this.terminalToolService.createPersistentTerminal({ cwd });
 					}
-					const { resPromise } = this.terminalToolService.runCommand(String(args.command ?? ''), { type: 'persistent', persistentTerminalId: terminalId });
+					// runCommand resolves to { interrupt, resPromise }; the result lives on the inner promise.
+					const { resPromise } = await this.terminalToolService.runCommand(String(args.command ?? ''), { type: 'persistent', persistentTerminalId: terminalId });
 					const { result } = await resPromise;
 					return text(result);
 				}

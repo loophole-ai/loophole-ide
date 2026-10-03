@@ -119,7 +119,9 @@ class KiloAgentConfigSync extends Disposable implements IKiloAgentConfigSync {
 	private async verify(providerID: string): Promise<KiloProviderSyncResult['providers'][number]> {
 		try {
 			const status = await this.agentService.getProviderStatus();
-			return classifyConnection(providerID, status);
+			// classifyConnection returns a bare verdict; the id is attached here so the settings
+			// UI can tell the rows apart.
+			return { providerID, ...classifyConnection(providerID, status) };
 		} catch (err) {
 			return { providerID, ok: false, reason: `could not read provider status: ${String(err?.message ?? err)}` };
 		}

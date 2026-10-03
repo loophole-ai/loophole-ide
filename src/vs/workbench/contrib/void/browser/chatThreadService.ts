@@ -38,11 +38,6 @@ import { IEngineChatSink, IKiloAgentChatRunner } from './kiloAgentChatRunner.js'
 import { IKiloAgentConfigSync } from '../common/kiloAgentConfigSync.js';
 
 
-// related to retrying when LLM message has error
-const CHAT_RETRIES = 3
-const RETRY_DELAY = 2500
-
-
 const findStagingSelectionIndex = (currentSelections: StagingSelectionItem[] | undefined, newSelection: StagingSelectionItem): number | null => {
 	if (!currentSelections) return null
 
@@ -651,22 +646,6 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			userModifications: { voidFileSnapshotOfURI: {}, },
 		})
 	}
-	// call this right after LLM edits a file
-	private _addToolEditCheckpoint({ threadId, uri, }: { threadId: string, uri: URI }) {
-		const thread = this.state.allThreads[threadId]
-		if (!thread) return
-		const { model } = this._voidModelService.getModel(uri)
-		if (!model) return // should never happen
-		const diffAreasSnapshot = this._editCodeService.getVoidFileSnapshot(uri)
-		this._addCheckpoint(threadId, {
-			role: 'checkpoint',
-			type: 'tool_edit',
-			voidFileSnapshotOfURI: { [uri.fsPath]: diffAreasSnapshot },
-			userModifications: { voidFileSnapshotOfURI: {} },
-		})
-	}
-
-
 	private _getCheckpointBeforeMessage = ({ threadId, messageIdx }: { threadId: string, messageIdx: number }): [CheckpointEntry, number] | undefined => {
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return undefined

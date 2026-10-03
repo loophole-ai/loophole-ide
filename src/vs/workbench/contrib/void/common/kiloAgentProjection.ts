@@ -111,22 +111,21 @@ export function projectEnginePart(projection: EngineProjection, part: EnginePart
 
 			const content = toolResultText(part.state);
 			const params = (part.state?.input ?? {}) as Record<string, unknown>;
-			return {
-				kind: 'tool-finished',
+			// `ToolMessage` is an intersection of a base object with a discriminated union, so
+			// `type` and `result` have to be narrowed together. Branching explicitly is the only
+			// way TS accepts it; computing both fields independently does not type-check.
+			const base = {
+				role: 'tool' as const,
 				id,
-				message: {
-					role: 'tool',
-					type: status === 'error' ? 'tool_error' : 'success',
-					result: status === 'error' ? content : (part.state?.result ?? content),
-					name: name as any,
-					params: params as any,
-					id,
-					content,
-					rawParams: params as any,
-					// our own IDE tools are namespaced `loophole_*`; attribute them to that server
-					mcpServerName: name.startsWith('loophole_') ? name.split('_')[0] : undefined,
-				},
+				content,
+				rawParams: params as any,
+				// our own IDE tools are namespaced `loophole_*`; attribute them to that server
+				mcpServerName: name.startsWith('loophole_') ? name.split('_')[0] : undefined,
 			};
+			const message: ChatMessage = status === 'error'
+				? { ...base, type: 'tool_error', result: content, name: name as any, params: params as any }
+				: { ...base, type: 'success', result: (part.state?.result ?? content) as any, name: name as any, params: params as any };
+			return { kind: 'tool-finished', id, message };
 		}
 		default:
 			// step-start, step-finish, file, snapshot, patch, retry, compaction, agent, subtask:
@@ -148,13 +147,19 @@ export function toolResultText(state: EnginePart['state']): string {
 	return state.content ? JSON.stringify(state.content) : '';
 }
 
+/**
+ * The `role: 'tool'` arm of ChatMessage. These three builders below always produce one, so
+ * declaring it here keeps callers (and the tests) from having to narrow the whole union.
+ */
+export type ProjectedToolMessage = Extract<ChatMessage, { role: 'tool' }>;
+
 /** Renders a `permission.asked` event as the sidebar's existing approval affordance. */
 export function projectPermissionRequest(props: {
 	id?: string;
 	permission?: string;
 	patterns?: string[];
 	tool?: { callID?: string };
-}): ChatMessage {
+}): ProjectedToolMessage {
 	const permission = props.permission ?? 'tool';
 	return {
 		role: 'tool',
@@ -170,7 +175,7 @@ export function projectPermissionRequest(props: {
 }
 
 /** Renders the model's plan as a tool message, since the sidebar has no todo widget. */
-export function projectTodos(todos: Array<{ content: string; status: string }>, sessionID: string): ChatMessage {
+export function projectTodos(todos: Array<{ content: string; status: string }>, sessionID: string): ProjectedToolMessage {
 	return {
 		role: 'tool',
 		type: 'success',

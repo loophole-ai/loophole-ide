@@ -107,7 +107,8 @@ export type KiloAgentPermissionReply = {
 export type KiloAgentRevertParams = KiloAgentSessionRef & { messageID: string; partID?: string }
 
 /** One choice the model offered. `description` is optional in practice, so treat it as such. */
-export type KiloAgentQuestionOption = { label: string; description?: string }
+/** See `Option` in packages/schema/src/v1/question.ts - `description` is not optional there. */
+export type KiloAgentQuestionOption = { label: string; description: string; labelKey?: string; descriptionKey?: string; mode?: string }
 
 /** A `question.asked` request can bundle several questions; each is answered in order. */
 export type KiloAgentQuestionInfo = {
@@ -116,14 +117,19 @@ export type KiloAgentQuestionInfo = {
 	options: KiloAgentQuestionOption[]
 	/** when true the user may tick more than one option */
 	multiple?: boolean
-	/** when true the user may type an answer instead of choosing */
+	/** when true the user may type an answer instead of choosing (engine default: true) */
 	custom?: boolean
+	/** exact option label to preselect; ignored when `multiple` or unknown */
+	default?: string
 }
 
+/** See `Request` in packages/schema/src/v1/question.ts. */
 export type KiloAgentQuestion = {
 	id: string
 	sessionID: string
 	questions: KiloAgentQuestionInfo[]
+	/** whether this question blocks prompt input (engine default: true) */
+	blocking?: boolean
 	tool?: { messageID: string; callID: string }
 }
 
@@ -178,15 +184,7 @@ export type KiloAgentPermission = {
 	tool?: { messageID: string; callID: string }
 }
 
-export type KiloAgentQuestion = {
-	id: string
-	sessionID: string
-	messageID: string
-	/** the question text the model asked the user */
-	question: string
-	/** multiple-choice options; absent for free-form questions */
-	options?: string[]
-}
+
 
 // ---------- indexing ----------
 
@@ -249,6 +247,24 @@ export const KNOWN_CONNECTED_PROVIDER_IDS = [
 	'openai', 'anthropic', 'google', 'xai', 'mistral', 'groq', 'deepseek',
 	'openrouter', 'amazon-bedrock', 'lmstudio', 'azure', 'google-vertex',
 ] as const;
+
+/**
+ * Compile-time proof that the blocked ids can never be added to the allowlist above.
+ *
+ * For each blocked id, `'kilo' extends AllowedId` is `false` while the id is absent from the
+ * list, which the conditional turns into `true`. Adding `'kilo'` to
+ * KNOWN_CONNECTED_PROVIDER_IDS makes it assignable, the conditional yields `false`, and
+ * `_AssertTrue` fails - so the build breaks instead of the block silently lapsing.
+ *
+ * Exported purely so `noUnusedLocals` does not flag it; it has no runtime effect.
+ */
+type _AssertTrue<T extends true> = T;
+type AllowedProviderId = (typeof KNOWN_CONNECTED_PROVIDER_IDS)[number];
+type _KiloStaysBlocked = _AssertTrue<'kilo' extends AllowedProviderId ? false : true>;
+type _OpencodeZenStaysBlocked = _AssertTrue<'opencode' extends AllowedProviderId ? false : true>;
+type _OpencodeGoStaysBlocked = _AssertTrue<'opencode-go' extends AllowedProviderId ? false : true>;
+export type _BlockedProvidersStayExcluded =
+	[_KiloStaysBlocked, _OpencodeZenStaysBlocked, _OpencodeGoStaysBlocked];
 
 /** Per-provider outcome of a settings sync, for the settings UI. */
 export type KiloProviderSyncResult = {

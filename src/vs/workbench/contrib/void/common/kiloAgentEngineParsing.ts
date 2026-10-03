@@ -100,13 +100,17 @@ export function parseEnginePort(stdout: string): number | undefined {
  *  - `kilo` is stripped from `enabled_providers` even if a caller supplies it. That list is the
  *    hard allowlist, so leaving `kilo` in it would defeat the block above.
  */
-export function mergeEngineConfig(baseline: Record<string, unknown>, extra?: Record<string, unknown>): Record<string, unknown> {
+export function mergeEngineConfig(
+	baseline: Record<string, unknown>,
+	extra?: Record<string, unknown>,
+): Record<string, unknown> & { disabled_providers: string[] } {
 	const base = (baseline['disabled_providers'] as string[] | undefined) ?? [];
 	const add = (extra?.['disabled_providers'] as string[] | undefined) ?? [];
-	const merged: Record<string, unknown> = {
+	const disabled_providers = [...new Set([...base, ...add])];
+	const merged: Record<string, unknown> & { disabled_providers: string[] } = {
 		...baseline,
 		...(extra ?? {}),
-		disabled_providers: [...new Set([...base, ...add])],
+		disabled_providers,
 	};
 	// Never let the allowlist re-admit the one provider Loophole refuses to use.
 	if (Array.isArray(merged['enabled_providers'])) {

@@ -23,9 +23,22 @@ suite('Kilo agent projection', () => {
 	const text = (s: string, messageID = 'msg_1'): EnginePart => ({ type: 'text', text: s, messageID });
 	const reasoning = (s: string, messageID = 'msg_1'): EnginePart => ({ type: 'reasoning', text: s, messageID });
 
-	function assistantOf(result: ReturnType<typeof projectEnginePart>): ChatMessage {
+	/** Narrow to the assistant variant so `.displayContent` / `.reasoning` are typed, not union-typed. */
+	type AssistantMessage = Extract<ChatMessage, { role: 'assistant' }>;
+	type ToolMessageOf = Extract<ChatMessage, { role: 'tool' }>;
+
+	function assistantOf(result: ReturnType<typeof projectEnginePart>): AssistantMessage {
 		assert.strictEqual(result.kind, 'message', `expected a message, got ${result.kind}`);
-		return (result as { kind: 'message'; message: ChatMessage }).message;
+		const msg = (result as { kind: 'message'; message: ChatMessage }).message;
+		assert.strictEqual(msg.role, 'assistant', `expected an assistant message, got ${msg.role}`);
+		return msg as AssistantMessage;
+	}
+
+	function toolMessageOf(result: ReturnType<typeof projectEnginePart>): ToolMessageOf {
+		assert.strictEqual(result.kind, 'tool-finished', `expected tool-finished, got ${result.kind}`);
+		const msg = (result as { kind: 'tool-finished'; message: ChatMessage }).message;
+		assert.strictEqual(msg.role, 'tool', `expected a tool message, got ${msg.role}`);
+		return msg as ToolMessageOf;
 	}
 
 	suite('text parts', () => {
@@ -133,9 +146,9 @@ suite('Kilo agent projection', () => {
 			assert.strictEqual(result.kind, 'tool-finished');
 			if (result.kind !== 'tool-finished') return;
 			assert.strictEqual(result.id, 'call_1');
-			assert.strictEqual(result.message.role, 'tool');
-			assert.strictEqual((result.message as any).type, 'success');
-			assert.strictEqual(result.message.content, 'contents');
+			const msg = toolMessageOf(result);
+			assert.strictEqual(msg.type, 'success');
+			assert.strictEqual(msg.content, 'contents');
 		});
 
 		test('emits a tool_error message when the tool fails', () => {
@@ -146,8 +159,9 @@ suite('Kilo agent projection', () => {
 			}, false);
 			assert.strictEqual(result.kind, 'tool-finished');
 			if (result.kind !== 'tool-finished') return;
-			assert.strictEqual((result.message as any).type, 'tool_error');
-			assert.strictEqual(result.message.content, 'ENOENT');
+			const msg = toolMessageOf(result);
+			assert.strictEqual(msg.type, 'tool_error');
+			assert.strictEqual(msg.content, 'ENOENT');
 		});
 
 		test('falls back to the part id when there is no call id', () => {
@@ -169,7 +183,7 @@ suite('Kilo agent projection', () => {
 			}, false);
 			assert.strictEqual(result.kind, 'tool-finished');
 			if (result.kind !== 'tool-finished') return;
-			assert.strictEqual(result.message.mcpServerName, 'loophole');
+			assert.strictEqual(toolMessageOf(result).mcpServerName, 'loophole');
 		});
 
 		test('leaves engine tools unattributed', () => {
@@ -180,7 +194,7 @@ suite('Kilo agent projection', () => {
 			}, false);
 			assert.strictEqual(result.kind, 'tool-finished');
 			if (result.kind !== 'tool-finished') return;
-			assert.strictEqual(result.message.mcpServerName, undefined);
+			assert.strictEqual(toolMessageOf(result).mcpServerName, undefined);
 		});
 
 		test('treats a part with no state as pending', () => {
@@ -294,8 +308,8 @@ suite('Kilo agent projection', () => {
 		test('becomes the sidebar approval affordance', () => {
 			const msg = projectPermissionRequest({ id: 'per_1', permission: 'bash', patterns: ['rm -rf /'] });
 			assert.strictEqual(msg.role, 'tool');
-			assert.strictEqual((msg as any).type, 'tool_request');
-			assert.strictEqual((msg as any).result, null);
+			assert.strictEqual(msg.type, 'tool_request');
+			assert.strictEqual(msg.result, null);
 			assert.strictEqual(msg.content, 'Allow bash?');
 		});
 
@@ -310,13 +324,13 @@ suite('Kilo agent projection', () => {
 
 		test('copes with an almost-empty request', () => {
 			const msg = projectPermissionRequest({});
-			assert.strictEqual((msg as any).type, 'tool_request');
+			assert.strictEqual(msg.type, 'tool_request');
 			assert.strictEqual(msg.content, 'Allow tool?');
 		});
 
 		test('carries the patterns through for display', () => {
 			const msg = projectPermissionRequest({ id: 'per_1', permission: 'write', patterns: ['/w/**'] });
-			assert.deepStrictEqual((msg as any).params.patterns, ['/w/**']);
+			assert.deepStrictEqual((msg.params as { patterns: string[] }).patterns, ['/w/**']);
 		});
 	});
 

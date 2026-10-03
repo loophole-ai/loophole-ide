@@ -85,7 +85,9 @@ suite('KiloAgentChatRunner', () => {
 			stop: async () => { },
 		} as unknown as IKiloIdeToolsService);
 
-		runner = disposables.add(instantiationService.createInstance(KiloAgentChatRunner) as unknown as IKiloAgentChatRunner);
+		// createInstance returns the concrete class; keep the disposable so it is torn down with the
+// suite. No cast needed now that IKiloAgentChatRunner extends IDisposable.
+		runner = disposables.add(instantiationService.createInstance(KiloAgentChatRunner));
 	});
 
 	/** Feeds one engine event, as the host would after normalizing it. */

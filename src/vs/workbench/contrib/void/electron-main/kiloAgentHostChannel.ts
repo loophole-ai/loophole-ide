@@ -72,8 +72,12 @@ const SSE_RECONNECT_DELAY_MS = 1000;
  */
 export const LOCKED_DOWN_ENGINE_CONFIG: Record<string, unknown> = {
 	autoupdate: false,
-	/** Hard block: only these provider ids may be used. `kilo` is deliberately absent. */
-	enabled_providers: KNOWN_CONNECTED_PROVIDER_IDS.filter(id => id !== 'kilo'),
+	/**
+	 * Hard block: only these provider ids may be used. `kilo` is deliberately absent from
+	 * KNOWN_CONNECTED_PROVIDER_IDS - see the ALLOWED_PROVIDER_IDS type assertion below, which
+	 * makes that a compile error rather than a review comment someone can miss.
+	 */
+	enabled_providers: [...KNOWN_CONNECTED_PROVIDER_IDS],
 	/** Belt and braces - also unioned with any caller-supplied list, never replaced. */
 	disabled_providers: ['kilo'],
 	/** keeps per-turn file snapshots; required for GET /session/{id}/diff and revert */

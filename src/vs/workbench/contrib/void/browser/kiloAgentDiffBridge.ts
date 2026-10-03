@@ -22,6 +22,7 @@
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { URI } from '../../../../base/common/uri.js';
 import { EndOfLinePreference } from '../../../../editor/common/model.js';
+import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
@@ -55,8 +56,21 @@ class KiloAgentDiffBridge extends Disposable implements IKiloAgentDiffBridge {
 		@IVoidSettingsService private readonly settingsService: IVoidSettingsService,
 		@IVoidModelService private readonly voidModelService: IVoidModelService,
 		@IEditCodeService private readonly editCodeService: IEditCodeService,
+		@IEditorService private readonly editorService: IEditorService,
 	) {
 		super();
+	}
+
+	/**
+	 * Whether the user has unsaved changes in this file.
+	 *
+	 * Dirty state lives on the editor *input*, not on ITextModel - a text model has no notion
+	 * of saved-vs-unsaved. So we ask the editor service about every editor currently showing this
+	 * resource. A file with no open editor is by definition clean: if it had unsaved work, some
+	 * editor would be holding it.
+	 */
+	private isDirty(uri: URI): boolean {
+		return this.editorService.findEditors(uri).some(({ editor }) => editor.isDirty());
 	}
 
 	async stageAll({ directory, diffs }: { directory: string; diffs: KiloAgentFileDiff[] }) {
@@ -92,7 +106,7 @@ class KiloAgentDiffBridge extends Disposable implements IKiloAgentDiffBridge {
 		plan = planEngineEdit({
 			diff,
 			currentText: model.getValue(EndOfLinePreference.LF),
-			isDirty: model.isDirty(),
+			isDirty: this.isDirty(uri),
 			showDiffs: true,
 		});
 		if (plan.kind === 'unsaved-conflict') {
