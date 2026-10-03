@@ -1500,6 +1500,50 @@ export const Settings = () => {
 														<span className='text-loophole-fg-3 text-xs pointer-events-none'>Auto-accept LLM changes</span>
 													</div>
 												</ErrorBoundary>
+
+												{/* Agent engine */}
+												<ErrorBoundary>
+													<div className='text-sm font-medium mb-1'>Agent engine</div>
+													<div className='text-xs text-loophole-fg-3 mb-2'>
+														{'Runs a separate local process on your machine. It only contacts the model provider you configured.'}
+													</div>
+
+													<div className='flex items-center gap-x-2 my-2'>
+														<VoidSwitch
+															size='xs'
+															value={settingsState.globalSettings.engineShowDiffs}
+															onChange={(newVal) => voidSettingsService.setGlobalSetting('engineShowDiffs', newVal)}
+														/>
+														<span className='text-loophole-fg-3 text-xs pointer-events-none'>Review agent edits before keeping them</span>
+													</div>
+
+													<div className='flex items-center gap-x-2 my-2'>
+														<VoidSwitch
+															size='xs'
+															value={settingsState.globalSettings.engineIndexingEnabled}
+															onChange={(newVal) => voidSettingsService.setGlobalSetting('engineIndexingEnabled', newVal)}
+														/>
+														<span className='text-loophole-fg-3 text-xs pointer-events-none'>Semantic code search</span>
+													</div>
+
+													{settingsState.globalSettings.engineIndexingEnabled && (
+														<div className='flex items-center gap-x-2 my-2'>
+															<span className='text-loophole-fg-3 text-xs w-28'>Ollama address</span>
+															<VoidSimpleInputBox
+																value={settingsState.globalSettings.engineOllamaBaseUrl}
+																onChangeValue={(newVal) => voidSettingsService.setGlobalSetting('engineOllamaBaseUrl', newVal)}
+																placeholder='http://127.0.0.1:11434'
+																compact={true}
+																className='max-w-64'
+															/>
+														</div>
+													)}
+
+													<div className='text-xs text-loophole-fg-3 mt-3 mb-1'>Provider credentials</div>
+													<div className='text-xs text-loophole-fg-3'>
+														{'Keys you enter here are encrypted by your operating system. They are also passed to the local agent engine, which stores an unencrypted copy in its own data folder.'}
+													</div>
+												</ErrorBoundary>
 											</div>
 										</div>
 
