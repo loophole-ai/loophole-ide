@@ -153,13 +153,23 @@ export function toolResultText(state: EnginePart['state']): string {
  */
 export type ProjectedToolMessage = Extract<ChatMessage, { role: 'tool' }>;
 
+/**
+ * The `tool_request` arm specifically.
+ *
+ * Narrowing only on `role: 'tool'` is not enough: that arm is a 6-way union and `params` is
+ * absent from `invalid_params`, so callers reading `.params` still fail to compile. Naming the
+ * discriminant here keeps the permission shape - the only one with `result: null` and the one the
+ * sidebar's approve/reject buttons drive.
+ */
+export type ProjectedPermissionMessage = Extract<ChatMessage, { role: 'tool'; type: 'tool_request' }>;
+
 /** Renders a `permission.asked` event as the sidebar's existing approval affordance. */
 export function projectPermissionRequest(props: {
 	id?: string;
 	permission?: string;
 	patterns?: string[];
 	tool?: { callID?: string };
-}): ProjectedToolMessage {
+}): ProjectedPermissionMessage {
 	const permission = props.permission ?? 'tool';
 	return {
 		role: 'tool',
@@ -175,7 +185,7 @@ export function projectPermissionRequest(props: {
 }
 
 /** Renders the model's plan as a tool message, since the sidebar has no todo widget. */
-export function projectTodos(todos: Array<{ content: string; status: string }>, sessionID: string): ProjectedToolMessage {
+export function projectTodos(todos: Array<{ content: string; status: string }>, sessionID: string): Extract<ProjectedToolMessage, { type: 'success' }> {
 	return {
 		role: 'tool',
 		type: 'success',

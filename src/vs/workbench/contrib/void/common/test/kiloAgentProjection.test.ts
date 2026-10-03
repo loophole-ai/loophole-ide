@@ -330,7 +330,9 @@ suite('Kilo agent projection', () => {
 
 		test('carries the patterns through for display', () => {
 			const msg = projectPermissionRequest({ id: 'per_1', permission: 'write', patterns: ['/w/**'] });
-			assert.deepStrictEqual((msg.params as { patterns: string[] }).patterns, ['/w/**']);
+			// `params` is ToolCallParams<T>, a union across every tool name; the engine picked the
+	// permission id at runtime, so narrow to the shape actually produced here.
+	assert.deepStrictEqual((msg.params as { patterns: string[] }).patterns, ['/w/**']);
 		});
 	});
 
