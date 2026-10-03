@@ -102,6 +102,7 @@
 		"@microsoft/dev-tunnels-ssh-tcp": "^3.12.22",
 		"@mistralai/mistralai": "^2.4.1",
 		"@modelcontextprotocol/sdk": "^1.29.0",
+		"@kilocode/cli": "7.8.3",
 		"@parcel/watcher": "^2.5.6",
 		"@types/semver": "^7.5.8",
 		"@vscode/codicons": "^0.0.46-10",
