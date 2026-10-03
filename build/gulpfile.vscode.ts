@@ -391,6 +391,9 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 				'**/node-pty/lib/shared/conout.js',
 				'**/*.wasm',
 				'**/@vscode/vsce-sign/bin/*',
+				// Agent engine: the platform binary is exec'd directly, so it must live outside the
+				// asar together with the helper executables and tree-sitter grammars it ships.
+				'**/@kilocode/cli-*/**',
 			], [
 				'**/*.mk',
 				'!node_modules/vsda/**' // stay compatible with extensions that depend on us shipping `vsda` into ASAR
