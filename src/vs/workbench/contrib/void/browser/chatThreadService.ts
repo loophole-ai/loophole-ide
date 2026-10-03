@@ -10,37 +10,32 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 
 import { URI } from '../../../../base/common/uri.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
-import { ILLMMessageService } from '../common/sendLLMMessageService.js';
-import { chat_userMessageContent, isABuiltinToolName } from '../common/prompt/prompts.js';
-import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
+import { chat_userMessageContent } from '../common/prompt/prompts.js';
+import { getErrorMessage, RawToolCallObj, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
-import { FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
+import { FeatureName, ModelSelection } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
-import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, ToolCallParams, ToolName, ToolResult } from '../common/toolsServiceTypes.js';
+import { BuiltinToolCallParams, ToolCallParams, ToolName } from '../common/toolsServiceTypes.js';
 import { IToolsService } from './toolsService.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
-import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage } from '../common/chatThreadServiceTypes.js';
+import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem } from '../common/chatThreadServiceTypes.js';
 import { Position } from '../../../../editor/common/core/position.js';
-import { IMetricsService } from '../common/metricsService.js';
 import { IDailyActivityService } from '../common/dailyActivityService.js';
 import { shorten } from '../../../../base/common/labels.js';
 import { IVoidModelService } from '../common/voidModelService.js';
-import { findLast, findLastIdx } from '../../../../base/common/arraysFind.js';
+import { findLastIdx } from '../../../../base/common/arraysFind.js';
 import { IEditCodeService } from './editCodeServiceInterface.js';
 import { VoidFileSnapshot } from '../common/editCodeServiceTypes.js';
-import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
-import { truncate } from '../../../../base/common/strings.js';
 import { THREAD_STORAGE_KEY } from '../common/storageKeys.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
-import { timeout } from '../../../../base/common/async.js';
 import { deepClone } from '../../../../base/common/objects.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IDirectoryStrService } from '../common/directoryStrService.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
-import { IMCPService } from '../common/mcpService.js';
-import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
-import { ITokenUsageService } from '../common/tokenUsageService.js';
+import { IKiloAgentService } from '../common/kiloAgentService.js';
+import { IEngineChatSink, IKiloAgentChatRunner } from './kiloAgentChatRunner.js';
+import { IKiloAgentConfigSync } from '../common/kiloAgentConfigSync.js';
 
 
 // related to retrying when LLM message has error
@@ -319,20 +314,23 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	constructor(
 		@IStorageService private readonly _storageService: IStorageService,
 		@IVoidModelService private readonly _voidModelService: IVoidModelService,
-		@ILLMMessageService private readonly _llmMessageService: ILLMMessageService,
-		@IToolsService private readonly _toolsService: IToolsService,
 		@IVoidSettingsService private readonly _settingsService: IVoidSettingsService,
 		@ILanguageFeaturesService private readonly _languageFeaturesService: ILanguageFeaturesService,
-		@IMetricsService private readonly _metricsService: IMetricsService,
 		@IDailyActivityService private readonly _dailyActivityService: IDailyActivityService,
 		@IEditCodeService private readonly _editCodeService: IEditCodeService,
-		@INotificationService private readonly _notificationService: INotificationService,
 		@IConvertToLLMMessageService private readonly _convertToLLMMessagesService: IConvertToLLMMessageService,
 		@IWorkspaceContextService private readonly _workspaceContextService: IWorkspaceContextService,
 		@IDirectoryStrService private readonly _directoryStringService: IDirectoryStrService,
 		@IFileService private readonly _fileService: IFileService,
-		@IMCPService private readonly _mcpService: IMCPService,
-		@ITokenUsageService private readonly _tokenUsageService: ITokenUsageService,
+		// Only remaining use of the legacy tool layer: `generateCodespanLink` needs a filename
+		// search to turn a textual `file.ts:12` reference into a clickable link. Nothing here
+		// runs an agent tool any more. TODO: replace with a direct file search and delete
+		// toolsService.ts entirely (it is also still read by the React sidebar for legacy
+		// tool-result formatting).
+		@IToolsService private readonly _toolsService: IToolsService,
+		@IKiloAgentService private readonly _kiloAgentService: IKiloAgentService,
+		@IKiloAgentChatRunner private readonly _kiloAgentChatRunner: IKiloAgentChatRunner,
+		@IKiloAgentConfigSync private readonly _kiloAgentConfigSync: IKiloAgentConfigSync,
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
@@ -530,400 +528,38 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		const lastMsg = thread.messages[thread.messages.length - 1]
 		if (!(lastMsg.role === 'tool' && lastMsg.type === 'tool_request')) return // should never happen
 
-		const callThisToolFirst: ToolMessage<ToolName> = lastMsg
-
-		this._wrapRunAgentToNotify(
-			this._runChatAgent({ callThisToolFirst, threadId, ...this._currentModelSelectionProps() })
-			, threadId
-		)
+		// The pending message is a permission request, so approval is forwarded to the engine's
+		// permission API rather than resumed locally.
+		void this._kiloAgentChatRunner.resolveApproval(threadId, 'accept')
 	}
+
 	rejectLatestToolRequest(threadId: string) {
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return // should never happen
 
 		const lastMsg = thread.messages[thread.messages.length - 1]
+		if (lastMsg.role !== 'tool' || lastMsg.type === 'invalid_params') return
 
-		let params: ToolCallParams<ToolName>
-		if (lastMsg.role === 'tool' && lastMsg.type !== 'invalid_params') {
-			params = lastMsg.params
-		}
-		else return
-
-		const { name, id, rawParams, mcpServerName } = lastMsg
-
-		const errorMessage = this.toolErrMsgs.rejected
-		this._updateLatestTool(threadId, { role: 'tool', type: 'rejected', params: params, name: name, content: errorMessage, result: null, id, rawParams, mcpServerName })
+		void this._kiloAgentChatRunner.resolveApproval(threadId, 'reject')
 		this._setStreamState(threadId, undefined)
-	}
-
-	private _computeMCPServerOfToolName = (toolName: string) => {
-		return this._mcpService.getMCPTools()?.find(t => t.name === toolName)?.mcpServerName
 	}
 
 	async abortRunning(threadId: string) {
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return // should never happen
 
-		// add assistant message
-		if (this.streamState[threadId]?.isRunning === 'LLM') {
-			const { displayContentSoFar, reasoningSoFar, toolCallSoFar } = this.streamState[threadId].llmInfo
-			this._addMessageToThread(threadId, { role: 'assistant', displayContent: displayContentSoFar, reasoning: reasoningSoFar, anthropicReasoning: null })
-			if (toolCallSoFar) this._addMessageToThread(threadId, { role: 'interrupted_streaming_tool', name: toolCallSoFar.name, mcpServerName: this._computeMCPServerOfToolName(toolCallSoFar.name) })
-		}
-		// add tool that's running
-		else if (this.streamState[threadId]?.isRunning === 'tool') {
-			const { toolName, toolParams, id, content: content_, rawParams, mcpServerName } = this.streamState[threadId].toolInfo
-			const content = content_ || this.toolErrMsgs.interrupted
-			this._updateLatestTool(threadId, { role: 'tool', name: toolName, params: toolParams, id, content, rawParams, type: 'rejected', result: null, mcpServerName })
-		}
-		// reject the tool for the user if relevant
-		else if (this.streamState[threadId]?.isRunning === 'awaiting_user') {
-			this.rejectLatestToolRequest(threadId)
-		}
-		else if (this.streamState[threadId]?.isRunning === 'idle') {
-			// do nothing
-		}
-
-		this._addUserCheckpoint({ threadId })
-
-		// interrupt any effects
-		const interrupt = await this.streamState[threadId]?.interrupt
-		if (typeof interrupt === 'function')
-			interrupt()
-
-
+		// The engine owns its own agent loop, so an abort is a round trip rather than a local
+		// interrupt. The runner also finishes the turn, which stages any edits already made.
+		await this._kiloAgentChatRunner.abort(threadId)
 		this._setStreamState(threadId, undefined)
 	}
 
 
 
-	private readonly toolErrMsgs = {
-		rejected: 'Tool call was rejected by the user.',
-		interrupted: 'Tool call was interrupted by the user.',
-		errWhenStringifying: (error: any) => `Tool call succeeded, but there was an error stringifying the output.\n${getErrorMessage(error)}`
-	}
-
-
-	// private readonly _currentlyRunningToolInterruptor: { [threadId: string]: (() => void) | undefined } = {}
-
-
 	// returns true when the tool call is waiting for user approval
-	private _runToolCall = async (
-		threadId: string,
-		toolName: ToolName,
-		toolId: string,
-		mcpServerName: string | undefined,
-		opts: { preapproved: true, unvalidatedToolParams: RawToolParamsObj, validatedParams: ToolCallParams<ToolName> } | { preapproved: false, unvalidatedToolParams: RawToolParamsObj },
-	): Promise<{ awaitingUserApproval?: boolean, interrupted?: boolean }> => {
-
-		// compute these below
-		let toolParams: ToolCallParams<ToolName>
-		let toolResult: ToolResult<ToolName>
-		let toolResultStr: string
-
-		// Check if it's a built-in tool
-		const isBuiltInTool = isABuiltinToolName(toolName)
-
-
-		if (!opts.preapproved) { // skip this if pre-approved
-			// 1. validate tool params
-			try {
-				if (isBuiltInTool) {
-					const params = this._toolsService.validateParams[toolName](opts.unvalidatedToolParams)
-					toolParams = params
-				}
-				else {
-					toolParams = opts.unvalidatedToolParams
-				}
-			}
-			catch (error) {
-				const errorMessage = getErrorMessage(error)
-				this._addMessageToThread(threadId, { role: 'tool', type: 'invalid_params', rawParams: opts.unvalidatedToolParams, result: null, name: toolName, content: errorMessage, id: toolId, mcpServerName })
-				return {}
-			}
-			// once validated, add checkpoint for edit
-			if (toolName === 'edit_file') { this._addToolEditCheckpoint({ threadId, uri: (toolParams as BuiltinToolCallParams['edit_file']).uri }) }
-			if (toolName === 'rewrite_file') { this._addToolEditCheckpoint({ threadId, uri: (toolParams as BuiltinToolCallParams['rewrite_file']).uri }) }
-
-			// 2. if tool requires approval, break from the loop, awaiting approval
-
-			const approvalType = isBuiltInTool ? approvalTypeOfBuiltinToolName[toolName] : 'MCP tools'
-			if (approvalType) {
-				const autoApprove = this._settingsService.state.globalSettings.autoApprove[approvalType]
-				// add a tool_request because we use it for UI if a tool is loading (this should be improved in the future)
-				this._addMessageToThread(threadId, { role: 'tool', type: 'tool_request', content: '(Awaiting user permission...)', result: null, name: toolName, params: toolParams, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
-				if (!autoApprove) {
-					return { awaitingUserApproval: true }
-				}
-			}
-		}
-		else {
-			toolParams = opts.validatedParams
-		}
 
 
 
-
-
-
-		// 3. call the tool
-		// this._setStreamState(threadId, { isRunning: 'tool' }, 'merge')
-		const runningTool = { role: 'tool', type: 'running_now', name: toolName, params: toolParams, content: '(value not received yet...)', result: null, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName } as const
-		this._updateLatestTool(threadId, runningTool)
-
-
-		let interrupted = false
-		let resolveInterruptor: (r: () => void) => void = () => { }
-		const interruptorPromise = new Promise<() => void>(res => { resolveInterruptor = res })
-		try {
-
-			// set stream state
-			this._setStreamState(threadId, { isRunning: 'tool', interrupt: interruptorPromise, toolInfo: { toolName, toolParams, id: toolId, content: 'interrupted...', rawParams: opts.unvalidatedToolParams, mcpServerName } })
-
-			if (isBuiltInTool) {
-				const { result, interruptTool } = await this._toolsService.callTool[toolName](toolParams as any)
-				const interruptor = () => { interrupted = true; interruptTool?.() }
-				resolveInterruptor(interruptor)
-
-				toolResult = await result
-			}
-			else {
-				const mcpTools = this._mcpService.getMCPTools()
-				const mcpTool = mcpTools?.find(t => t.name === toolName)
-				if (!mcpTool) { throw new Error(`MCP tool ${toolName} not found`) }
-
-				resolveInterruptor(() => { })
-
-				toolResult = (await this._mcpService.callMCPTool({
-					serverName: mcpTool.mcpServerName ?? 'unknown_mcp_server',
-					toolName: toolName,
-					params: toolParams
-				})).result
-			}
-
-			if (interrupted) { return { interrupted: true } } // the tool result is added where we interrupt, not here
-		}
-		catch (error) {
-			resolveInterruptor(() => { }) // resolve for the sake of it
-			if (interrupted) { return { interrupted: true } } // the tool result is added where we interrupt, not here
-
-			const errorMessage = getErrorMessage(error)
-			this._updateLatestTool(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: errorMessage, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
-			return {}
-		}
-
-		// 4. stringify the result to give to the LLM
-		try {
-			if (isBuiltInTool) {
-				toolResultStr = this._toolsService.stringOfResult[toolName](toolParams as any, toolResult as any)
-			}
-			// For MCP tools, handle the result based on its type
-			else {
-				toolResultStr = this._mcpService.stringifyResult(toolResult as RawMCPToolCall)
-			}
-		} catch (error) {
-			const errorMessage = this.toolErrMsgs.errWhenStringifying(error)
-			this._updateLatestTool(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: errorMessage, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
-			return {}
-		}
-
-		// 5. add to history and keep going
-		this._updateLatestTool(threadId, { role: 'tool', type: 'success', params: toolParams, result: toolResult, name: toolName, content: toolResultStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
-		return {}
-	};
-
-
-
-
-	private async _runChatAgent({
-		threadId,
-		modelSelection,
-		modelSelectionOptions,
-		callThisToolFirst,
-	}: {
-		threadId: string,
-		modelSelection: ModelSelection | null,
-		modelSelectionOptions: ModelSelectionOptions | undefined,
-
-		callThisToolFirst?: ToolMessage<ToolName> & { type: 'tool_request' }
-	}) {
-
-
-		let interruptedWhenIdle = false
-		const idleInterruptor = Promise.resolve(() => { interruptedWhenIdle = true })
-		// _runToolCall does not need setStreamState({idle}) before it, but it needs it after it. (handles its own setStreamState)
-
-		// above just defines helpers, below starts the actual function
-		const { chatMode } = this._settingsService.state.globalSettings // should not change as we loop even if user changes it, so it goes here
-		const { overridesOfModel } = this._settingsService.state
-
-		let nMessagesSent = 0
-		let shouldSendAnotherMessage = true
-		let isRunningWhenEnd: IsRunningType = undefined
-
-		// before enter loop, call tool
-		if (callThisToolFirst) {
-			const { interrupted } = await this._runToolCall(threadId, callThisToolFirst.name, callThisToolFirst.id, callThisToolFirst.mcpServerName, { preapproved: true, unvalidatedToolParams: callThisToolFirst.rawParams, validatedParams: callThisToolFirst.params })
-			if (interrupted) {
-				this._setStreamState(threadId, undefined)
-				this._addUserCheckpoint({ threadId })
-
-			}
-		}
-		this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' })  // just decorative, for clarity
-
-
-		// tool use loop
-		while (shouldSendAnotherMessage) {
-			// false by default each iteration
-			shouldSendAnotherMessage = false
-			isRunningWhenEnd = undefined
-			nMessagesSent += 1
-
-			this._setStreamState(threadId, { isRunning: 'idle', interrupt: idleInterruptor })
-
-			const chatMessages = this.state.allThreads[threadId]?.messages ?? []
-			const { messages, separateSystemMessage } = await this._convertToLLMMessagesService.prepareLLMChatMessages({
-				chatMessages,
-				modelSelection,
-				chatMode
-			})
-
-			if (interruptedWhenIdle) {
-				this._setStreamState(threadId, undefined)
-				return
-			}
-
-			let shouldRetryLLM = true
-			let nAttempts = 0
-			while (shouldRetryLLM) {
-				shouldRetryLLM = false
-				nAttempts += 1
-
-				type ResTypes =
-					| { type: 'llmDone', toolCall?: RawToolCallObj, info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null } }
-					| { type: 'llmError', error?: { message: string; fullError: Error | null; } }
-					| { type: 'llmAborted' }
-
-				let resMessageIsDonePromise: (res: ResTypes) => void // resolves when user approves this tool use (or if tool doesn't require approval)
-				const messageIsDonePromise = new Promise<ResTypes>((res, rej) => { resMessageIsDonePromise = res })
-
-				const llmCancelToken = this._llmMessageService.sendLLMMessage({
-					messagesType: 'chatMessages',
-					chatMode,
-					messages: messages,
-					modelSelection,
-					modelSelectionOptions,
-					overridesOfModel,
-					logging: { loggingName: `Chat - ${chatMode}`, loggingExtras: { threadId, nMessagesSent, chatMode } },
-					separateSystemMessage: separateSystemMessage,
-					onText: ({ fullText, fullReasoning, toolCall }) => {
-						this._setStreamState(threadId, { isRunning: 'LLM', llmInfo: { displayContentSoFar: fullText, reasoningSoFar: fullReasoning, toolCallSoFar: toolCall ?? null }, interrupt: Promise.resolve(() => { if (llmCancelToken) this._llmMessageService.abort(llmCancelToken) }) })
-					},
-					onFinalMessage: async ({ fullText, fullReasoning, toolCall, anthropicReasoning, tokenUsage }) => {
-						// Track token usage if available
-						if (tokenUsage) {
-							this._tokenUsageService.addTokens({ ...tokenUsage, providerName: modelSelection?.providerName, modelName: modelSelection?.modelName })
-							// Update context window indicator — inputTokens IS the current context size
-							const thread = this.state.allThreads[threadId]
-							if (thread) {
-								this._setThreadState(threadId, { cumulativeTokenCount: tokenUsage.inputTokens })
-							}
-						}
-						resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText, fullReasoning, anthropicReasoning } }) // resolve with tool calls
-					},
-					onError: async (error) => {
-						resMessageIsDonePromise({ type: 'llmError', error: error })
-					},
-					onAbort: () => {
-						// stop the loop to free up the promise, but don't modify state (already handled by whatever stopped it)
-						resMessageIsDonePromise({ type: 'llmAborted' })
-						this._metricsService.capture('Agent Loop Done (Aborted)', { nMessagesSent, chatMode })
-					},
-				})
-
-				// mark as streaming
-				if (!llmCancelToken) {
-					this._setStreamState(threadId, { isRunning: undefined, error: { message: 'There was an unexpected error when sending your chat message.', fullError: null } })
-					break
-				}
-
-				this._setStreamState(threadId, { isRunning: 'LLM', llmInfo: { displayContentSoFar: '', reasoningSoFar: '', toolCallSoFar: null }, interrupt: Promise.resolve(() => this._llmMessageService.abort(llmCancelToken)) })
-				const llmRes = await messageIsDonePromise // wait for message to complete
-
-				// if something else started running in the meantime
-				if (this.streamState[threadId]?.isRunning !== 'LLM') {
-					// console.log('Chat thread interrupted by a newer chat thread', this.streamState[threadId]?.isRunning)
-					return
-				}
-
-				// llm res aborted
-				if (llmRes.type === 'llmAborted') {
-					this._setStreamState(threadId, undefined)
-					return
-				}
-				// llm res error
-				else if (llmRes.type === 'llmError') {
-					// error, should retry
-					if (nAttempts < CHAT_RETRIES) {
-						shouldRetryLLM = true
-						this._setStreamState(threadId, { isRunning: 'idle', interrupt: idleInterruptor })
-						await timeout(RETRY_DELAY)
-						if (interruptedWhenIdle) {
-							this._setStreamState(threadId, undefined)
-							return
-						}
-						else
-							continue // retry
-					}
-					// error, but too many attempts
-					else {
-						const { error } = llmRes
-						const { displayContentSoFar, reasoningSoFar, toolCallSoFar } = this.streamState[threadId].llmInfo
-						this._addMessageToThread(threadId, { role: 'assistant', displayContent: displayContentSoFar, reasoning: reasoningSoFar, anthropicReasoning: null })
-						if (toolCallSoFar) this._addMessageToThread(threadId, { role: 'interrupted_streaming_tool', name: toolCallSoFar.name, mcpServerName: this._computeMCPServerOfToolName(toolCallSoFar.name) })
-
-						this._setStreamState(threadId, { isRunning: undefined, error })
-						this._addUserCheckpoint({ threadId })
-						return
-					}
-				}
-
-				// llm res success
-				const { toolCall, info } = llmRes
-
-				this._addMessageToThread(threadId, { role: 'assistant', displayContent: info.fullText, reasoning: info.fullReasoning, anthropicReasoning: info.anthropicReasoning })
-
-				this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative for clarity
-
-				// call tool if there is one
-				if (toolCall) {
-					const mcpTools = this._mcpService.getMCPTools()
-					const mcpTool = mcpTools?.find(t => t.name === toolCall.name)
-
-					const { awaitingUserApproval, interrupted } = await this._runToolCall(threadId, toolCall.name, toolCall.id, mcpTool?.mcpServerName, { preapproved: false, unvalidatedToolParams: toolCall.rawParams })
-					if (interrupted) {
-						this._setStreamState(threadId, undefined)
-						return
-					}
-					if (awaitingUserApproval) { isRunningWhenEnd = 'awaiting_user' }
-					else { shouldSendAnotherMessage = true }
-
-					this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative, for clarity
-				}
-
-			} // end while (attempts)
-		} // end while (send message)
-
-		// if awaiting user approval, keep isRunning true, else end isRunning
-		this._setStreamState(threadId, { isRunning: isRunningWhenEnd })
-
-		// add checkpoint before the next user message
-		if (!isRunningWhenEnd) this._addUserCheckpoint({ threadId })
-
-		// capture number of messages sent
-		this._metricsService.capture('Agent Loop Done', { nMessagesSent, chatMode })
-	}
 
 
 	private _addCheckpoint(threadId: string, checkpoint: CheckpointEntry) {
@@ -1200,38 +836,6 @@ We only need to do it for files that were edited since `from`, ie files between 
 	}
 
 
-	private _wrapRunAgentToNotify(p: Promise<void>, threadId: string) {
-		const notify = ({ error }: { error: string | null }) => {
-			const thread = this.state.allThreads[threadId]
-			if (!thread) return
-			const userMsg = findLast(thread.messages, m => m.role === 'user')
-			if (!userMsg) return
-			if (userMsg.role !== 'user') return
-			const messageContent = truncate(userMsg.displayContent, 50, '...')
-
-			this._notificationService.notify({
-				severity: error ? Severity.Warning : Severity.Info,
-				message: error ? `Error: ${error} ` : `A new Chat result is ready.`,
-				source: messageContent,
-				sticky: true,
-				actions: {
-					primary: [{
-						id: 'void.goToChat',
-						enabled: true,
-						label: `Jump to Chat`,
-						tooltip: '',
-						class: undefined,
-						run: () => {
-							this.switchToThread(threadId)
-							// scroll to bottom
-							this.state.allThreads[threadId]?.state.mountedInfo?.whenMounted.then(m => {
-								m.scrollToBottom()
-							})
-						}
-					}]
-				},
-			})
-		}
 
 		p.then(() => {
 			if (threadId !== this.state.currentThreadId) notify({ error: null })
@@ -1271,15 +875,119 @@ We only need to do it for files that were edited since `from`, ie files between 
 
 		this._setThreadState(threadId, { currCheckpointIdx: null }) // no longer at a checkpoint because started streaming
 
-		this._wrapRunAgentToNotify(
-			this._runChatAgent({ threadId, ...this._currentModelSelectionProps(), }),
-			threadId,
-		)
+		void this._runEngineTurn({ threadId, userMessageContent })
+
 
 		// scroll to bottom
 		this.state.allThreads[threadId]?.state.mountedInfo?.whenMounted.then(m => {
 			m.scrollToBottom()
 		})
+	}
+
+
+	// ---------- engine-backed turns ----------
+
+	/**
+	 * One workspace folder, because the engine addresses everything by absolute directory and
+	 * a Loophole window can have several folders open.
+	 */
+	private _engineDirectory(): string | undefined {
+		return this._workspaceContextService.getWorkspace().folders[0]?.uri.fsPath
+	}
+
+	/** Reuses the engine session for this thread, creating one on first use. */
+	private async _ensureEngineSession(threadId: string, directory: string): Promise<string> {
+		const existing = this._kiloAgentChatRunner.sessionOf(threadId)
+		if (existing) return existing
+		const thread = this.state.allThreads[threadId]
+		// Name the engine session after what the user asked, which is what the engine sidebar shows.
+		const firstUserMessage = thread?.messages.find((m): m is Extract<ChatMessage, { role: 'user' }> => m.role === 'user')
+		const session = await this._kiloAgentService.createSession({
+			directory,
+			...(firstUserMessage ? { title: firstUserMessage.displayContent.slice(0, 60) } : {}),
+		})
+		return session.id
+	}
+
+	/**
+	 * Merges the user's instructions with .loopholerules and project memory so existing rule
+	 * files keep working. AGENTS.md needs no help here - the engine reads it natively.
+	 */
+	private _engineSystemPrompt(): string | undefined {
+		const combined = this._convertToLLMMessagesService.getCombinedAIInstructions()
+		return combined.trim() ? combined : undefined
+	}
+
+	private _makeEngineSink(threadId: string): IEngineChatSink {
+		return {
+			threadId,
+			addMessage: (message) => this._addMessageToThread(threadId, message),
+			finishTurn: ({ error } = {}) => {
+				this._setStreamState(threadId, error ? { isRunning: undefined, error } : { isRunning: 'idle', interrupt: 'not_needed' })
+			},
+			setToolRunning: (tool) => {
+				this._setStreamState(threadId, {
+					isRunning: 'tool',
+					toolInfo: {
+						toolName: tool.name as any,
+						toolParams: tool.params as any,
+						id: tool.id,
+						content: '',
+						rawParams: tool.params as any,
+						mcpServerName: undefined,
+					},
+					interrupt: Promise.resolve(() => { }),
+				})
+			},
+			clearToolRunning: (id) => {
+				const info = this.streamState[threadId]
+				if (info?.isRunning === 'tool' && info.toolInfo?.id === id) {
+					this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' })
+				}
+			},
+		}
+	}
+
+	private async _runEngineTurn({ threadId, userMessageContent }: { threadId: string; userMessageContent: string }) {
+		const directory = this._engineDirectory()
+		if (!directory) {
+			this._setStreamState(threadId, {
+				isRunning: undefined,
+				error: { message: 'Open a folder to use the agent engine.', fullError: null },
+			})
+			return
+		}
+
+		this._setStreamState(threadId, {
+			isRunning: 'LLM',
+			llmInfo: { displayContentSoFar: '', reasoningSoFar: '', toolCallSoFar: null },
+			interrupt: Promise.resolve(() => { void this._kiloAgentChatRunner.abort(threadId) }),
+		})
+
+		try {
+			await this._kiloAgentService.ensureStarted()
+			// Make sure the engine has the user's provider keys and indexing preferences before
+			// it tries to answer. Failures here are not fatal - the engine may already be usable.
+			void this._kiloAgentConfigSync.sync()
+			const sessionID = await this._ensureEngineSession(threadId, directory)
+			const system = this._engineSystemPrompt()
+			const { modelSelection } = this._currentModelSelectionProps()
+
+			await this._kiloAgentChatRunner.startTurn({
+				threadId,
+				sessionID,
+				directory,
+				text: userMessageContent,
+				system,
+				model: modelSelection ? { providerID: modelSelection.providerName, modelID: modelSelection.modelName } : undefined,
+				sink: this._makeEngineSink(threadId),
+			})
+		} catch (err) {
+			this._setStreamState(threadId, {
+				isRunning: undefined,
+				error: { message: `The agent engine could not start: ${String(err?.message ?? err)}`, fullError: null },
+			})
+		}
 	}
 
 
