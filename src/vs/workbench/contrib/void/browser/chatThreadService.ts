@@ -11,9 +11,9 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { URI } from '../../../../base/common/uri.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { chat_userMessageContent } from '../common/prompt/prompts.js';
-import { getErrorMessage, RawToolCallObj, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
+import { RawToolCallObj, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
-import { FeatureName, ModelSelection } from '../common/voidSettingsTypes.js';
+import { FeatureName } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { BuiltinToolCallParams, ToolCallParams, ToolName } from '../common/toolsServiceTypes.js';
 import { IToolsService } from './toolsService.js';
@@ -833,16 +833,6 @@ We only need to do it for files that were edited since `from`, ie files between 
 		}
 
 		this._setThreadState(threadId, { currCheckpointIdx: toIdx })
-	}
-
-
-
-		p.then(() => {
-			if (threadId !== this.state.currentThreadId) notify({ error: null })
-		}).catch((e) => {
-			if (threadId !== this.state.currentThreadId) notify({ error: getErrorMessage(e) })
-			throw e
-		})
 	}
 
 	dismissStreamError(threadId: string): void {
