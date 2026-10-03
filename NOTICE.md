@@ -25,6 +25,19 @@ This project incorporates code from the following original projects:
   - Portions of this project may be licensed under the MIT License
   - See LICENSE-VS-Code.txt for the full MIT License text
 
+- [Kilo Code](https://github.com/Kilo-Org/kilocode) - Licensed under the MIT License
+  - Loophole bundles and runs the Kilo CLI (`@kilocode/cli`, pinned to 7.8.3) as a separate
+    process, as the agent engine. No Kilo source is copied into this repository and no Kilo
+    source is modified.
+  - The Kilo CLI is itself a fork of OpenCode; its LICENSE reads
+    "Copyright (c) 2026 Kilo Code, (c) 2025 opencode".
+  - Kilo is an implementation detail of the agent engine. It is not a Loophole feature and is
+    not presented as one in the product UI.
+
+- [OpenCode](https://github.com/anomalyco/opencode) - Licensed under the MIT License
+  - Upstream of the Kilo CLI, and the project Loophole's engine client is designed to remain
+    compatible with.
+
 ## License Compatibility
 
 This project is licensed under AGPL-3.0, which is compatible with both the MIT License and Apache License 2.0. The original license notices and copyright attributions have been preserved in accordance with the requirements of those licenses.
