@@ -468,6 +468,17 @@ export const isFeatureNameDisabled = (featureName: FeatureName, settingsState: V
 
 export type ChatMode = 'agent' | 'gather' | 'normal' | 'plan'
 
+/**
+ * Embedding providers for the engine's semantic index.
+ *
+ * Kilo's own hosted embedding provider is intentionally not offered: it would ship the user's
+ * source code to Kilo's servers. Ollama is the default because it needs no API key and the
+ * embeddings never leave the machine.
+ */
+export type EngineIndexingProvider = 'ollama' | 'openai' | 'openai-compatible' | 'gemini' | 'mistral' | 'openrouter' | 'voyage'
+
+export const engineIndexingProviders: EngineIndexingProvider[] = ['ollama', 'openai', 'openai-compatible', 'gemini', 'mistral', 'openrouter', 'voyage']
+
 
 export type GlobalSettings = {
 	autoRefreshModels: boolean;
@@ -489,6 +500,19 @@ export type GlobalSettings = {
 	autoAcceptLLMChanges: boolean;
 	/** Selected local speech-to-text model. The model binary is managed separately. */
 	localVoiceModelId: LocalVoiceModelId | null;
+	/** Show engine file edits as Loophole diff zones (accept/reject) instead of letting them land on disk unchallenged. */
+	engineShowDiffs: boolean;
+	/** Semantic code index (the engine's `semantic_search` tool) */
+	engineIndexingEnabled: boolean;
+	engineIndexingProvider: EngineIndexingProvider;
+	engineIndexingModel: string | null;
+	/** baseUrl for the local Ollama server used for embeddings; must be a loopback address */
+	engineOllamaBaseUrl: string;
+	/** OpenAI-compatible embedding endpoint, for self-hosted embedding servers */
+	engineOpenAiCompatibleBaseUrl: string;
+	engineOpenAiCompatibleApiKey: string;
+	/** Extra globs, newline separated, for engine tools the user never wants to be asked about */
+	engineIgnoredIndexGlobs: string;
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -508,6 +532,14 @@ export const defaultGlobalSettings: GlobalSettings = {
 	disableSystemMessage: false,
 	autoAcceptLLMChanges: false,
 	localVoiceModelId: null,
+	engineShowDiffs: true,
+	engineIndexingEnabled: false,
+	engineIndexingProvider: 'ollama',
+	engineIndexingModel: null,
+	engineOllamaBaseUrl: 'http://127.0.0.1:11434',
+	engineOpenAiCompatibleBaseUrl: '',
+	engineOpenAiCompatibleApiKey: '',
+	engineIgnoredIndexGlobs: '**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/*.lock,**/package-lock.json',
 }
 
 export type GlobalSettingName = keyof GlobalSettings
