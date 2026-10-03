@@ -157,6 +157,8 @@ import { MlxMainService } from '../../workbench/contrib/void/electron-main/mlxMa
 import { IMlxMainService } from '../../workbench/contrib/void/common/mlxTypes.js';
 import { IVoidSCMService } from '../../workbench/contrib/void/common/voidSCMTypes.js';
 import { MCPChannel } from '../../workbench/contrib/void/electron-main/mcpChannel.js';
+import { KiloAgentHostChannel } from '../../workbench/contrib/void/electron-main/kiloAgentHostChannel.js';
+import { KILO_AGENT_CHANNEL } from '../../workbench/contrib/void/common/kiloAgentTypes.js';
 /**
  * The main VS Code application. There will only ever be one instance,
  * even if the user starts many instances (e.g. from the command line).
@@ -1351,6 +1353,23 @@ export class CodeApplication extends Disposable {
 		// Kodia added this
 		const mcpChannel = new MCPChannel();
 		mainProcessElectronServer.registerChannel('void-channel-mcp', mcpChannel);
+
+		// Loophole agent engine (Kilo CLI in `serve` mode). Started lazily by the renderer via the
+		// 'start' command, and stopped as soon as the last window closes so it never outlives the UI.
+		const envMain = accessor.get(IEnvironmentMainService);
+		const kiloAgentChannel = new KiloAgentHostChannel({
+			appRoot: envMain.appRoot,
+			userDataPath: envMain.userDataPath,
+			log: (level, message) => this.logService[level](message),
+		});
+		disposables.add(kiloAgentChannel);
+		mainProcessElectronServer.registerChannel(KILO_AGENT_CHANNEL, kiloAgentChannel);
+
+		disposables.add(accessor.get(IWindowsMainService).onDidChangeWindowsCount(e => {
+			if (e.newCount === 0) {
+				kiloAgentChannel.stop().catch(() => { /* shutdown is best effort */ });
+			}
+		}));
 
 		// Extension Host Debug Broadcasting
 		const electronExtensionHostDebugBroadcastChannel = new ElectronExtensionHostDebugBroadcastChannel(accessor.get(IWindowsMainService));
