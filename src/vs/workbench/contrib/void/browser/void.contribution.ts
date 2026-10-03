@@ -40,6 +40,11 @@ import './terminalToolService.js'
 // register Thread History
 import './chatThreadService.js'
 
+// Agent engine (Kilo CLI in serve mode): diff bridge + engine-backed chat turns
+import './kiloAgentDiffBridge.js'
+import './kiloAgentChatRunner.js'
+import './kiloIdeToolsService.js'
+
 // local-only per-day activity counts (empty-editor heatmap)
 import '../common/dailyActivityService.js'
 
@@ -77,6 +82,10 @@ import './voidSCMService.js'
 
 // llmMessage
 import '../common/sendLLMMessageService.js'
+
+// Agent engine (Kilo CLI in serve mode), renderer-side handle
+import '../common/kiloAgentService.js'
+import '../common/kiloAgentConfigSync.js'
 
 // voidSettings
 import '../common/voidSettingsService.js'
