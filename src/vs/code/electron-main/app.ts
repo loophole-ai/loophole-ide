@@ -1358,6 +1358,10 @@ export class CodeApplication extends Disposable {
 		// Loophole agent engine (Kilo CLI in `serve` mode). Started lazily by the renderer via the
 		// 'start' command, and stopped as soon as the last window closes so it never outlives the UI.
 		const envMain = accessor.get(IEnvironmentMainService);
+		// IDE diagnostics and terminals are global to the window, so any renderer that has the
+		// workbench up can answer. StaticRouter accepts the first client, which is what
+		// getChannel requires as its second argument.
+		const ideToolsRouter = new StaticRouter(() => true);
 		const kiloAgentChannel = new KiloAgentHostChannel({
 			appRoot: envMain.appRoot,
 			userDataPath: envMain.userDataPath,
@@ -1365,7 +1369,7 @@ export class CodeApplication extends Disposable {
 			// The IDE tools themselves (diagnostics, terminals) live in the renderer, which
 			// registers this channel. Resolved per call because the workbench may register it
 			// after this point.
-			getIdeToolsChannel: () => mainProcessElectronServer.getChannel(KILO_IDE_TOOLS_CHANNEL),
+			getIdeToolsChannel: () => mainProcessElectronServer.getChannel(KILO_IDE_TOOLS_CHANNEL, ideToolsRouter),
 		});
 		disposables.add(kiloAgentChannel);
 		mainProcessElectronServer.registerChannel(KILO_AGENT_CHANNEL, kiloAgentChannel);

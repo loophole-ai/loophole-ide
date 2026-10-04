@@ -576,7 +576,7 @@ export class KiloAgentHostChannel implements IServerChannel, IDisposable {
 			// Resolved lazily per request: the renderer registers its channel independently, and
 			// may do so after this listener is already accepting connections.
 			this.ideTools = new KiloIdeToolsServer(
-				(name, args) => this.dispatchIdeTool(name, args),
+				() => (name: string, args: Record<string, unknown>) => this.dispatchIdeTool(name, args),
 				this.opts.log,
 			);
 		}
