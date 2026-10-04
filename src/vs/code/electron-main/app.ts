@@ -159,6 +159,7 @@ import { IVoidSCMService } from '../../workbench/contrib/void/common/voidSCMType
 import { MCPChannel } from '../../workbench/contrib/void/electron-main/mcpChannel.js';
 import { KiloAgentHostChannel } from '../../workbench/contrib/void/electron-main/kiloAgentHostChannel.js';
 import { KILO_AGENT_CHANNEL } from '../../workbench/contrib/void/common/kiloAgentTypes.js';
+import { KILO_IDE_TOOLS_CHANNEL } from '../../workbench/contrib/void/common/kiloIdeToolsProtocol.js';
 /**
  * The main VS Code application. There will only ever be one instance,
  * even if the user starts many instances (e.g. from the command line).
@@ -1361,6 +1362,10 @@ export class CodeApplication extends Disposable {
 			appRoot: envMain.appRoot,
 			userDataPath: envMain.userDataPath,
 			log: (level, message) => this.logService[level](message),
+			// The IDE tools themselves (diagnostics, terminals) live in the renderer, which
+			// registers this channel. Resolved per call because the workbench may register it
+			// after this point.
+			getIdeToolsChannel: () => mainProcessElectronServer.getChannel(KILO_IDE_TOOLS_CHANNEL),
 		});
 		disposables.add(kiloAgentChannel);
 		mainProcessElectronServer.registerChannel(KILO_AGENT_CHANNEL, kiloAgentChannel);

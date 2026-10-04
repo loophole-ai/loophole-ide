@@ -19,6 +19,7 @@
 //   todo.updated   -> a synthetic tool message showing the model's plan
 
 import { Disposable, IDisposable } from '../../../../base/common/lifecycle.js';
+import { isWindows } from '../../../../base/common/platform.js';
 import { IModelService } from '../../../../editor/common/services/model.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
@@ -345,7 +346,10 @@ class KiloAgentChatRunner extends Disposable implements IKiloAgentChatRunner {
 			directory,
 			...(activeFile ? { activeFile } : {}),
 			...(openTabs.length ? { openTabs: [...new Set(openTabs)] } : {}),
-			shell: process.platform === 'win32' ? 'powershell' : 'bash',
+			// Rendered by the engine as a "Default shell:" prompt line (see
+		// packages/opencode/src/kilocode/editor-context.ts). isWindows comes from the platform
+		// module rather than `process.platform`, which does not exist in the renderer.
+		shell: isWindows ? 'powershell' : 'bash',
 		};
 	}
 }

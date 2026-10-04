@@ -43,6 +43,8 @@ import {
 	KNOWN_CONNECTED_PROVIDER_IDS,
 } from '../common/kiloAgentTypes.js';
 import { engineFrameData, mergeEngineConfig, normalizeEngineEvent, parseEnginePort, splitEngineEventFrames } from '../common/kiloAgentEngineParsing.js';
+import { LOOPHOLE_MCP_SERVER_NAME, type McpToolResult } from '../common/kiloIdeToolsProtocol.js';
+import { KiloIdeToolsServer } from './kiloIdeToolsServer.js';
 
 /** Engine's default value for KILO_SERVER_USERNAME. */
 const ENGINE_USERNAME = 'kilo';
@@ -99,9 +101,17 @@ export type KiloAgentHostOptions = {
 	 */
 	engineConfig?: Record<string, unknown>;
 	log: (level: 'info' | 'warn' | 'error', message: string) => void;
+	/**
+	 * Returns the renderer's IDE-tools channel, or undefined before the workbench registers it.
+	 * Supplied by app.ts so this class does not need to know how the channel is obtained.
+	 */
+	getIdeToolsChannel?: () => IChannelLike | undefined;
 }
 
 type Running = { port: number; password: string; proc: ChildProcess };
+
+/** The subset of IChannel we use to reach the renderer's IDE tools. */
+type IChannelLike = { call(command: string, arg?: any): Promise<any> };
 
 type ReqOpts = { directory?: string; body?: unknown };
 
@@ -117,6 +127,7 @@ export class KiloAgentHostChannel implements IServerChannel, IDisposable {
 	private stoppingOnPurpose = false;
 	private restartsInARow = 0;
 	private sseAbort: AbortController | undefined;
+	private ideTools: KiloIdeToolsServer | undefined;
 
 	constructor(private readonly opts: KiloAgentHostOptions) { }
 
@@ -185,6 +196,10 @@ export class KiloAgentHostChannel implements IServerChannel, IDisposable {
 			case 'removeMcpServer': return this.req('POST', '/mcp/remove', { directory: dir(params), body: { name: (params as { name: string }).name } });
 			case 'listMcpServers': return this.req('GET', '/mcp', { directory: dir(params) });
 
+			// ---- IDE tools MCP server (listener runs here, in the main process) ----
+			case 'startIdeToolsServer': return this.startIdeToolsServer((params as { directories?: string[] })?.directories ?? []);
+			case 'stopIdeToolsServer': return this.stopIdeToolsServer();
+
 			default: throw new Error(`Unknown kilo-agent command: ${command}`);
 		}
 	}
@@ -192,6 +207,8 @@ export class KiloAgentHostChannel implements IServerChannel, IDisposable {
 	dispose(): void {
 		this.disposed = true;
 		this.killProcess();
+		void this.ideTools?.stop();
+		this.ideTools = undefined;
 		this._onState.dispose();
 		this._onEvent.dispose();
 	}
@@ -543,6 +560,59 @@ export class KiloAgentHostChannel implements IServerChannel, IDisposable {
 
 	private addMcpServer(p: KiloAgentMcpRegistration) {
 		return this.req('POST', '/mcp', { directory: p.directory, body: { name: p.name, config: p.config } });
+	}
+
+	// ------------------------------------------------------------------ IDE tools MCP
+
+	/**
+	 * Starts the loopback MCP listener and registers it with the engine for each open folder.
+	 *
+	 * The listener lives here because the renderer cannot bind a socket (see
+	 * electron-main/kiloIdeToolsServer.ts). Tool implementations stay in the renderer and are
+	 * reached through `setIdeToolDispatcher`, which the workbench wires up once it has a channel.
+	 */
+	private async startIdeToolsServer(directories: string[]): Promise<void> {
+		if (!this.ideTools) {
+			// Resolved lazily per request: the renderer registers its channel independently, and
+			// may do so after this listener is already accepting connections.
+			this.ideTools = new KiloIdeToolsServer(
+				(name, args) => this.dispatchIdeTool(name, args),
+				this.opts.log,
+			);
+		}
+		const { port, token } = await this.ideTools.start();
+		const url = `http://127.0.0.1:${port}/mcp`;
+
+		for (const directory of directories) {
+			try {
+				await this.addMcpServer({
+					directory,
+					name: LOOPHOLE_MCP_SERVER_NAME,
+					config: { type: 'remote', url, headers: { authorization: `Bearer ${token}` }, enabled: true },
+				});
+			} catch (err) {
+				this.opts.log('warn', `[kilo-agent] could not register the IDE tools server for ${directory}: ${String(err?.message ?? err)}`);
+			}
+		}
+	}
+
+	private async stopIdeToolsServer(): Promise<void> {
+		await this.ideTools?.stop();
+	}
+
+	/**
+	 * Forwards one tool call into the renderer.
+	 *
+	 * If no dispatcher is wired up we answer with an error rather than hanging: the engine is
+	 * waiting on a response, and a timeout would look like a hung agent instead of a
+	 * misconfiguration.
+	 */
+	private async dispatchIdeTool(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
+		const channel = this.opts.getIdeToolsChannel?.();
+		if (!channel) {
+			return { content: [{ type: 'text', text: 'The IDE tools bridge is not available yet.' }], isError: true };
+		}
+		return channel.call('callIdeTool', { name, args });
 	}
 
 	// ------------------------------------------------------------------ event stream

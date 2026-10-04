@@ -95,6 +95,9 @@ export interface IKiloAgentService {
 	addMcpServer(server: KiloAgentMcpRegistration): Promise<void>;
 	removeMcpServer(params: { directory?: string; name: string }): Promise<void>;
 	listMcpServers(directory: string): Promise<Record<string, unknown>>;
+	/** Starts the loopback MCP listener in the main process and registers it per workspace folder. */
+	startIdeToolsServer(directories: string[]): Promise<void>;
+	stopIdeToolsServer(): Promise<void>;
 }
 
 export const IKiloAgentService = createDecorator<IKiloAgentService>('KiloAgentService');
@@ -176,6 +179,8 @@ class KiloAgentService extends Disposable implements IKiloAgentService {
 	addMcpServer(server: KiloAgentMcpRegistration) { return this.call('addMcpServer', server); }
 	removeMcpServer(p: { directory?: string; name: string }) { return this.call('removeMcpServer', p); }
 	listMcpServers(directory: string) { return this.call<Record<string, unknown>>('listMcpServers', { directory }); }
+	startIdeToolsServer(directories: string[]) { return this.call('startIdeToolsServer', { directories }); }
+	stopIdeToolsServer() { return this.call('stopIdeToolsServer'); }
 }
 
 // Delayed rather than Eager: nothing here should spin up just because the module is imported.

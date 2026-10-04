@@ -334,3 +334,6 @@ export type KiloAgentCommand =
 	| 'addMcpServer'
 	| 'removeMcpServer'
 	| 'listMcpServers'
+	// IDE tools MCP server (listener runs in the main process; tools run in the renderer)
+	| 'startIdeToolsServer'
+	| 'stopIdeToolsServer'

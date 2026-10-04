@@ -186,7 +186,7 @@ A tool part is `{id, name, state}` where `state.status` is `pending | running | 
 ## IDE tools via MCP
 
 The engine cannot see IDE diagnostics or the sidebar's persistent terminals, so Loophole runs a
-small JSON-RPC-over-HTTP MCP server in the renderer and registers it as a `remote` transport:
+small JSON-RPC-over-HTTP MCP server and registers it as a `remote` transport:
 
 ```ts
 { name: 'loophole', config: { type: 'remote', url, headers: { authorization: 'Bearer <token>' } } }
@@ -197,6 +197,36 @@ server binds `127.0.0.1:0` with a random bearer token.
 
 Tools exposed: `read_diagnostics` (replaces the legacy `read_lint_errors`),
 `list_terminals`, `run_in_terminal`, `read_terminal`, `kill_terminal`.
+
+### The listener MUST be in electron-main, not browser/
+
+An earlier version ran this server from `browser/kiloIdeToolsService.ts` and booted to a black
+screen. The trap is that **the build gives no warning**:
+
+- The workbench bundle is built with `platform: 'neutral'` + `packages: 'external'`
+  (`build/next/index.ts:846-849`), so `import ... from 'http'` is left as a **bare specifier**
+  in the ESM output rather than bundled or shimmed.
+- `scripts/check-bare-imports.js` in loophole-builder resolves those specifiers against **Node**,
+  where `http` and `crypto` are real builtins. It therefore reports "101 specifiers, all
+  resolvable" and passes.
+- At runtime the renderer loads that ESM with `import()`. Its import map only covers npm
+  packages, not Node builtins, so the import rejects and the workbench never finishes loading.
+
+So the typechecker passing (`build/checker/tsconfig.browser.json` sets `types: []`, which does
+*not* stop `import 'http'`) and the bare-import check passing both fail to catch this.
+
+Consequences for how this is split:
+
+- `electron-main/kiloIdeToolsServer.ts` owns the socket, the bearer token and the MCP protocol.
+  Node builtins are legitimate there.
+- `browser/kiloIdeToolsService.ts` implements the tools only (`IMarkerService` and
+  `ITerminalToolService` exist solely in the renderer) and registers a channel via
+  `IMainProcessService.registerChannel`, which is how main calls *into* a renderer.
+- `common/kiloIdeToolsProtocol.ts` holds the tool list and `handleMcpRequest`, so the protocol is
+  unit-testable with no socket and no Electron.
+
+Same rule applies to `process.platform` in `browser/` - use `isWindows` from
+`base/common/platform.js` instead.
 
 ## Rules
 
