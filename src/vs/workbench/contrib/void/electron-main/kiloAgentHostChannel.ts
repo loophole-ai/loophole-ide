@@ -274,7 +274,13 @@ export class KiloAgentHostChannel implements IServerChannel, IDisposable {
 		const port = await new Promise<number>((resolve, reject) => {
 			let settled = false;
 			const done = (fn: () => void) => { if (settled) return; settled = true; clearTimeout(timer); fn(); };
-			const timer = setTimeout(() => done(() => { this.killTree(proc); reject(new Error('Timed out waiting for the agent engine to start')); }), STARTUP_TIMEOUT_MS);
+			const timer = setTimeout(() => done(() => {
+				// Log what we actually received. Without this a startup failure is invisible:
+				// the engine may be working perfectly and simply not printing the line we expect.
+				this.opts.log('error', `[kilo-agent] startup timed out after ${STARTUP_TIMEOUT_MS}ms. stdout seen: ${JSON.stringify(buf.slice(-500))}`);
+				this.killTree(proc);
+				reject(new Error('Timed out waiting for the agent engine to start'));
+			}), STARTUP_TIMEOUT_MS);
 
 			let buf = '';
 			proc.stdout?.on('data', (chunk: Buffer) => {
