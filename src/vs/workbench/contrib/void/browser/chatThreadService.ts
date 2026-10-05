@@ -844,7 +844,13 @@ We only need to do it for files that were edited since `from`, ie files between 
 
 		this._setThreadState(threadId, { currCheckpointIdx: null }) // no longer at a checkpoint because started streaming
 
-		void this._runEngineTurn({ threadId, userMessageContent })
+		// Fire-and-forget on purpose: the turn streams into the sink as it progresses, so awaiting it
+		// would block sending the message. _runEngineTurn reports failures through stream state -
+		// this catch is only the backstop for the case where that reporting path itself throws,
+		// which would otherwise be an unhandled rejection with nothing shown in the UI.
+		this._runEngineTurn({ threadId, userMessageContent }).catch(err => {
+			console.error('[kilo-agent] the engine turn failed before it could report:', err);
+		})
 
 
 		// scroll to bottom
@@ -936,8 +942,10 @@ We only need to do it for files that were edited since `from`, ie files between 
 		try {
 			await this._kiloAgentService.ensureStarted()
 			// Make sure the engine has the user's provider keys and indexing preferences before
-			// it tries to answer. Failures here are not fatal - the engine may already be usable.
-			void this._kiloAgentConfigSync.sync()
+			// it tries to answer. Failures here are not fatal - the engine may already be usable -
+			// so this must not be able to reject the turn. sync() already catches and logs its
+			// own errors; the extra catch guards against anything thrown before it gets that far.
+			await this._kiloAgentConfigSync.sync().catch(() => { })
 			const sessionID = await this._ensureEngineSession(threadId, directory)
 			const system = this._engineSystemPrompt()
 			const { modelSelection } = this._currentModelSelectionProps()

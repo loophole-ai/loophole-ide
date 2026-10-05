@@ -69,6 +69,10 @@ class KiloAgentConfigSync extends Disposable implements IKiloAgentConfigSync {
 		const state = this.settingsService.state;
 		let result: KiloProviderSyncResult = { providers: [] };
 		try {
+			// The settings pane fires onDidChangeState while the window is still coming up, well
+			// before any chat turn. Without this the first sync hits a stopped engine and throws
+			// "Agent engine is not running", which surfaced as a spurious warning in the log.
+			await this.agentService.ensureStarted();
 			result = await this.syncProviders(state);
 			await this.syncIndexing(state);
 		} catch (err) {
