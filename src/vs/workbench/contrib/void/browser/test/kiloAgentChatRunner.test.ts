@@ -133,8 +133,9 @@ suite('KiloAgentChatRunner', () => {
 
 		test('always sends an editor context', async () => {
 			await startTurn();
-			assert.ok(sent[0].editorContext);
-			assert.strictEqual(sent[0].editorContext.directory, '/w');
+			const ctx = sent[0].editorContext;
+			assert.ok(ctx, 'every turn must carry an editor context');
+			assert.strictEqual(ctx!.directory, '/w');
 		});
 
 		test('remembers the session for the thread', async () => {

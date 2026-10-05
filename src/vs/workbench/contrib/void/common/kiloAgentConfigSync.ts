@@ -38,7 +38,7 @@ export const IKiloAgentConfigSync = createDecorator<IKiloAgentConfigSync>('KiloA
 
 const EMPTY: KiloProviderSyncResult = { providers: [] };
 
-class KiloAgentConfigSync extends Disposable implements IKiloAgentConfigSync {
+export class KiloAgentConfigSync extends Disposable implements IKiloAgentConfigSync {
 	_serviceBrand: undefined;
 
 	private readonly disposables = this._register(new DisposableStore());

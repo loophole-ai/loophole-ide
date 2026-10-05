@@ -102,7 +102,7 @@ export interface IKiloAgentService {
 
 export const IKiloAgentService = createDecorator<IKiloAgentService>('KiloAgentService');
 
-class KiloAgentService extends Disposable implements IKiloAgentService {
+export class KiloAgentService extends Disposable implements IKiloAgentService {
 	_serviceBrand: undefined;
 
 	private readonly channel: IChannel;

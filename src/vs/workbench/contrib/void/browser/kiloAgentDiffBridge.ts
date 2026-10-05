@@ -48,7 +48,7 @@ export interface IKiloAgentDiffBridge {
 
 export const IKiloAgentDiffBridge = createDecorator<IKiloAgentDiffBridge>('KiloAgentDiffBridge');
 
-class KiloAgentDiffBridge extends Disposable implements IKiloAgentDiffBridge {
+export class KiloAgentDiffBridge extends Disposable implements IKiloAgentDiffBridge {
 	declare readonly _serviceBrand: undefined;
 
 	constructor(
