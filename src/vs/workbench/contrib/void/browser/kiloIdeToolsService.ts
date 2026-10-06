@@ -86,9 +86,17 @@ class KiloIdeToolsService extends Disposable implements IKiloIdeToolsService {
 		this._register(toDisposable(() => this.agentService.stopIdeToolsServer()));
 	}
 
+	private registered = false;
+
 	async ensureRegistered(): Promise<void> {
+		// Registering re-POSTs /mcp, and the engine treats every POST as a fresh server config.
+		// Doing that on each turn made it retry a broken connection over and over, which is both
+		// slow and noisy. The engine keeps the registration for the process lifetime, so once is
+		// enough; a restart gets a fresh channel call because the main process forgets too.
+		if (this.registered) return;
 		const folders = (this.workspaceContextService.getWorkspace().folders ?? []).map(f => f.uri.fsPath);
 		await this.agentService.startIdeToolsServer(folders);
+		this.registered = true;
 	}
 
 	async stop(): Promise<void> {

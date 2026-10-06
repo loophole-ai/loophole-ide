@@ -119,6 +119,12 @@ export function projectEnginePart(projection: EngineProjection, part: EnginePart
 			const id: string = part.callID ?? partID;
 			const status: string = part.state?.status ?? 'pending';
 
+			// The todowrite tool returns its list as raw JSON (packages/opencode/src/tool/todo.ts
+			// sets `output: JSON.stringify(params.todos)`), which would dump a JSON blob into the
+			// chat. The todo.updated event already renders the same list as readable checkboxes,
+			// so the tool itself is noise.
+			if (name === 'todowrite') return { kind: 'ignored' };
+
 			if (status === 'pending' || status === 'running') {
 				// The engine re-sends the part on every tick; only announce the start once.
 				if (projection.startedTools.has(partID)) return { kind: 'ignored' };

@@ -125,7 +125,7 @@ class KiloAgentChatRunner extends Disposable implements IKiloAgentChatRunner {
 		this.sessions.set(threadId, sessionID);
 
 		// The engine cannot see IDE diagnostics or the sidebar's terminals until it knows about
-		// our local MCP server, so make sure that is wired up before the first prompt.
+		// our local MCP server. Idempotent, so this is cheap to call every turn.
 		try {
 			await this.ideToolsService.ensureRegistered();
 		} catch (err) {
