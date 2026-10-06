@@ -221,7 +221,14 @@ class KiloAgentChatRunner extends Disposable implements IKiloAgentChatRunner {
 				this.onSessionError(ev.properties);
 				return;
 			case 'session.idle':
+				// Deprecated in the engine's schema but kept for older builds.
 				this.onIdle(ev.properties);
+				return;
+			case 'session.status':
+				// The current event. Idle is `{ sessionID, status: { type: 'idle' } }` - a nested
+				// shape, not the flat `{ sessionID }` of the deprecated session.idle. Listening
+				// only for session.idle meant the turn never ended and the UI stayed "running".
+				if (ev.properties?.status?.type === 'idle') this.onIdle(ev.properties);
 				return;
 			default:
 				return; // session.diff, file.edited, indexing.*, etc. are handled elsewhere or ignored

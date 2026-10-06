@@ -224,6 +224,35 @@ suite('KiloAgentChatRunner', () => {
 
 	suite('ending a turn', () => {
 
+		test('finishes on session.status idle, the shape the engine actually sends', async () => {
+			// session.idle is deprecated in the engine schema. The live event is
+			// `session.status` with a nested `{ type: 'idle' }`; listening only for the old one
+			// left the UI stuck on "running" forever.
+			await startTurn();
+			emit('session.status', { sessionID: 'ses_1', status: { type: 'idle' } });
+			assert.strictEqual(sink.finished.length, 1);
+			assert.deepStrictEqual(sink.finished[0], {});
+		});
+
+		test('ignores a non-idle session.status', async () => {
+			await startTurn();
+			emit('session.status', { sessionID: 'ses_1', status: { type: 'busy' } });
+			assert.strictEqual(sink.finished.length, 0, 'only idle ends a turn');
+		});
+
+		test('ignores a retry status', async () => {
+			await startTurn();
+			emit('session.status', { sessionID: 'ses_1', status: { type: 'retry', attempt: 1, message: 'rate limited' } });
+			assert.strictEqual(sink.finished.length, 0);
+		});
+
+		test('finishes only once even if idle repeats', async () => {
+			await startTurn();
+			emit('session.status', { sessionID: 'ses_1', status: { type: 'idle' } });
+			emit('session.status', { sessionID: 'ses_1', status: { type: 'idle' } });
+			assert.strictEqual(sink.finished.length, 1);
+		});
+
 		test('finishes when the session goes idle', async () => {
 			await startTurn();
 			emit('session.idle', { sessionID: 'ses_1' });
