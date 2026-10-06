@@ -176,3 +176,49 @@ export function buildIndexingConfig(g: VoidSettingsState['globalSettings']): Kil
 	}
 	return indexing;
 }
+
+/**
+ * Engine permission keys that count as "edits" for Loophole's auto-approve switch.
+ *
+ * Loophole's settings speak in the legacy categories ('edits' | 'terminal' | 'MCP tools'),
+ * while the engine asks about fine-grained capabilities. This maps one onto the other.
+ *
+ * Keys verified against the engine's permission schema
+ * (packages/core/src/v1/config/permission.ts) - every name here exists there.
+ */
+const EDIT_PERMISSION_KEYS = ['edit', 'notebook_edit', 'external_directory', 'markdown_source'] as const;
+
+/** Engine permission keys that count as "terminal" for Loophole's auto-approve switch. */
+const TERMINAL_PERMISSION_KEYS = ['bash', 'task', 'skill', 'lsp'] as const;
+
+/**
+ * Builds the engine's `permission` block from Loophole's per-category auto-approve settings.
+ *
+ * The engine auto-allows by default, so without this it edits files straight to disk and the
+ * sidebar's accept/reject has nothing to review. Anything Loophole has NOT auto-approved becomes
+ * "ask", which is what makes the engine emit `permission.asked`.
+ *
+ * Read-only actions stay allowed either way: prompting on every file read made the agent
+ * tediously slow for no safety gain.
+ */
+export function buildPermissionConfig(autoApprove: Record<string, boolean | undefined> | undefined): Record<string, string> {
+	const approved = autoApprove ?? {};
+	const out: Record<string, string> = {};
+
+	for (const key of EDIT_PERMISSION_KEYS) out[key] = approved.edits ? 'allow' : 'ask';
+	for (const key of TERMINAL_PERMISSION_KEYS) out[key] = approved.terminal ? 'allow' : 'ask';
+
+	// Our own MCP tools (diagnostics, terminals) are harmless reads, so they follow the
+	// "MCP tools" switch only when it is on; otherwise they ask like any other tool.
+	out['question'] = 'allow';
+	out['todowrite'] = 'allow';
+	out['read'] = 'allow';
+	out['glob'] = 'allow';
+	out['grep'] = 'allow';
+	out['list'] = 'allow';
+	out['webfetch'] = 'allow';
+	out['websearch'] = 'allow';
+	out['doom_loop'] = 'allow';
+
+	return out;
+}

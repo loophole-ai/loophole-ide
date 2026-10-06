@@ -22,6 +22,7 @@ suite('KiloAgentConfigSync', () => {
 	let sync: IKiloAgentConfigSync;
 
 	let calls: string[];
+	let configs: any[];
 	let warnings: string[];
 	let ensureStartedCalls: number;
 	let connected: string[];
@@ -43,6 +44,7 @@ suite('KiloAgentConfigSync', () => {
 
 	setup(() => {
 		calls = [];
+		configs = [];
 		warnings = [];
 		ensureStartedCalls = 0;
 		connected = [];
@@ -68,7 +70,7 @@ suite('KiloAgentConfigSync', () => {
 				calls.push(`setAuth:${providerID}`);
 				if (setAuthThrows.has(providerID)) throw new Error(`rejected ${providerID}`);
 			},
-			patchConfig: async () => { calls.push('patchConfig'); if (patchConfigThrows) throw new Error('no config route'); },
+			patchConfig: async (c: any) => { configs.push(c); calls.push('patchConfig'); if (patchConfigThrows) throw new Error('no config route'); },
 			getProviderStatus: async () => {
 				calls.push('getProviderStatus');
 				if (statusThrows) throw new Error('status unavailable');
@@ -129,6 +131,30 @@ suite('KiloAgentConfigSync', () => {
 			await sync.sync();
 			assert.ok(calls.includes('setAuth:mistral'), 'a running engine gets the keys');
 			assert.strictEqual(ensureStartedCalls, 0, 'still must not start it');
+		});
+	});
+
+	suite('permissions', () => {
+
+		test('pushes an ask-before-editing rule to the engine', async () => {
+			engineState = { status: 'running' };
+			useState(buildState());
+			await sync.sync();
+			const patches = configs.filter(c => c.permission);
+			assert.strictEqual(patches.length, 1, 'permissions must be pushed exactly once');
+			assert.strictEqual(patches[0].permission.edit, 'ask');
+			assert.strictEqual(patches[0].permission.bash, 'ask');
+		});
+
+		test('reflects the auto-approve edits switch', async () => {
+			engineState = { status: 'running' };
+			const state = buildState();
+			state.globalSettings.autoApprove = { edits: true };
+			useState(state);
+			await sync.sync();
+			const patch = configs.find(c => c.permission);
+			assert.strictEqual(patch?.permission.edit, 'allow');
+			assert.strictEqual(patch?.permission.bash, 'ask', 'terminal must stay gated');
 		});
 	});
 

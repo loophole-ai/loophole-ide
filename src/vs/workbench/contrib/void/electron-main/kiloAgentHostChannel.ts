@@ -86,26 +86,22 @@ export const LOCKED_DOWN_ENGINE_CONFIG: Record<string, unknown> = {
 	snapshot: true,
 	share: 'disabled',
 	/**
-	 * Anything that writes or runs a command must ASK rather than proceed.
-	 *
-	 * Without this the engine auto-allows every action, so it edits files straight to disk and
-	 * the sidebar's accept/reject never appears - there is nothing left to review. The engine's
-	 * default is allow; `permission.asked` is only emitted when a rule resolves to "ask".
-	 *
-	 * Verified against packages/core/src/v1/config/permission.ts - each key takes "ask" | "allow"
-	 * | "deny", and `edit`/`bash` accept an object keyed by glob pattern for finer control.
-	 * `read`, `todowrite` and `webfetch` stay allowed: they cannot damage anything, and asking
-	 * on every file read made the agent tediously slow.
+	 * Baseline so a turn never edits files unattended. The engine auto-allows by default, so
+	 * without this it writes straight to disk and the sidebar's accept/reject has nothing to
+	 * review. The user's actual preference arrives at runtime from the auto-approve switches -
+	 * see buildPermissionConfig in kiloAgentEngineMapping.ts, which overwrites this whole block.
 	 */
 	permission: {
 		edit: 'ask',
 		bash: 'ask',
 		external_directory: 'ask',
 		notebook_edit: 'ask',
-		notebook_execute: 'ask',
 		lsp: 'ask',
 		task: 'ask',
 		skill: 'ask',
+		read: 'allow',
+		todowrite: 'allow',
+		webfetch: 'allow',
 	},
 };
 

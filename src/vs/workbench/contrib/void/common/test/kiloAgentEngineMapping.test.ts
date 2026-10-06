@@ -6,6 +6,7 @@
 import assert from 'assert';
 import {
 	buildIndexingConfig,
+	buildPermissionConfig,
 	classifyConnection,
 	collectEngineCredentials,
 	ENGINE_AUTH_MAPPING,
@@ -233,6 +234,49 @@ suite('Kilo agent config sync', () => {
 			for (const id of KNOWN_CONNECTED_PROVIDER_IDS) {
 				assert.deepStrictEqual(classifyConnection(id, status([id])), { ok: true }, id);
 			}
+		});
+	});
+
+	suite('buildPermissionConfig', () => {
+
+		test('asks before editing by default', () => {
+			// The whole point: the engine auto-allows unless told otherwise, so a turn would edit
+			// files with nothing to accept or reject.
+			const p = buildPermissionConfig(undefined);
+			assert.strictEqual(p.edit, 'ask');
+			assert.strictEqual(p.bash, 'ask');
+			assert.strictEqual(p.external_directory, 'ask');
+		});
+
+		test('honours the auto-approve edits switch', () => {
+			const p = buildPermissionConfig({ edits: true });
+			assert.strictEqual(p.edit, 'allow');
+			assert.strictEqual(p.notebook_edit, 'allow');
+			assert.strictEqual(p.external_directory, 'allow');
+		});
+
+		test('honours the auto-approve terminal switch', () => {
+			const p = buildPermissionConfig({ terminal: true });
+			assert.strictEqual(p.bash, 'allow');
+			assert.strictEqual(p.task, 'allow');
+		});
+
+		test('the two switches are independent', () => {
+			const p = buildPermissionConfig({ edits: true, terminal: false });
+			assert.strictEqual(p.edit, 'allow');
+			assert.strictEqual(p.bash, 'ask', 'approving edits must not approve shell commands');
+		});
+
+		test('leaves read-only actions allowed', () => {
+			// Asking on every file read made the agent tediously slow for no safety gain.
+			const p = buildPermissionConfig(undefined);
+			for (const key of ['read', 'glob', 'grep', 'list', 'webfetch', 'todowrite']) {
+				assert.strictEqual(p[key], 'allow', `${key} should not prompt`);
+			}
+		});
+
+		test('tolerates an empty or absent settings object', () => {
+			assert.deepStrictEqual(buildPermissionConfig({}), buildPermissionConfig(undefined));
 		});
 	});
 

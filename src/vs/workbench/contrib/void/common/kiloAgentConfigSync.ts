@@ -20,7 +20,7 @@ import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.j
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
-import { buildIndexingConfig, classifyConnection, collectEngineCredentials, providerBaseUrlConfig } from './kiloAgentEngineMapping.js';
+import { buildIndexingConfig, buildPermissionConfig, classifyConnection, collectEngineCredentials, providerBaseUrlConfig } from './kiloAgentEngineMapping.js';
 import { IKiloAgentService } from './kiloAgentService.js';
 import { KiloProviderSyncResult } from './kiloAgentTypes.js';
 import { IVoidSettingsService, VoidSettingsState } from './voidSettingsService.js';
@@ -82,6 +82,7 @@ export class KiloAgentConfigSync extends Disposable implements IKiloAgentConfigS
 		try {
 			result = await this.syncProviders(state);
 			await this.syncIndexing(state);
+			await this.syncPermissions(state);
 		} catch (err) {
 			this.logService.warn(`[kilo-agent] could not sync settings to the engine: ${String(err?.message ?? err)}`);
 		}
@@ -144,6 +145,19 @@ export class KiloAgentConfigSync extends Disposable implements IKiloAgentConfigS
 	 */
 	private async syncIndexing(state: VoidSettingsState): Promise<void> {
 		await this.agentService.configureIndexing(undefined, buildIndexingConfig(state.globalSettings));
+	}
+
+	/**
+	 * Pushes the auto-approve switches through to the engine.
+	 *
+	 * The engine auto-allows by default, so unless it is told otherwise it edits files directly
+	 * and the sidebar's accept/reject never appears. Ticking "Auto-approve edits" in settings has
+	 * to reach the engine or the switch does nothing.
+	 */
+	private async syncPermissions(state: VoidSettingsState): Promise<void> {
+		await this.agentService.patchConfig({
+			permission: buildPermissionConfig(state.globalSettings.autoApprove),
+		});
 	}
 }
 
