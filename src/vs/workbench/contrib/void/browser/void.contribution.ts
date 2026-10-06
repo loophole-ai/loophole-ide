@@ -43,6 +43,8 @@ import './chatThreadService.js'
 // Agent engine (Kilo CLI in serve mode): diff bridge + engine-backed chat turns
 import './kiloAgentDiffBridge.js'
 import './kiloAgentChatRunner.js'
+// warm the engine up when the window is restored, so the first prompt is not slow
+import './kiloAgentStartup.js'
 import './kiloIdeToolsService.js'
 
 // local-only per-day activity counts (empty-editor heatmap)
