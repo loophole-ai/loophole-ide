@@ -54,7 +54,7 @@ suite('KiloAgentConfigSync', () => {
 		settingsChanged = disposables.add(new Emitter<void>());
 		apiKeys = {};
 
-		instantiationService = disposables.add(new TestInstantiationService(workbenchInstantiationService));
+		instantiationService = workbenchInstantiationService(undefined, disposables);
 		instantiationService.stub(ILogService, {
 			debug: () => { }, info: () => { },
 			warn: (m: string) => { warnings.push(m); },
@@ -82,7 +82,9 @@ suite('KiloAgentConfigSync', () => {
 			onDidChangeState: settingsChanged.event,
 		} as unknown as IVoidSettingsService);
 
-		sync = disposables.add(instantiationService.createInstance(KiloAgentConfigSync) as unknown as IKiloAgentConfigSync);
+		const instance = instantiationService.createInstance(KiloAgentConfigSync);
+		disposables.add(instance);
+		sync = instance;
 	});
 
 	/**

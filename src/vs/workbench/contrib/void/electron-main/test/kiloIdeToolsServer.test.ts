@@ -157,7 +157,7 @@ suite('KiloIdeToolsServer', () => {
 		test('handles a large body without truncating arguments', async () => {
 			const big = 'x'.repeat(200_000);
 			await rpc('tools/call', { name: 'loophole_read_terminal', arguments: { terminalId: big } });
-			assert.strictEqual(dispatched[0].args.terminalId.length, 200_000);
+			assert.strictEqual((dispatched[0].args.terminalId as string).length, 200_000);
 		});
 	});
 

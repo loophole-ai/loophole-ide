@@ -29,7 +29,7 @@ suite('KiloAgentService', () => {
 		// getState must answer with a real state object; ensureStarted assigns it straight to _state.
 		callImpl = async (command) => command === 'getState' ? { status: 'running' } : undefined;
 
-		instantiationService = disposables.add(new TestInstantiationService(workbenchInstantiationService));
+		instantiationService = workbenchInstantiationService(undefined, disposables);
 		instantiationService.stub(IMainProcessService, {
 			_serviceBrand: undefined,
 			getChannel: (name: string) => {
@@ -48,7 +48,9 @@ suite('KiloAgentService', () => {
 			},
 		} as unknown as IMainProcessService);
 
-		service = disposables.add(instantiationService.createInstance(KiloAgentService) as unknown as IKiloAgentService);
+		const instance = instantiationService.createInstance(KiloAgentService);
+		disposables.add(instance);
+		service = instance;
 	});
 
 	suite('ensureStarted', () => {

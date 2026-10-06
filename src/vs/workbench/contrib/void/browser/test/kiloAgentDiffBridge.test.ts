@@ -61,7 +61,7 @@ suite('KiloAgentDiffBridge', () => {
 		warnings = [];
 		showDiffs = true;
 
-		instantiationService = disposables.add(new TestInstantiationService(workbenchInstantiationService));
+		instantiationService = workbenchInstantiationService(undefined, disposables);
 		instantiationService.stub(ILogService, { warn: (m: string) => { warnings.push(m); }, info: () => { }, error: () => { }, debug: () => { }, trace: () => { } } as unknown as ILogService);
 		instantiationService.stub(IVoidSettingsService, { state: { globalSettings: { get engineShowDiffs() { return showDiffs; } } } } as unknown as IVoidSettingsService);
 		instantiationService.stub(IVoidModelService, {
@@ -74,7 +74,9 @@ suite('KiloAgentDiffBridge', () => {
 			findEditors: (uri: URI) => (dirtyUris.has(uri.fsPath) ? [{ editor: { isDirty: () => true } }] : []),
 		} as unknown as IEditorService);
 
-		bridge = disposables.add(instantiationService.createInstance(KiloAgentDiffBridge) as unknown as IKiloAgentDiffBridge);
+		const instance = instantiationService.createInstance(KiloAgentDiffBridge);
+		disposables.add(instance);
+		bridge = instance;
 	});
 
 	suite('staging', () => {
