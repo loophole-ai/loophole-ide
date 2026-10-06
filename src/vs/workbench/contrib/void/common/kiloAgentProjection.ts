@@ -51,10 +51,20 @@ export type EngineProjection = {
 	reasoningByMessage: Map<string, string>;
 	/** part ids we have already reported as running, so repeated updates do not re-trigger the UI */
 	startedTools: Set<string>;
+	/**
+	 * Message ids the engine has told us belong to the user. Their parts are dropped, because
+	 * Loophole renders the user's own message the moment it is sent.
+	 */
+	userMessageIDs: Set<string>;
 };
 
 export function newProjection(): EngineProjection {
-	return { textByMessage: new Map(), reasoningByMessage: new Map(), startedTools: new Set() };
+	return {
+		textByMessage: new Map(),
+		reasoningByMessage: new Map(),
+		startedTools: new Set(),
+		userMessageIDs: new Set(),
+	};
 }
 
 export type ProjectionResult =
@@ -78,6 +88,13 @@ export function projectEnginePart(projection: EngineProjection, part: EnginePart
 	// Engine-generated placeholder ("⠋ Initializing snapshot…"). Rendering it would put a spinner
 	// in the chat as if it were the model's answer. Dropped for both updates and deltas.
 	if (part.synthetic) return { kind: 'ignored' };
+
+	// The engine echoes a `message.part.updated` for the user's OWN message as well as the
+	// assistant's, and a part carries no role - the role lives on the parent message. We
+	// already render the user's message locally when they send it, so projecting theirs would
+	// show their text twice. `userMessageIDs` is populated from `message.updated`, which is the
+	// only event that names a message and its role.
+	if (part.messageID && projection.userMessageIDs.has(part.messageID)) return { kind: 'ignored' };
 
 	const messageID = part.messageID ?? '';
 	const partID = part.id ?? '';

@@ -201,6 +201,9 @@ class KiloAgentChatRunner extends Disposable implements IKiloAgentChatRunner {
 		if (ev.type === 'server.heartbeat' || ev.directory === 'global') return;
 
 		switch (ev.type) {
+			case 'message.updated':
+				this.onMessageUpdated(ev.properties);
+				return;
 			case 'message.part.updated':
 			case 'message.part.delta':
 				this.onPart(ev.properties, ev.type === 'message.part.delta');
@@ -230,6 +233,25 @@ class KiloAgentChatRunner extends Disposable implements IKiloAgentChatRunner {
 		if (!sessionID) return undefined;
 		for (const turn of this.turns.values()) if (turn.sessionID === sessionID) return turn;
 		return undefined;
+	}
+
+	/**
+	 * Records which messages belong to the user.
+	 *
+	 * A part carries no role of its own (see packages/schema/src/v1/session.ts - `partBase` is
+	 * just id/sessionID/messageID), so this is the only place the role is visible. Without it we
+	 * cannot tell an assistant text part from the echo of the user's own, and their message
+	 * renders twice.
+	 *
+	 * Applies to every turn in the session, not just the current one, because the engine replays
+	 * history when a turn starts.
+	 */
+	private onMessageUpdated(props: Record<string, any>): void {
+		const info = props.info ?? props.message ?? props;
+		const id: string | undefined = info?.id;
+		const role: string | undefined = info?.role;
+		if (!id || role !== 'user') return;
+		for (const turn of this.turns.values()) turn.projection.userMessageIDs.add(id);
 	}
 
 	private onPart(props: Record<string, any>, isDelta: boolean): void {

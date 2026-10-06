@@ -160,6 +160,25 @@ suite('KiloAgentChatRunner', () => {
 			assert.strictEqual(sink.messages[0].displayContent, 'Hello');
 		});
 
+		test('does not echo the user\'s own message back as an assistant reply', async () => {
+			// Regression: the engine emits message.part.updated for the user's message too, and a
+			// part has no role, so their text used to render twice.
+			await startTurn();
+			emit('message.updated', { info: { id: 'msg_u', role: 'user', sessionID: 'ses_1' } });
+			emit('message.part.updated', { part: { type: 'text', text: 'hi', messageID: 'msg_u', sessionID: 'ses_1' } });
+			assert.strictEqual(sink.messages.length, 0, 'the user echo must be dropped');
+		});
+
+		test('still renders the assistant reply after a user message', async () => {
+			await startTurn();
+			emit('message.updated', { info: { id: 'msg_u', role: 'user', sessionID: 'ses_1' } });
+			emit('message.updated', { info: { id: 'msg_a', role: 'assistant', sessionID: 'ses_1' } });
+			emit('message.part.updated', { part: { type: 'text', text: 'hi', messageID: 'msg_u', sessionID: 'ses_1' } });
+			emit('message.part.updated', { part: { type: 'text', text: 'Hello!', messageID: 'msg_a', sessionID: 'ses_1' } });
+			assert.strictEqual(sink.messages.length, 1);
+			assert.strictEqual(sink.messages[0].displayContent, 'Hello!');
+		});
+
 		test('ignores parts belonging to another session', async () => {
 			await startTurn();
 			emit('message.part.updated', { part: { type: 'text', text: 'other', messageID: 'm', sessionID: 'ses_other' } });

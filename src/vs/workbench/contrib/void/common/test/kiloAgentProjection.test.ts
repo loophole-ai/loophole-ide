@@ -213,6 +213,46 @@ suite('Kilo agent projection', () => {
 		}
 	});
 
+	suite('user message echo', () => {
+
+		// A part has no role of its own, so the engine's echo of the user's own message used to
+		// project as an assistant message and their text appeared twice in the chat.
+		test('drops a text part belonging to a known user message', () => {
+			const p = newProjection();
+			p.userMessageIDs.add('msg_user');
+			const result = projectEnginePart(p, { type: 'text', messageID: 'msg_user', text: 'hi' }, false);
+			assert.strictEqual(result.kind, 'ignored');
+		});
+
+		test('drops a delta for a user message too', () => {
+			const p = newProjection();
+			p.userMessageIDs.add('msg_user');
+			assert.strictEqual(projectEnginePart(p, { type: 'text', messageID: 'msg_user', delta: 'hi' }, true).kind, 'ignored');
+		});
+
+		test('still projects the assistant reply', () => {
+			const p = newProjection();
+			p.userMessageIDs.add('msg_user');
+			const msg = assistantOf(projectEnginePart(p, { type: 'text', messageID: 'msg_asst', text: 'hello there' }, false));
+			assert.strictEqual(msg.displayContent, 'hello there');
+		});
+
+		test('projects a text part when no roles are known yet', () => {
+			// Before message.updated arrives we cannot know, so we must not silently swallow
+			// the assistant's answer.
+			const p = newProjection();
+			const msg = assistantOf(projectEnginePart(p, { type: 'text', messageID: 'msg_1', text: 'x' }, false));
+			assert.strictEqual(msg.displayContent, 'x');
+		});
+
+		test('does not accumulate a dropped user part into assistant text', () => {
+			const p = newProjection();
+			p.userMessageIDs.add('msg_user');
+			projectEnginePart(p, { type: 'text', messageID: 'msg_user', text: 'hi' }, false);
+			assert.strictEqual(p.textByMessage.has('msg_user'), false, 'user text must not pollute the assistant buffer');
+		});
+	});
+
 	suite('synthetic progress parts', () => {
 
 		// Caught by the live smoke run: the engine injects "⠋ Initializing snapshot…" as a
