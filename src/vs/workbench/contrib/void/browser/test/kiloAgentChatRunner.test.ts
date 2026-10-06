@@ -10,6 +10,7 @@ import { TestInstantiationService } from '../../../../../platform/instantiation/
 import { workbenchInstantiationService } from '../../../../test/browser/workbenchTestServices.js';
 import { KiloAgentEvent, KiloAgentPromptParams } from '../../common/kiloAgentTypes.js';
 import { IKiloAgentService } from '../../common/kiloAgentService.js';
+import { IVoidSettingsService } from '../../common/voidSettingsService.js';
 import { IEngineChatSink, IKiloAgentChatRunner, KiloAgentChatRunner } from '../kiloAgentChatRunner.js';
 import { EngineEditOutcome, IKiloAgentDiffBridge } from '../kiloAgentDiffBridge.js';
 import { IKiloIdeToolsService } from '../kiloIdeToolsService.js';
@@ -84,6 +85,13 @@ suite('KiloAgentChatRunner', () => {
 			ensureRegistered: async () => { },
 			stop: async () => { },
 		} as unknown as IKiloIdeToolsService);
+
+		// Auto-approve reads these switches off every permission.asked event.
+		instantiationService.stub(IVoidSettingsService, {
+			_serviceBrand: undefined,
+			state: { globalSettings: { autoApprove: {} } },
+			onDidChangeState: Event.None,
+		} as unknown as IVoidSettingsService);
 
 		// createInstance returns the concrete class; keep the disposable so it is torn down with the
 // suite. No cast needed now that IKiloAgentChatRunner extends IDisposable.
@@ -317,6 +325,11 @@ suite('KiloAgentChatRunner', () => {
 
 	suite('permissions', () => {
 
+		/** Flips the settings switches the runner reads on every permission.asked. */
+		function setAutoApprove(autoApprove: Record<string, boolean>) {
+			(instantiationService.get(IVoidSettingsService) as any).state.globalSettings.autoApprove = autoApprove;
+		}
+
 		function askPermission() {
 			emit('permission.asked', {
 				id: 'per_1', sessionID: 'ses_1', permission: 'bash', patterns: ['rm -rf /'],
@@ -330,6 +343,32 @@ suite('KiloAgentChatRunner', () => {
 			const last = sink.messages.at(-1);
 			assert.strictEqual(last.type, 'tool_request');
 			assert.strictEqual(last.content, 'Allow bash?');
+		});
+
+		test('auto-approves by replying to the event when the switch is on', async () => {
+			setAutoApprove({ terminal: true });
+			await startTurn();
+			askPermission();
+			assert.deepStrictEqual(permissionReplies, [{ requestID: 'per_1', reply: 'once' }]);
+			assert.strictEqual(sink.messages.at(-1).type, undefined, 'no approval UI when auto-approved');
+		});
+
+		test('auto-approve edits does not approve a shell command', async () => {
+			setAutoApprove({ edits: true });
+			await startTurn();
+			askPermission();
+			assert.deepStrictEqual(permissionReplies, [], 'the switches are independent');
+			assert.strictEqual(sink.messages.at(-1).type, 'tool_request');
+		});
+
+		test('never auto-approves a sandbox escalation', async () => {
+			setAutoApprove({ edits: true, terminal: true });
+			await startTurn();
+			emit('permission.asked', {
+				id: 'per_esc', sessionID: 'ses_1', permission: 'bash', patterns: ['*'],
+				metadata: { sandboxEscalation: true },
+			});
+			assert.deepStrictEqual(permissionReplies, [], 'escalations must stay manual');
 		});
 
 		test('does not end the turn while an approval is outstanding', async () => {

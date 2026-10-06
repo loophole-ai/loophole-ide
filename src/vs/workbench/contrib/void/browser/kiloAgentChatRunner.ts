@@ -36,6 +36,7 @@ import {
 	projectTodos,
 } from '../common/kiloAgentProjection.js';
 import { IKiloAgentService } from '../common/kiloAgentService.js';
+import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { KiloAgentEditorContext, KiloAgentModelRef } from '../common/kiloAgentTypes.js';
 import { EngineEditOutcome, IKiloAgentDiffBridge } from './kiloAgentDiffBridge.js';
 import { IKiloIdeToolsService } from './kiloIdeToolsService.js';
@@ -108,6 +109,7 @@ class KiloAgentChatRunner extends Disposable implements IKiloAgentChatRunner {
 		@IKiloIdeToolsService private readonly ideToolsService: IKiloIdeToolsService,
 		@IModelService private readonly modelService: IModelService,
 		@IEditorService private readonly editorService: IEditorService,
+		@IVoidSettingsService private readonly settingsService: IVoidSettingsService,
 	) {
 		super();
 		this._register(this.agentService.onDidReceiveEvent(e => this.onEngineEvent(e)));
@@ -285,12 +287,33 @@ class KiloAgentChatRunner extends Disposable implements IKiloAgentChatRunner {
 		const turn = this.turnForSession(sessionID);
 		if (!turn || !requestID) return;
 
+		// Auto-approve by replying to the event, exactly as Kilo's own extension does
+		// (packages/kilo-vscode/src/commands/toggle-auto-approve.ts). Relying on engine config
+		// alone is not enough: a config that has not been re-read leaves the agent blocked
+		// forever, whereas replying here is immediate and per-request.
+		if (this.settingsService.state.globalSettings.autoApprove?.edits && !props.metadata?.['sandboxEscalation']) {
+			void this.replyPermission(requestID, turn.directory, 'once');
+			return;
+		}
+		if (this.settingsService.state.globalSettings.autoApprove?.terminal && props.permission === 'bash') {
+			void this.replyPermission(requestID, turn.directory, 'once');
+			return;
+		}
+
 		const callID: string = props.tool?.callID ?? requestID;
 		this.pendingPermission.set(callID, { requestID, directory: turn.directory });
 		turn.awaitingApproval.push(callID);
 
 		// Reuse the sidebar's existing approval affordance.
 		turn.sink.addMessage(projectPermissionRequest({ ...props, id: callID }));
+	}
+
+	private async replyPermission(requestID: string, directory: string, reply: 'once' | 'always' | 'reject'): Promise<void> {
+		try {
+			await this.agentService.replyPermission({ directory, requestID, reply });
+		} catch (err) {
+			this.logService.warn(`[kilo-agent] could not auto-approve ${requestID}: ${String(err?.message ?? err)}`);
+		}
 	}
 
 	private onPermissionReplied(props: Record<string, any>): void {

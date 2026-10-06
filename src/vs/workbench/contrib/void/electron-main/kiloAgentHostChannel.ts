@@ -609,11 +609,27 @@ export class KiloAgentHostChannel implements IServerChannel, IDisposable {
 
 		for (const directory of directories) {
 			try {
-				await this.addMcpServer({
+				// POST /mcp answers 200 with a per-server status array; it does NOT throw when the
+				// server fails to connect. Ignoring that response is why a broken IDE tools
+				// registration looked like it had worked. Kilo's own extension reads
+				// status[name].status and reports `failed` with its error - see
+				// packages/kilo-vscode/src/services/browser-automation/browser-automation-service.ts.
+				const statuses = await this.addMcpServer({
 					directory,
 					name: LOOPHOLE_MCP_SERVER_NAME,
 					config: { type: 'remote', url, headers: { authorization: `Bearer ${token}` }, enabled: true },
-				});
+				}) as Array<{ name?: string; status?: string; error?: string }> | undefined;
+
+				const ours = Array.isArray(statuses)
+					? statuses.find(s => s?.name === LOOPHOLE_MCP_SERVER_NAME)
+					: undefined;
+
+				if (ours?.status === 'connected') {
+					this.opts.log('info', `[kilo-agent] IDE tools MCP registered for ${directory}`);
+				} else {
+					const detail = ours?.error ? `: ${ours.error}` : '';
+					this.opts.log('warn', `[kilo-agent] IDE tools MCP did not connect for ${directory} (status=${ours?.status ?? 'unknown'})${detail}`);
+				}
 			} catch (err) {
 				this.opts.log('warn', `[kilo-agent] could not register the IDE tools server for ${directory}: ${String(err?.message ?? err)}`);
 			}
