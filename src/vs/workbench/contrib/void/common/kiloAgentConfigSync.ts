@@ -68,11 +68,18 @@ export class KiloAgentConfigSync extends Disposable implements IKiloAgentConfigS
 	private async doSync(): Promise<KiloProviderSyncResult> {
 		const state = this.settingsService.state;
 		let result: KiloProviderSyncResult = { providers: [] };
+
+		// Deliberately does NOT start the engine. Settings fire on every keystroke in the API
+		// key field, and a start attempt costs up to STARTUP_TIMEOUT_MS, so starting here meant
+		// dozens of overlapping spawns and a hung UI. The engine starts lazily on the first
+		// chat turn instead; until then there is simply nothing to push credentials to.
+		if (this.agentService.state.status !== 'running') {
+			this._lastResult = result;
+			this._onDidSync.fire(result);
+			return result;
+		}
+
 		try {
-			// The settings pane fires onDidChangeState while the window is still coming up, well
-			// before any chat turn. Without this the first sync hits a stopped engine and throws
-			// "Agent engine is not running", which surfaced as a spurious warning in the log.
-			await this.agentService.ensureStarted();
 			result = await this.syncProviders(state);
 			await this.syncIndexing(state);
 		} catch (err) {

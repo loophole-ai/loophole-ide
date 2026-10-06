@@ -65,6 +65,36 @@ suite('KiloAgentService', () => {
 			assert.deepStrictEqual(calls, [], 'must not spawn a second engine');
 		});
 
+		test('joins an in-flight start instead of spawning twice', async () => {
+			let release: () => void = () => { };
+			const gate = new Promise<void>(resolve => { release = resolve; });
+			callImpl = async (command) => {
+				if (command === 'start') { await gate; return undefined; }
+				return { status: 'running' };
+			};
+			const a = service.ensureStarted();
+			const b = service.ensureStarted();
+			release();
+			await Promise.all([a, b]);
+			assert.strictEqual(calls.filter(c => c.command === 'start').length, 1, 'one start only');
+		});
+
+		test('a start already under way is joined, not duplicated', async () => {
+			stateEmitter.fire({ status: 'starting' });
+			let release: () => void = () => { };
+			const gate = new Promise<void>(resolve => { release = resolve; });
+			callImpl = async (command) => {
+				if (command === 'start') { await gate; return undefined; }
+				return { status: 'running' };
+			};
+			const a = service.ensureStarted();
+			stateEmitter.fire({ status: 'starting' });
+			const b = service.ensureStarted();
+			release();
+			await Promise.all([a, b]);
+			assert.strictEqual(calls.filter(c => c.command === 'start').length, 1);
+		});
+
 		test('starts again after a failure state', async () => {
 			stateEmitter.fire({ status: 'error', message: 'boom' });
 			await service.ensureStarted();

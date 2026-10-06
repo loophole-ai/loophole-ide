@@ -940,6 +940,8 @@ We only need to do it for files that were edited since `from`, ie files between 
 		})
 
 		try {
+			// The one place the engine is started. Settings changes deliberately do not start it, so this
+			// is the engine's first launch for a fresh window - expect it to take a moment.
 			await this._kiloAgentService.ensureStarted()
 			// Make sure the engine has the user's provider keys and indexing preferences before
 			// it tries to answer. Failures here are not fatal - the engine may already be usable -

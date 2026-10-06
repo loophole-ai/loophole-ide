@@ -110,6 +110,8 @@ export class KiloAgentService extends Disposable implements IKiloAgentService {
 	private _state: KiloAgentHostState = { status: 'stopped' };
 	get state() { return this._state; }
 
+	private starting: Promise<void> | undefined;
+
 	private readonly _onDidChangeState = this._register(new Emitter<KiloAgentHostState>());
 	readonly onDidChangeState = this._onDidChangeState.event;
 
@@ -137,8 +139,21 @@ export class KiloAgentService extends Disposable implements IKiloAgentService {
 		return this.channel.call<T>(command, params);
 	}
 
-	async ensureStarted(): Promise<void> {
-		if (this._state.status === 'running') return;
+	/**
+	 * Starts the engine if it is not already up, and resolves once it is usable.
+	 *
+	 * Idempotent: concurrent callers share one in-flight start, and a start already under way
+	 * (status "starting") is joined rather than duplicated. Without this, a settings change and
+	 * a chat turn racing each other would both call 'start'.
+	 */
+	ensureStarted(): Promise<void> {
+		if (this._state.status === 'running') return Promise.resolve();
+		if (this.starting) return this.starting;
+		this.starting = this.doStart().finally(() => { this.starting = undefined; });
+		return this.starting;
+	}
+
+	private async doStart(): Promise<void> {
 		await this.call('start');
 		this._state = await this.call<KiloAgentHostState>('getState');
 	}

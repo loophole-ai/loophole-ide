@@ -31,6 +31,7 @@ suite('KiloAgentConfigSync', () => {
 	let statusThrows: boolean;
 	let settingsChanged: Emitter<void>;
 	let apiKeys: Record<string, string>;
+	let engineState: { status: 'stopped' | 'starting' | 'running' | 'error' };
 
 	function buildState() {
 		const providerSettings: Record<string, any> = {};
@@ -49,6 +50,7 @@ suite('KiloAgentConfigSync', () => {
 		setAuthThrows = new Set();
 		patchConfigThrows = false;
 		statusThrows = false;
+		engineState = { status: 'running' };
 		settingsChanged = disposables.add(new Emitter<void>());
 		apiKeys = {};
 
@@ -60,6 +62,7 @@ suite('KiloAgentConfigSync', () => {
 		} as unknown as ILogService);
 
 		instantiationService.stub(IKiloAgentService, {
+			state: engineState,
 			ensureStarted: async () => { ensureStartedCalls++; calls.push('ensureStarted'); },
 			setAuth: async ({ providerID }: { providerID: string }) => {
 				calls.push(`setAuth:${providerID}`);
@@ -92,27 +95,38 @@ suite('KiloAgentConfigSync', () => {
 
 	suite('engine startup', () => {
 
-		test('starts the engine before syncing', async () => {
+		test('never starts the engine: a settings change must not spawn it', async () => {
+			engineState = { status: 'stopped' };
 			useState(buildState());
 			await sync.sync();
-			assert.strictEqual(ensureStartedCalls, 1, 'sync must not hit a stopped engine');
-			assert.strictEqual(calls[0], 'ensureStarted');
+			assert.strictEqual(ensureStartedCalls, 0, 'sync must not spawn the engine');
+			assert.deepStrictEqual(calls, [], 'nothing should be pushed to a stopped engine');
 		});
 
-		test('a settings change on load triggers a sync that starts the engine', async () => {
+		test('is quiet when the engine is stopped, not noisy', async () => {
+			engineState = { status: 'stopped' };
 			useState(buildState());
 			settingsChanged.fire();
 			await new Promise(r => setTimeout(r, 0));
-			assert.ok(ensureStartedCalls >= 1, 'the constructor subscription must not throw');
-			assert.deepStrictEqual(warnings, [], 'no spurious "engine is not running" warning');
+			assert.deepStrictEqual(warnings, [], 'a stopped engine is normal, not an error');
 		});
 
-		test('does not warn when the engine fails to start', async () => {
+		test('still skips while the engine is starting', async () => {
+			engineState = { status: 'starting' };
 			useState(buildState());
-			(instantiationService.get(IKiloAgentService) as any).ensureStarted = async () => { throw new Error('Agent engine is not running'); };
 			const result = await sync.sync();
 			assert.deepStrictEqual(result.providers, []);
-			assert.ok(warnings.some(w => w.includes('could not sync settings')));
+			assert.strictEqual(ensureStartedCalls, 0);
+		});
+
+		test('syncs for real once the engine is running', async () => {
+			engineState = { status: 'running' };
+			apiKeys = { mistral: 'sk-1' };
+			connected = ['mistral'];
+			useState(buildState());
+			await sync.sync();
+			assert.ok(calls.includes('setAuth:mistral'), 'a running engine gets the keys');
+			assert.strictEqual(ensureStartedCalls, 0, 'still must not start it');
 		});
 	});
 
