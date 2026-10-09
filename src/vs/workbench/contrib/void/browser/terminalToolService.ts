@@ -12,7 +12,7 @@ import { createDecorator } from '../../../../platform/instantiation/common/insta
 import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { ITerminalService, ITerminalInstance, ICreateTerminalOptions } from '../../../../workbench/contrib/terminal/browser/terminal.js';
-import { MAX_TERMINAL_BG_COMMAND_TIME, MAX_TERMINAL_CHARS, MAX_TERMINAL_INACTIVE_TIME } from '../common/prompt/prompts.js';
+import { MAX_TERMINAL_BG_COMMAND_TIME, MAX_TERMINAL_CHARS, MAX_TERMINAL_INACTIVITY_TIME, MAX_TERMINAL_INACTIVE_TIME } from '../common/prompt/prompts.js';
 import { TerminalResolveReason } from '../common/toolsServiceTypes.js';
 import { timeout } from '../../../../base/common/async.js';
 
@@ -23,8 +23,8 @@ export interface ITerminalToolService {
 
 	listPersistentTerminalIds(): string[];
 	runCommand(command: string, opts:
-		| { type: 'persistent', persistentTerminalId: string }
-		| { type: 'temporary', cwd: string | null, terminalId: string }
+		| { type: 'persistent', persistentTerminalId: string, inactivityTimeoutSeconds?: number }
+		| { type: 'temporary', cwd: string | null, terminalId: string, inactivityTimeoutSeconds?: number }
 		// | { type: 'apply', terminalId: string }
 	): Promise<{ interrupt: () => void; resPromise: Promise<{ result: string, resolveReason: TerminalResolveReason }> }>;
 
@@ -264,6 +264,15 @@ export class TerminalToolService extends Disposable implements ITerminalToolServ
 		const { type } = params
 		const isPersistent = type === 'persistent'
 
+		// The inactivity window is how long the command may stay silent before it
+		// is killed. The default suits a quick build or test, but anything that
+		// produces no output for a while, such as an install or a long compile,
+		// needs the caller to ask for longer. Capped at ten minutes.
+		const inactivityTimeoutSeconds = Math.min(
+			Math.max(params.inactivityTimeoutSeconds ?? MAX_TERMINAL_INACTIVE_TIME, 1),
+			MAX_TERMINAL_INACTIVITY_TIME
+		)
+
 		let terminal: ITerminalInstance
 		const disposables: IDisposable[] = []
 
@@ -335,7 +344,7 @@ export class TerminalToolService extends Disposable implements ITerminalToolServ
 
 							resolveReason = { type: 'timeout' };
 							res();
-						}, MAX_TERMINAL_INACTIVE_TIME * 1000);
+						}, inactivityTimeoutSeconds * 1000);
 					};
 
 					const dTimeout = terminal.onData(() => { resetTimer(); });

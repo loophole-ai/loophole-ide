@@ -69,7 +69,7 @@ export type BuiltinToolCallParams = {
 	'create_file_or_folder': { uri: URI, isFolder: boolean },
 	'delete_file_or_folder': { uri: URI, isRecursive: boolean, isFolder: boolean },
 	// ---
-	'run_command': { command: string; cwd: string | null, terminalId: string },
+	'run_command': { command: string; cwd: string | null, terminalId: string, inactivity_timeout?: number },
 	'open_persistent_terminal': { cwd: string | null },
 	'run_persistent_command': { command: string; persistentTerminalId: string },
 	'kill_persistent_terminal': { persistentTerminalId: string },

@@ -483,8 +483,13 @@ export class ToolsService implements IToolsService {
 				return { result: { content: trimmedContent, tokenCount } }
 			},
 			// ---
-			run_command: async ({ command, cwd, terminalId }) => {
-				const { resPromise, interrupt } = await this.terminalToolService.runCommand(command, { type: 'temporary', cwd, terminalId })
+			run_command: async ({ command, cwd, terminalId, inactivity_timeout }) => {
+				const { resPromise, interrupt } = await this.terminalToolService.runCommand(command, {
+					type: 'temporary',
+					cwd,
+					terminalId,
+					inactivityTimeoutSeconds: typeof inactivity_timeout === 'number' ? inactivity_timeout : undefined,
+				})
 				return { result: resPromise, interruptTool: interrupt }
 			},
 			run_persistent_command: async ({ command, persistentTerminalId }) => {
@@ -595,7 +600,8 @@ export class ToolsService implements IToolsService {
 				}
 				// normal command
 				if (resolveReason.type === 'timeout') {
-					return `${result_}\nTerminal command ran, but was automatically killed by Loophole after ${MAX_TERMINAL_INACTIVE_TIME}s of inactivity and did not finish successfully. To try with more time, open a persistent terminal and run the command there.`
+					const waited = typeof params.inactivity_timeout === 'number' ? params.inactivity_timeout : MAX_TERMINAL_INACTIVE_TIME
+					return `${result_}\nTerminal command ran, but was automatically killed by Loophole after ${waited}s of inactivity and did not finish successfully. Re-run it with a longer inactivity_timeout, or open a persistent terminal and run the command there.`
 				}
 				throw new Error(`Unexpected internal error: Terminal command did not resolve with a valid reason.`)
 			},

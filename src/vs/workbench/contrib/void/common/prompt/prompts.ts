@@ -29,6 +29,7 @@ export const MAX_CHILDREN_URIs_PAGE = 500
 // terminal tool info
 export const MAX_TERMINAL_CHARS = 100_000
 export const MAX_TERMINAL_INACTIVE_TIME = 8 // seconds
+export const MAX_TERMINAL_INACTIVITY_TIME = 600 // seconds, the ceiling a caller may ask for
 export const MAX_TERMINAL_BG_COMMAND_TIME = 5
 
 // project memory tool info
@@ -325,10 +326,11 @@ export const builtinTools: {
 
 	run_command: {
 		name: 'run_command',
-		description: `Runs a terminal command and waits for the result (times out after ${MAX_TERMINAL_INACTIVE_TIME}s of inactivity). ${terminalDescHelper}`,
+		description: `Runs a terminal command and waits for the result. The command is killed after ${MAX_TERMINAL_INACTIVE_TIME} seconds with no output; pass inactivity_timeout to allow longer for anything that is slow to print. ${terminalDescHelper}`,
 		params: {
 			command: { description: 'The terminal command to run.' },
 			cwd: { description: cwdHelper },
+			inactivity_timeout: { description: `Optional. Seconds the command may stay silent before it is killed, up to ${MAX_TERMINAL_INACTIVITY_TIME}. Raise it for installs, long compiles and test suites that do not print until the end. Defaults to ${MAX_TERMINAL_INACTIVE_TIME}.` },
 		},
 	},
 
@@ -577,6 +579,14 @@ ${directoryStr}
 		details.push(`ALWAYS have maximal certainty in a change BEFORE you make it. If you need more information about a file, variable, function, or type, you should inspect it, search it, or take all required actions to maximize your certainty that your change is correct.`)
 		details.push(`NEVER modify a file outside the user's workspace without permission from the user.`)
 	}
+
+	// Carried over from the CLI's coder prompt. Both of these describe behaviour
+	// rather than a particular interface, so they hold in an editor the same way
+	// they hold in a terminal. The few-shot transcripts from the same source were
+	// deliberately left out: they teach shell habits like running ls, which would
+	// send the model past ls_dir and get_dir_tree for work those tools do better.
+	details.push(`Keep going until the user's request is completely resolved before you end your turn. Only stop when you are sure the problem is solved. If you are not sure about the content of a file or how the codebase is put together, read the file and find out. Do not guess.`)
+	details.push(`Keep responses short and to the point. Answer in as few sentences as the question needs, and skip any preamble, summary or restatement of what you just did unless the user asked for it. Do not explain code you have already written or refer to files as if the user still needs to create them.`)
 
 	if (mode === 'gather') {
 		details.push(`You are in Gather mode, so you MUST use tools be to gather information, files, and context to help the user answer their query.`)
