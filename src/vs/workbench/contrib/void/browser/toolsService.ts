@@ -8,7 +8,8 @@ import { QueryBuilder } from '../../../services/search/common/queryBuilder.js'
 import { ISearchService } from '../../../services/search/common/search.js'
 import { IEditCodeService } from './editCodeServiceInterface.js'
 import { ITerminalToolService } from './terminalToolService.js'
-import { LintErrorItem, BuiltinToolCallParams, BuiltinToolResultType, BuiltinToolName, TodoItem } from '../common/toolsServiceTypes.js'
+import { LintErrorItem, BuiltinToolCallParams, BuiltinToolResultType, BuiltinToolName, TodoItem, FetchFormat } from '../common/toolsServiceTypes.js'
+import { fetchUrl, FETCH_TIMEOUT_MS, FETCH_MAX_TIMEOUT_MS } from './webFetchService.js'
 import { IVoidModelService } from '../common/voidModelService.js'
 import { EndOfLinePreference } from '../../../../editor/common/model.js'
 import { IVoidCommandBarService } from './voidCommandBarServiceInterface.js'
@@ -503,6 +504,14 @@ export class ToolsService implements IToolsService {
 				this.storageService.store(TODO_STORAGE_KEY, JSON.stringify(todos), StorageScope.WORKSPACE, StorageTarget.MACHINE)
 				return { result: { todos } }
 			},
+			fetch_url: async ({ url, format, timeout }) => {
+				const fmt: FetchFormat = format === 'text' || format === 'html' ? format : 'markdown';
+				const timeoutMs = typeof timeout === 'number'
+					? Math.min(Math.max(Math.round(timeout * 1000), 1000), FETCH_MAX_TIMEOUT_MS)
+					: FETCH_TIMEOUT_MS;
+				const fetched = await fetchUrl(url, fmt, timeoutMs);
+				return { result: fetched };
+			},
 		}
 
 
@@ -615,6 +624,9 @@ export class ToolsService implements IToolsService {
 			todo_write: (_params, result) => {
 				const summary = result.todos.map((t, i) => `${i + 1}. [${t.status}] (${t.priority}) ${t.content}`).join('\n');
 				return `Todos updated:\n${summary}`;
+			},
+			fetch_url: (params, result) => {
+				return `${params.url}\n\`\`\`\n${result.content}\n\`\`\``;
 			},
 		}
 

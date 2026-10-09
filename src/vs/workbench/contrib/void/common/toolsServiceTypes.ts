@@ -28,11 +28,12 @@ export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: '
 	'run_persistent_command': 'terminal',
 	'open_persistent_terminal': 'terminal',
 	'kill_persistent_terminal': 'terminal',
+	// fetch_url only retrieves a public document, it cannot touch the
+	// workspace, so it is left out of this map and needs no approval dialog.
 }
 
 
 export type ToolApprovalType = NonNullable<(typeof approvalTypeOfBuiltinToolName)[keyof typeof approvalTypeOfBuiltinToolName]>;
-
 
 export const toolApprovalTypes = new Set<ToolApprovalType>([
 	...Object.values(approvalTypeOfBuiltinToolName),
@@ -41,6 +42,8 @@ export const toolApprovalTypes = new Set<ToolApprovalType>([
 
 
 
+
+export type FetchFormat = 'text' | 'markdown' | 'html';
 
 // Todo item type used by the todo_write tool
 export type TodoItem = {
@@ -72,6 +75,8 @@ export type BuiltinToolCallParams = {
 	'kill_persistent_terminal': { persistentTerminalId: string },
 	// --- todos ---
 	'todo_write': { todos: TodoItem[] },
+	// --- web ---
+	'fetch_url': { url: string; format: FetchFormat; timeout?: number },
 }
 
 // RESULT OF TOOL CALL
@@ -97,6 +102,8 @@ export type BuiltinToolResultType = {
 	'kill_persistent_terminal': {},
 	// --- todos ---
 	'todo_write': { todos: TodoItem[] },
+	// --- web ---
+	'fetch_url': { content: string; truncated: boolean },
 }
 
 

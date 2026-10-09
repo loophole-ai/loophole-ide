@@ -391,6 +391,30 @@ Skip when:
 		name: 'kill_persistent_terminal',
 		description: `Interrupts and closes a persistent terminal that you opened with open_persistent_terminal.`,
 		params: { persistent_terminal_id: { description: `The ID of the persistent terminal.` } }
+	},
+
+	fetch_url: {
+		name: 'fetch_url',
+		description: `Fetches a public web page or API response over HTTP(S) and returns it as text, markdown or raw HTML.
+
+WHEN TO USE THIS:
+- The user links to a page, a spec, a changelog or an issue and you need its contents
+- You need documentation for a library or API that is not in the codebase
+- A file or comment points at an external URL you need to read
+
+HOW TO USE:
+- Pass the full http:// or https:// URL
+- Prefer 'markdown' for pages, 'text' for plain responses and APIs, 'html' only when you need the raw markup
+
+NOTES:
+- Responses are capped, and very long pages are truncated
+- Only public URLs work. Sites behind a login, or that block automated requests, will fail
+- This cannot reach your local machine or private network services`,
+		params: {
+			url: { description: 'The full http:// or https:// URL to fetch.' },
+			format: { description: "How to return the content: 'markdown' for web pages, 'text' for plain text and API responses, 'html' for raw markup." },
+			timeout: { description: 'Optional timeout in seconds, up to 120. Defaults to 30.' },
+		}
 	}
 
 
@@ -415,8 +439,19 @@ export const isABuiltinToolName = (toolName: string): toolName is BuiltinToolNam
 
 export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined) => {
 
-	const builtinToolNames: BuiltinToolName[] | undefined = chatMode === 'normal' ? undefined
-		: chatMode === 'gather' ? (Object.keys(builtinTools) as BuiltinToolName[]).filter(toolName => !(toolName in approvalTypeOfBuiltinToolName))
+	// Tools that only read: no approval type, so no approval dialog.
+	const readOnlyToolNames = () => (Object.keys(builtinTools) as BuiltinToolName[])
+		.filter(toolName => !(toolName in approvalTypeOfBuiltinToolName))
+
+	// 'normal' and 'plan' previously resolved to undefined, which meant no tool
+	// definitions were sent at all. An assistant that cannot read a file cannot
+	// answer a question about the file, so it either guessed or asked the user
+	// to paste the contents. Read-only tools need no approval, so they are safe
+	// to offer everywhere. Edits and terminal commands stay behind 'agent',
+	// where the approval dialog is the thing standing between the model and
+	// the workspace.
+	const builtinToolNames: BuiltinToolName[] | undefined =
+		(chatMode === 'normal' || chatMode === 'plan' || chatMode === 'gather') ? readOnlyToolNames()
 			: chatMode === 'agent' ? Object.keys(builtinTools) as BuiltinToolName[]
 				: undefined
 
