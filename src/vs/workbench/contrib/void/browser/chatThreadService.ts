@@ -17,6 +17,7 @@ import { generateUuid } from '../../../../base/common/uuid.js';
 import { FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, ToolCallParams, ToolName, ToolResult } from '../common/toolsServiceTypes.js';
+import { isReadOnlyShellCommand } from './readOnlyCommands.js';
 import { IToolsService } from './toolsService.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
@@ -648,7 +649,15 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			// 2. if tool requires approval, break from the loop, awaiting approval
 
 			const approvalType = isBuiltInTool ? approvalTypeOfBuiltinToolName[toolName] : 'MCP tools'
-			if (approvalType) {
+			// A command that only reads is safe to run without stopping the turn
+			// for a dialog, so `git status` or `ls` no longer interrupt the user
+			// every time. Anything that chains, elevates or assigns is excluded
+			// by isReadOnlyShellCommand and still asks.
+			const isReadOnlyTerminalCommand = approvalType === 'terminal'
+				&& (toolName === 'run_command' || toolName === 'run_persistent_command')
+				&& isReadOnlyShellCommand(String(toolParams.command ?? ''));
+
+			if (approvalType && !isReadOnlyTerminalCommand) {
 				const autoApprove = this._settingsService.state.globalSettings.autoApprove[approvalType]
 				// add a tool_request because we use it for UI if a tool is loading (this should be improved in the future)
 				this._addMessageToThread(threadId, { role: 'tool', type: 'tool_request', content: '(Awaiting user permission...)', result: null, name: toolName, params: toolParams, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
