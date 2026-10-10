@@ -315,6 +315,21 @@ export class ToolsService implements IToolsService {
 				}));
 				return { todos };
 			},
+			fetch_url: (params: RawToolParamsObj) => {
+				const { url: urlUnknown, format: formatUnknown, timeout: timeoutUnknown } = params
+				const url = validateStr('url', urlUnknown).trim()
+				if (!/^https?:\/\//i.test(url)) {
+					throw new Error('fetch_url: url must start with http:// or https://')
+				}
+
+				// format defaults rather than throwing. Models forget optional
+				// fields, and a page is the overwhelmingly common case, so a
+				// missing format should not cost a whole tool call.
+				const rawFormat = typeof formatUnknown === 'string' ? formatUnknown.trim().toLowerCase() : ''
+				const format: FetchFormat = rawFormat === 'text' || rawFormat === 'html' ? rawFormat : 'markdown'
+
+				return { url, format, timeout: validateNumber(timeoutUnknown, { default: null }) ?? undefined }
+			},
 
 		}
 

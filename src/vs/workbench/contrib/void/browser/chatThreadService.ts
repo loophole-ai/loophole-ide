@@ -655,7 +655,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			// by isReadOnlyShellCommand and still asks.
 			const isReadOnlyTerminalCommand = approvalType === 'terminal'
 				&& (toolName === 'run_command' || toolName === 'run_persistent_command')
-				&& isReadOnlyShellCommand(String(toolParams.command ?? ''));
+				&& isReadOnlyShellCommand(String((toolParams as BuiltinToolCallParams['run_command']).command ?? ''));
 
 			if (approvalType && !isReadOnlyTerminalCommand) {
 				const autoApprove = this._settingsService.state.globalSettings.autoApprove[approvalType]
