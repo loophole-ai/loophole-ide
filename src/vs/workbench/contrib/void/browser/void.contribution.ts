@@ -14,6 +14,9 @@ import './sidebarPane.js'
 // register quick edit (Ctrl+K)
 import './quickEditActions.js'
 
+// register editor context menu AI actions (Explain, Fix Error, Add Tests, Docs)
+import './editorContextActions.js'
+
 
 // register Autocomplete
 import './autocompleteService.js'
