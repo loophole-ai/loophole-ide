@@ -14,7 +14,7 @@ import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { chat_userMessageContent, isABuiltinToolName } from '../common/prompt/prompts.js';
 import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
-import { FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
+import { ChatMode, FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, ToolCallParams, ToolName, ToolResult } from '../common/toolsServiceTypes.js';
 import { isReadOnlyShellCommand } from './readOnlyCommands.js';
@@ -137,6 +137,9 @@ export type ThreadType = {
 
 		cumulativeTokenCount: number; // inputTokens from the latest API call — represents current context size
 
+		chatModeOverride?: ChatMode;
+		isSubagent?: boolean;
+
 		mountedInfo?: {
 			whenMounted: Promise<WhenMounted>
 			_whenMountedResolver: (res: WhenMounted) => void
@@ -209,7 +212,7 @@ export type ThreadStreamState = {
 	}
 }
 
-const newThreadObject = () => {
+const newThreadObject = (overrides?: { chatModeOverride?: ChatMode; isSubagent?: boolean }) => {
 	const now = new Date().toISOString()
 	return {
 		id: generateUuid(),
@@ -222,6 +225,8 @@ const newThreadObject = () => {
 			focusedMessageIdx: undefined,
 			linksOfMessageIdx: {},
 			cumulativeTokenCount: 0,
+			chatModeOverride: overrides?.chatModeOverride,
+			isSubagent: overrides?.isSubagent,
 		},
 		filesWithUserChanges: new Set()
 	} satisfies ThreadType
@@ -296,6 +301,8 @@ export interface IChatThreadService {
 
 	focusCurrentChat: () => Promise<void>
 	blurCurrentChat: () => Promise<void>
+
+	runSubagent: (opts: { description: string; prompt: string; timeoutMs?: number }) => Promise<string>
 }
 
 export const IChatThreadService = createDecorator<IChatThreadService>('voidChatThreadService');
@@ -763,7 +770,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		// _runToolCall does not need setStreamState({idle}) before it, but it needs it after it. (handles its own setStreamState)
 
 		// above just defines helpers, below starts the actual function
-		const { chatMode } = this._settingsService.state.globalSettings // should not change as we loop even if user changes it, so it goes here
+		const { chatMode: globalChatMode } = this._settingsService.state.globalSettings // should not change as we loop even if user changes it, so it goes here
+		const chatMode = this.state.allThreads[threadId]?.state.chatModeOverride ?? globalChatMode
 		const { overridesOfModel } = this._settingsService.state
 
 		let nMessagesSent = 0
@@ -1672,6 +1680,57 @@ We only need to do it for files that were edited since `from`, ie files between 
 		}
 		this._storeAllThreads(newThreads)
 		this._setState({ allThreads: newThreads, currentThreadId: newThread.id })
+	}
+
+	async runSubagent({ description, prompt, timeoutMs = 300_000 }: { description: string; prompt: string; timeoutMs?: number }): Promise<string> {
+		const parentThreadId = this.state.currentThreadId
+
+		const subagentThread = newThreadObject({ chatModeOverride: 'gather', isSubagent: true })
+		const newThreads: ChatThreads = { ...this.state.allThreads, [subagentThread.id]: subagentThread }
+		this._setState({ allThreads: newThreads })
+
+		const unsubscribe = this.onDidChangeStreamState(({ threadId }) => {
+			if (threadId === parentThreadId) { return }
+			if (threadId === subagentThread.id && !this.streamState[threadId]?.isRunning) { done() }
+		})
+
+		let finish: () => void = () => { }
+		const done = new Promise<void>(res => { finish = res })
+		const timeout = new Promise<void>(res => setTimeout(res, timeoutMs))
+
+		try {
+			await this.addUserMessageAndStreamResponse({
+				userMessage: `${prompt}\n\nYou were given this task: "${description}"`,
+				threadId: subagentThread.id,
+			})
+			await Promise.race([done, timeout])
+		}
+		catch (e) {
+			this._setStreamState(subagentThread.id, undefined)
+			return `The subagent failed: ${e instanceof Error ? e.message : String(e)}`
+		}
+		finally {
+			unsubscribe.dispose()
+		}
+
+		const messages = this.state.allThreads[subagentThread.id]?.messages ?? []
+		const answer = messages.reduce<string>((acc, message) => {
+			if (message.role !== 'assistant') { return acc }
+			return message.displayContent ? `${acc}${message.displayContent}\n\n` : acc
+		}, '').trim()
+
+		const error = this.streamState[subagentThread.id]?.error
+		if (error) { return `The subagent stopped with an error: ${error.message}` }
+		if (!answer) { return 'The subagent returned nothing. Try a more specific task.' }
+
+		this._deleteSubagentThread(subagentThread.id)
+		return answer
+	}
+
+	private _deleteSubagentThread(threadId: string) {
+		const newThreads = { ...this.state.allThreads }
+		delete newThreads[threadId]
+		this._setState({ ...this.state, allThreads: newThreads })
 	}
 
 

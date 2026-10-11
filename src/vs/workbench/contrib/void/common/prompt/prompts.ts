@@ -349,6 +349,34 @@ export const builtinTools: {
 
 
 
+	task: {
+		name: 'task',
+		description: `Delegates a self-contained piece of work to a subagent and returns its findings.
+
+The subagent is a separate agent with its own context. It can read files, search the codebase and fetch URLs, but it cannot edit anything, run commands or delegate again. Anything it discovers that changes a file comes back to you as text for you to act on.
+
+## When to use
+- Several independent questions about the codebase that would each need their own file reading
+- A search you expect to take many steps, such as tracing how a value flows through the codebase
+- Getting a second opinion on a design decision before you commit to it
+- Work you can describe fully up front, so that you do not need to watch it happen
+
+## When NOT to use
+- You already know which file to change; just edit it
+- The work needs the edits applied, since the subagent cannot apply them
+- Anything requiring a decision from the user partway through
+
+## Rules
+- The prompt must be self-contained: the subagent has no memory of this conversation, so include every path, symbol and constraint it needs
+- Send several subagents as separate calls rather than chaining them, so they do not wait on each other
+- You get back text only. Quote file paths and line numbers from it so your next edit lands in the right place
+- Your context does not grow with the subagent's work, so prefer delegating over reading everything yourself when the task is a search`,
+		params: {
+			description: { description: `A short name for this task, three or four words, that says what it is for.` },
+			prompt: { description: `The full instructions for the subagent. It cannot see this conversation, so spell out everything it needs to know, including exact paths and symbols.` },
+		}
+	},
+
 	todo_write: {
 		name: 'todo_write',
 		description: `Create and maintain a structured task list for the current coding session. Tracks progress, organizes multi-step work, and surfaces status to the user.

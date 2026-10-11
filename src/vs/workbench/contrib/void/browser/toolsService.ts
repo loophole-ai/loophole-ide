@@ -22,6 +22,7 @@ import { IVoidSettingsService } from '../common/voidSettingsService.js'
 import { generateUuid } from '../../../../base/common/uuid.js'
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js'
 import { PROJECT_MEMORY_STORAGE_KEY, TODO_STORAGE_KEY } from '../common/storageKeys.js'
+import { IChatThreadService } from './chatThreadService.js'
 import { estimateTokens } from '../common/tokenizer.js'
 
 
@@ -331,6 +332,12 @@ export class ToolsService implements IToolsService {
 				return { url, format, timeout: validateNumber(timeoutUnknown, { default: null }) ?? undefined }
 			},
 
+			task: ({ description, prompt }) => {
+				validateStr('description', description)
+				validateStr('prompt', prompt)
+				return { description, prompt }
+			},
+
 		}
 
 
@@ -532,6 +539,12 @@ export class ToolsService implements IToolsService {
 				const fetched = await fetchUrl(url, fmt, timeoutMs);
 				return { result: fetched };
 			},
+
+			task: async ({ description, prompt }) => {
+				const chatThreadService = instantiationService.invokeFunction(accessor => accessor.get(IChatThreadService));
+				const content = await chatThreadService.runSubagent({ description, prompt });
+				return { result: { content } };
+			},
 		}
 
 
@@ -647,7 +660,11 @@ export class ToolsService implements IToolsService {
 				return `Todos updated:\n${summary}`;
 			},
 			fetch_url: (params, result) => {
-				return `${params.url}\n\`\`\`\n${result.content}\n\`\`\``;
+				return `${params.url}\n\`\`\`\n${result.content}\n\`\`\``
+			},
+
+			task: (params, result) => {
+				return `Subagent "${params.description}" reported:\n\n${result.content}`
 			},
 		}
 

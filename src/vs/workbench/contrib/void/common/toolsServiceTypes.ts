@@ -77,6 +77,8 @@ export type BuiltinToolCallParams = {
 	'todo_write': { todos: TodoItem[] },
 	// --- web ---
 	'fetch_url': { url: string; format: FetchFormat; timeout?: number },
+	// --- subagent ---
+	'task': { description: string; prompt: string },
 }
 
 // RESULT OF TOOL CALL
@@ -104,6 +106,8 @@ export type BuiltinToolResultType = {
 	'todo_write': { todos: TodoItem[] },
 	// --- web ---
 	'fetch_url': { content: string; truncated: boolean },
+	// --- subagent ---
+	'task': { content: string },
 }
 
 
