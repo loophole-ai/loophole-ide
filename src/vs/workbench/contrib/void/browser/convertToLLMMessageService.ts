@@ -14,6 +14,7 @@ import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { ChatMode, FeatureName, ModelSelection, ProviderName } from '../common/voidSettingsTypes.js';
 import { IDirectoryStrService } from '../common/directoryStrService.js';
 import { Compaction, pruneToolResults } from './compactionService.js';
+import { AttachedImage } from '../common/sendLLMMessageTypes.js';
 import { ITerminalToolService } from './terminalToolService.js';
 import { IVoidModelService } from '../common/voidModelService.js';
 import { URI } from '../../../../base/common/uri.js';
@@ -27,8 +28,48 @@ export const EMPTY_MESSAGE = '(empty message)'
 
 
 
+export function decodeDataUrl(dataUrl: string): { mime: string; data: string } | null {
+	const m = /^data:([^;,]+);base64,(.*)$/.exec(dataUrl)
+	if (!m) return null
+	if (!m[2]) return null
+	return { mime: m[1], data: m[2] }
+}
+
+/**
+ * Builds the user message content for whichever tool format is in play.
+ *
+ * Empty or corrupt attachments are reported in the text, the way Kilo does,
+ * because a silently dropped image leaves the model answering about something
+ * the user thinks it was shown.
+ */
+function buildUserContentWithImages(
+	content: string,
+	images: AttachedImage[],
+	specialToolFormat: 'openai-style' | 'anthropic-style' | undefined,
+): AnthropicOrOpenAILLMMessage['content'] {
+	const notes: string[] = []
+	const blocks: Record<string, unknown>[] = []
+
+	for (const img of images) {
+		const decoded = decodeDataUrl(img.dataUrl)
+		if (!decoded) {
+			notes.push('An attached image was empty or corrupted and could not be read.')
+			continue
+		}
+		if (specialToolFormat === 'anthropic-style') {
+			blocks.push({ type: 'image', source: { type: 'base64', media_type: decoded.mime, data: decoded.data } })
+		}
+		else {
+			blocks.push({ type: 'image_url', image_url: { url: img.dataUrl } })
+		}
+	}
+
+	const text = notes.length ? `${content}\n\n${notes.join('\n')}` : content
+	if (!blocks.length) return text
+	return [{ type: 'text', text }, ...blocks] as AnthropicOrOpenAILLMMessage['content']
+}
+
 export type SimpleLLMMessage = {
-	role: 'tool';
 	content: string;
 	id: string;
 	name: ToolName;
@@ -36,6 +77,7 @@ export type SimpleLLMMessage = {
 } | {
 	role: 'user';
 	content: string;
+	images?: AttachedImage[];
 } | {
 	role: 'assistant';
 	content: string;
@@ -237,13 +279,21 @@ const prepareMessages_XML_tools = (messages: SimpleLLMMessage[], supportsAnthrop
 			if (c.role === 'tool')
 				c.content = `<${c.name}_result>\n${c.content}\n</${c.name}_result>`
 
+			const images = c.role === 'user' ? (c as SimpleLLMMessage & { images?: AttachedImage[] }).images : undefined
+
 			if (llmChatMessages.length === 0 || llmChatMessages[llmChatMessages.length - 1].role !== 'user')
 				llmChatMessages.push({
 					role: 'user',
-					content: c.content
+					content: images?.length ? buildUserContentWithImages(c.content, images, specialToolFormat) : c.content
 				})
-			else
+			else {
 				llmChatMessages[llmChatMessages.length - 1].content += '\n\n' + c.content
+				if (images?.length) {
+					const prev = llmChatMessages[llmChatMessages.length - 1]
+					const withImages = buildUserContentWithImages(prev.content, images, specialToolFormat)
+					llmChatMessages[llmChatMessages.length - 1] = { role: 'user', content: withImages }
+				}
+			}
 		}
 	}
 	return llmChatMessages
@@ -486,7 +536,13 @@ const prepareGeminiMessages = (messages: AnthropicLLMChatMessage[]) => {
 		}
 		else if (m.role === 'user') {
 			if (typeof m.content === 'string') {
-				return { role: 'user', parts: [{ text: m.content }] } satisfies GeminiLLMChatMessage
+				const parts: GeminiUserPart[] = [{ text: m.content }]
+				for (const img of (m as SimpleLLMMessage & { images?: AttachedImage[] }).images ?? []) {
+					const decoded = decodeDataUrl(img.dataUrl)
+					if (decoded) parts.push({ inlineData: { mimeType: decoded.mime, data: decoded.data } })
+					else parts.push({ text: 'An attached image was empty or corrupted and could not be read.' })
+				}
+				return { role: 'user', parts } satisfies GeminiLLMChatMessage
 			}
 			else {
 				const parts: GeminiUserPart[] = m.content.map((c): GeminiUserPart | null => {
@@ -672,6 +728,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 				simpleLLMMessages.push({
 					role: m.role,
 					content: m.content,
+					images: m.images?.map(img => ({ dataUrl: img.dataUrl, mime: img.mime })),
 				})
 			}
 		}

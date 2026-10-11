@@ -358,9 +358,12 @@ type InputBox2Props = {
 	onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 	onFocus?: (e: React.FocusEvent<HTMLTextAreaElement>) => void;
 	onBlur?: (e: React.FocusEvent<HTMLTextAreaElement>) => void;
+	onPasteImage?: (file: File) => void;
 	onChangeHeight?: (newHeight: number) => void;
 }
-export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(function X({ initValue, placeholder, multiline, enableAtToMention, fnsRef, className, onKeyDown, onFocus, onBlur, onChangeText }, ref) {
+export const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+
+export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(function X({ initValue, placeholder, multiline, enableAtToMention, fnsRef, className, onKeyDown, onFocus, onBlur, onChangeText, onPasteImage }, ref) {
 
 
 	// mirrors whatever is in ref
@@ -800,6 +803,18 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 
 			onFocus={onFocus}
 			onBlur={onBlur}
+
+			onPaste={useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+				if (!onPasteImage) return
+				const items = Array.from(e.clipboardData?.items ?? [])
+				const imageItems = items.filter(item => item.kind === 'file' && ACCEPTED_IMAGE_TYPES.includes(item.type))
+				if (!imageItems.length) return
+				e.preventDefault()
+				for (const item of imageItems) {
+					const file = item.getAsFile()
+					if (file) onPasteImage(file)
+				}
+			}, [onPasteImage])}
 
 			disabled={!isEnabled}
 

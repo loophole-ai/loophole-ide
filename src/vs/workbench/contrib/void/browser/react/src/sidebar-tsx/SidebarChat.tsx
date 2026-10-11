@@ -447,6 +447,23 @@ const TodoPanel = () => {
 	</div>
 }
 
+export const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+
+function readImageIntoSelections(file: File): Promise<StagingSelectionItem> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader()
+		reader.onerror = () => reject(new Error('Could not read image'))
+		reader.onload = () => resolve({
+			type: 'Image',
+			dataUrl: String(reader.result),
+			filename: file.name || 'pasted-image',
+			mime: file.type,
+			state: { wasAddedAsCurrentFile: false },
+		})
+		reader.readAsDataURL(file)
+	})
+}
+
 export const ChatModeDropdown = ({ className }: { className: string }) => {
 	const accessor = useAccessor()
 
@@ -862,6 +879,21 @@ export const SelectedFiles = (
 			{allSelections.map((selection, i) => {
 
 				const isThisSelectionProspective = i > selections.length - 1
+
+				if (selection.type === 'Image') {
+					return <div
+						key={`img${i}`}
+						className='relative h-12 w-12 rounded-sm overflow-hidden border border-loophole-border-1 bg-loophole-bg-1'
+						title={selection.filename}
+					>
+						<img src={selection.dataUrl} alt={selection.filename} className='w-full h-full object-cover' />
+						{!isThisSelectionProspective && <button
+							className='absolute top-0 right-0 w-4 h-4 bg-loophole-bg-1/80 hover:bg-loophole-bg-1 text-loophole-fg-2 text-[10px] leading-none'
+							onClick={() => setSelections(selections.filter(s => s !== selection))}
+							title="Remove image"
+						>×</button>}
+					</div>
+				}
 
 				const thisKey = selection.type === 'CodeSelection' ? selection.type + selection.language + selection.range + selection.state.wasAddedAsCurrentFile + selection.uri.fsPath
 					: selection.type === 'File' ? selection.type + selection.language + selection.state.wasAddedAsCurrentFile + selection.uri.fsPath
@@ -1380,6 +1412,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 				onKeyDown={onKeyDown}
 				fnsRef={textAreaFnsRef}
 				multiline={true}
+				onPasteImage={(file) => readImageIntoSelections(file).then(img => setSelections([...selections, img]))}
 			/>
 		</VoidChatArea>
 	}

@@ -734,6 +734,7 @@ export const messageOfSelection = async (
 		}
 	}
 ) => {
+	if (s.type === 'Image') { return `[image: ${s.filename}]` }
 	const lineNumAddition = (range: [number, number]) => ` (lines ${range[0]}:${range[1]})`
 
 	if (s.type === 'CodeSelection') {

@@ -53,6 +53,7 @@ export type ChatMessage =
 		content: string; // content displayed to the LLM on future calls - allowed to be '', will be replaced with (empty)
 		displayContent: string; // content displayed to user  - allowed to be '', will be ignored
 		selections: StagingSelectionItem[] | null; // the user's selection
+		images?: { dataUrl: string; mime: string; filename: string }[] | null;
 		state: {
 			stagingSelections: StagingSelectionItem[];
 			isBeingEdited: boolean;
@@ -71,6 +72,12 @@ export type ChatMessage =
 
 // one of the square items that indicates a selection in a chat bubble
 export type StagingSelectionItem = {
+	type: 'Image';
+	dataUrl: string;
+	filename: string;
+	mime: string;
+	state: { wasAddedAsCurrentFile: boolean; };
+} | {
 	type: 'File';
 	uri: URI;
 	language: string;
