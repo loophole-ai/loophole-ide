@@ -30,6 +30,7 @@ import { IQuickInputService } from '../../../../platform/quickinput/common/quick
 import { window } from '../../../../platform/window/common/window.js'
 import { parsePatch, applyHunks } from './patchParser.js'
 import { ISkillService } from './skillService.js'
+import { ICodebaseIndexService } from './codebaseIndexService.js'
 import { estimateTokens } from '../common/tokenizer.js'
 
 
@@ -197,6 +198,7 @@ export class ToolsService implements IToolsService {
 		@ILspService private readonly lspService: ILspService,
 		@ITodoService private readonly todoService: ITodoService,
 		@ISkillService private readonly skillService: ISkillService,
+		@ICodebaseIndexService private readonly codebaseIndexService: ICodebaseIndexService,
 		@ICodeEditorService private readonly editorService: ICodeEditorService,
 	) {
 		const queryBuilder = instantiationService.createInstance(QueryBuilder);
@@ -375,6 +377,13 @@ export class ToolsService implements IToolsService {
 				validateStr('description', description)
 				validateStr('prompt', prompt)
 				return { description, prompt }
+			},
+
+			codebase_search: (params: RawToolParamsObj) => {
+				return {
+					query: validateStr('query', params.query),
+					path_prefix: typeof params.path_prefix === 'string' ? params.path_prefix : undefined,
+				}
 			},
 
 			skill: (params: RawToolParamsObj) => {
@@ -619,6 +628,18 @@ export class ToolsService implements IToolsService {
 				return { result: { content } };
 			},
 
+			codebase_search: async ({ query, path_prefix }) => {
+				await codebaseIndexService.build()
+				const hits = codebaseIndexService.search(query, 12, path_prefix)
+				if (!hits.length) {
+					return { result: { content: `Nothing matched "${query}". Try fewer, more distinctive words, or search_for_files with a regex.` } }
+				}
+				const content = hits.map((h, i) =>
+					`## ${i + 1}. ${h.chunk.fsPath}:${h.chunk.startLine}\n\`\`\`\n${h.chunk.text.substring(0, 1200)}\n\`\`\``
+				).join('\n\n')
+				return { result: { content } }
+			},
+
 			skill: async ({ name }) => {
 				const skill = skillService.getSkill(name)
 				if (!skill) {
@@ -826,6 +847,10 @@ export class ToolsService implements IToolsService {
 			},
 
 			available_skills: (_params, result) => {
+				return result.content
+			},
+
+			codebase_search: (_params, result) => {
 				return result.content
 			},
 

@@ -368,6 +368,19 @@ If no skills are installed it will say so, and you should carry on without one.`
 		}
 	},
 
+	codebase_search: {
+		name: 'codebase_search',
+		description: `Searches the whole codebase at once, across every file, and returns the matching chunks with their file and line numbers.
+
+Prefer this over repeated search_for_files when you do not know which file holds something, or when the name you would search for is not in the code. It matches on words, so put the identifiers you are after into the query rather than describing the problem.
+
+The first search builds the index and takes a moment; later ones are instant.`,
+		params: {
+			query: { description: 'What to look for. Include the identifier or phrase you expect to appear.' },
+			path_prefix: { description: 'Optional. Only search files under this directory.' },
+		}
+	},
+
 	apply_patch: {
 		name: 'apply_patch',
 		description: `Edits several files in one call using a simple patch format. Prefer this when a change spans more than one file, or when the same edit repeats across many.

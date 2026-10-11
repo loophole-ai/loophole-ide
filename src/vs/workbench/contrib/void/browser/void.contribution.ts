@@ -46,6 +46,7 @@ import './customModesService.js'
 import './todoService.js'
 import './patchParser.js'
 import './skillService.js'
+import './codebaseIndexService.js'
 
 // register Thread History
 import './chatThreadService.js'

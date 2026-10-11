@@ -89,6 +89,8 @@ export type BuiltinToolCallParams = {
 	// --- skills ---
 	'skill': { content: string },
 	'available_skills': { content: string },
+	// --- index ---
+	'codebase_search': { query: string; path_prefix?: string },
 }
 
 // RESULT OF TOOL CALL
@@ -127,6 +129,8 @@ export type BuiltinToolResultType = {
 	// --- skills ---
 	'skill': { content: string },
 	'available_skills': { content: string },
+	// --- index ---
+	'codebase_search': { content: string },
 }
 
 
