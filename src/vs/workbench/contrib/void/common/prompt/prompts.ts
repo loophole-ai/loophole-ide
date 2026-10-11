@@ -349,6 +349,26 @@ export const builtinTools: {
 
 
 
+	lsp: {
+		name: 'lsp',
+		description: `Asks the language server about the code instead of guessing. Works only where a language server is installed and running for that file.
+
+Use this before reading a file you are about to change when you need to know what a symbol is, rather than searching for its name and hoping.
+
+- \`definition\` — where a symbol is defined
+- \`references\` — everywhere a symbol is used
+- \`hover\` — the type, signature and documentation at a position
+- \`symbols\` — the classes, functions and methods declared in a file, without reading it
+
+If a call returns nothing, the file has no language server running. Say so rather than falling back to guessing what the code probably does.`,
+		params: {
+			operation: { description: "Which question to ask: 'definition', 'references', 'hover' or 'symbols'." },
+			uri: { description: `The file to ask about. Required for 'symbols' and optional for the others, which default to the active file.` },
+			line: { description: `1-indexed line the symbol is on. Required for 'definition', 'references' and 'hover'.` },
+			character: { description: '1-indexed column of the symbol on that line.' },
+		}
+	},
+
 	task: {
 		name: 'task',
 		description: `Delegates a self-contained piece of work to a subagent and returns its findings.
@@ -452,10 +472,7 @@ NOTES:
 	}
 
 
-	// go_to_definition
-	// go_to_usages
-
-} satisfies { [T in keyof BuiltinToolResultType]: InternalToolInfo }
+	} satisfies { [T in keyof BuiltinToolResultType]: InternalToolInfo }
 
 
 

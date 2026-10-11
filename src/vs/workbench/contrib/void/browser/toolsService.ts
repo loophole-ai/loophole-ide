@@ -23,6 +23,8 @@ import { generateUuid } from '../../../../base/common/uuid.js'
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js'
 import { PROJECT_MEMORY_STORAGE_KEY, TODO_STORAGE_KEY } from '../common/storageKeys.js'
 import { IChatThreadService } from './chatThreadService.js'
+import { ILspService, LspLocation } from './lspService.js'
+import { ICodeEditorService } from '../../../../editor/browser/services/codeEditorService.js'
 import { estimateTokens } from '../common/tokenizer.js'
 
 
@@ -129,6 +131,15 @@ const checkIfIsFolder = (uriStr: string) => {
 	return false
 }
 
+function formatLspLocations(locations: LspLocation[]): string {
+	if (locations.length === 0) {
+		return 'Nothing found. This file probably has no language server running.'
+	}
+	return locations
+		.map(l => `${l.uri}:${l.line}${l.preview ? `\n    ${l.preview}` : ''}`)
+		.join('\n')
+}
+
 export interface IToolsService {
 	readonly _serviceBrand: undefined;
 	validateParams: ValidateBuiltinParams;
@@ -159,6 +170,8 @@ export class ToolsService implements IToolsService {
 		@IMarkerService private readonly markerService: IMarkerService,
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		@IStorageService private readonly storageService: IStorageService,
+		@ILspService private readonly lspService: ILspService,
+		@ICodeEditorService private readonly editorService: ICodeEditorService,
 	) {
 		const queryBuilder = instantiationService.createInstance(QueryBuilder);
 
@@ -336,6 +349,20 @@ export class ToolsService implements IToolsService {
 				validateStr('description', description)
 				validateStr('prompt', prompt)
 				return { description, prompt }
+			},
+
+			lsp: (params: RawToolParamsObj) => {
+				const operation = validateStr('operation', params.operation).trim().toLowerCase()
+				const known = ['definition', 'references', 'hover', 'symbols']
+				if (!known.includes(operation)) {
+					throw new Error(`lsp: operation must be one of ${known.join(', ')}`)
+				}
+				return {
+					operation,
+					uri: params.uri ? validateURI(params.uri) : null,
+					line: validateNumber(params.line, { default: null }),
+					character: validateNumber(params.character, { default: null }),
+				}
 			},
 
 		}
@@ -545,6 +572,31 @@ export class ToolsService implements IToolsService {
 				const content = await chatThreadService.runSubagent({ description, prompt });
 				return { result: { content } };
 			},
+
+			lsp: async ({ operation, uri, line, character }) => {
+				const activeUri = editorService.getActiveCodeEditor()?.getModel()?.uri ?? null
+				const targetUri = uri ?? activeUri
+				if (!targetUri) { throw new Error('lsp: no file given and no active editor to fall back on') }
+
+				if (operation === 'symbols') {
+					const symbols = await lspService.getDocumentSymbols(targetUri)
+					return { result: { result: symbols || 'No symbols. This file probably has no language server running.' } }
+				}
+
+				const targetLine = line ?? 1
+				const targetChar = character ?? 1
+
+				if (operation === 'definition') {
+					const locations = await lspService.findDefinition(targetUri, targetLine, targetChar)
+					return { result: { result: formatLspLocations(locations) } }
+				}
+				if (operation === 'references') {
+					const locations = await lspService.findReferences(targetUri, targetLine, targetChar)
+					return { result: { result: formatLspLocations(locations) } }
+				}
+				const hover = await lspService.getHover(targetUri, targetLine, targetChar)
+				return { result: { result: hover || 'No hover information. This file probably has no language server running.' } }
+			},
 		}
 
 
@@ -665,6 +717,10 @@ export class ToolsService implements IToolsService {
 
 			task: (params, result) => {
 				return `Subagent "${params.description}" reported:\n\n${result.content}`
+			},
+
+			lsp: (_params, result) => {
+				return result.result
 			},
 		}
 

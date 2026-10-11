@@ -79,6 +79,8 @@ export type BuiltinToolCallParams = {
 	'fetch_url': { url: string; format: FetchFormat; timeout?: number },
 	// --- subagent ---
 	'task': { description: string; prompt: string },
+	// --- language server ---
+	'lsp': { operation: string; uri: URI | null; line: number | null; character: number | null },
 }
 
 // RESULT OF TOOL CALL
@@ -108,6 +110,8 @@ export type BuiltinToolResultType = {
 	'fetch_url': { content: string; truncated: boolean },
 	// --- subagent ---
 	'task': { content: string },
+	// --- language server ---
+	'lsp': { result: string },
 }
 
 
