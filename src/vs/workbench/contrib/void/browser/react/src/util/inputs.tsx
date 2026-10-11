@@ -25,6 +25,7 @@ import { extractSearchReplaceBlocks, ExtractedSearchReplaceBlock } from '../../.
 import { IAccessibilitySignalService } from '../../../../../../../platform/accessibilitySignal/browser/accessibilitySignalService.js';
 import { IEditorProgressService } from '../../../../../../../platform/progress/common/progress.js';
 import { detectLanguage } from '../../../../common/helpers/languageHelpers.js';
+import { matchSlashCommands, SlashCommand } from '../../../../common/slashCommands.js';
 
 
 // type guard
@@ -716,6 +717,34 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 
 
 
+	const [slashQuery, _setSlashQuery] = useState<string | null>(null)
+	const [slashIdx, setSlashIdx] = useState(0)
+
+	const slashMatches = useMemo(
+		() => (slashQuery === null ? [] : matchSlashCommands(slashQuery)),
+		[slashQuery]
+	)
+	const isSlashMenuOpen = slashMatches.length > 0
+
+	const setSlashQuery = useCallback((value: string) => {
+		_setSlashQuery(value)
+		setSlashIdx(0)
+	}, [])
+
+	const syncSlashQuery = useCallback((value: string) => {
+		setSlashQuery(/^\/[a-z]*$/i.test(value.trim()) ? value.trim().slice(1) : null)
+	}, [setSlashQuery])
+
+	const applySlashCommand = useCallback((command: SlashCommand) => {
+		setSlashQuery(null)
+		const r = textAreaRef.current
+		if (!r) return
+		r.value = command.template
+		onChangeText?.(r.value)
+		adjustHeight()
+		r.focus()
+	}, [onChangeText, adjustHeight, setSlashQuery])
+
 	const fns: TextAreaFns = useMemo(() => ({
 		setValue: (val) => {
 			const r = textAreaRef.current
@@ -794,11 +823,36 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 			onChange={useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
 				const r = textAreaRef.current
 				if (!r) return
+				syncSlashQuery(r.value)
 				onChangeText?.(r.value)
 				adjustHeight()
-			}, [onChangeText, adjustHeight])}
+			}, [onChangeText, adjustHeight, syncSlashQuery])}
 
 			onKeyDown={useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+
+				if (isSlashMenuOpen) {
+					if (e.key === 'ArrowDown') {
+						e.preventDefault()
+						setSlashIdx(i => (i + 1) % slashMatches.length)
+						return
+					}
+					if (e.key === 'ArrowUp') {
+						e.preventDefault()
+						setSlashIdx(i => (i - 1 + slashMatches.length) % slashMatches.length)
+						return
+					}
+					if (e.key === 'Enter' || e.key === 'Tab') {
+						e.preventDefault()
+						const chosen = slashMatches[slashIdx]
+						if (chosen) { applySlashCommand(chosen) }
+						return
+					}
+					if (e.key === 'Escape') {
+						e.preventDefault()
+						setSlashQuery(null)
+						return
+					}
+				}
 
 				if (isMenuOpen) {
 					onMenuKeyDown(e)
@@ -821,11 +875,29 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 					if (!shouldAddNewline) e.preventDefault(); // prevent newline from being created
 				}
 				onKeyDown?.(e)
-			}, [onKeyDown, onMenuKeyDown, multiline])}
+			}, [onKeyDown, onMenuKeyDown, multiline, isSlashMenuOpen, slashMatches, slashIdx, applySlashCommand, setSlashQuery])}
 
 			rows={1}
 			placeholder={placeholder}
 		/>
+		{isSlashMenuOpen && (
+			<div
+				className="z-[100] border-loophole-border-3 bg-loophole-bg-2-alt border rounded shadow-lg flex flex-col overflow-hidden max-h-[220px] overflow-y-auto"
+				onMouseDown={e => e.preventDefault()}
+			>
+				{slashMatches.map((command, i) => (
+					<div
+						key={command.name}
+						className={`px-2 py-1 flex items-baseline gap-2 cursor-pointer ${i === slashIdx ? 'bg-loophole-bg-3 text-loophole-fg-1' : 'text-loophole-fg-2'}`}
+						onClick={() => applySlashCommand(command)}
+						onMouseEnter={() => setSlashIdx(i)}
+					>
+						<span className="font-mono text-loophole-fg-1">/{command.name}</span>
+						<span className="text-xs">{command.description}</span>
+					</div>
+				))}
+			</div>
+		)}
 		{/* <div>{`idx ${optionIdx}`}</div> */}
 		{isMenuOpen && (
 			<div
