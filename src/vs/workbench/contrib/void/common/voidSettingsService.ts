@@ -16,6 +16,7 @@ import { VOID_SETTINGS_STORAGE_KEY } from './storageKeys.js';
 import { isLocalVoiceModelId } from './localVoiceModelTypes.js';
 import { isMacintosh } from '../../../../base/common/platform.js';
 import { consolidateSingleAutodetectedProviderModels, dedupeProviderModels, normalizeAutodetectedModelNamesForProvider } from './localSingleModelProviders.js';
+import { DEFAULT_PERMISSION_RULES } from './permissionRules.js';
 import { defaultSettingsOfProvider, displayInfoOfProviderName, FeatureName, ProviderName, ModelSelectionOfFeature, SettingsOfProvider, SettingName, providerNames, ModelSelection, modelSelectionsEqual, featureNames, VoidStatefulModelInfo, GlobalSettings, GlobalSettingName, defaultGlobalSettings, ModelSelectionOptions, OptionsOfModelSelection, ChatMode, OverridesOfModel, defaultOverridesOfModel, MCPUserStateOfName as MCPUserStateOfName, MCPUserState } from './voidSettingsTypes.js';
 
 
@@ -309,6 +310,8 @@ class VoidSettingsService extends Disposable implements IVoidSettingsService {
 
 			// autoapprove is now an obj not a boolean (1.2.5)
 			if (typeof readS.globalSettings.autoApprove === 'boolean') readS.globalSettings.autoApprove = {}
+
+			if (!readS.globalSettings.permissionRules) readS.globalSettings.permissionRules = DEFAULT_PERMISSION_RULES
 
 			// 1.3.5 add source control feature
 			if (readS.modelSelectionOfFeature && !readS.modelSelectionOfFeature['SCM']) {

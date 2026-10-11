@@ -8,6 +8,7 @@ import { defaultModelsOfProvider, defaultProviderSettings, ModelOverrides } from
 import { ToolApprovalType } from './toolsServiceTypes.js';
 import { VoidSettingsState } from './voidSettingsService.js'
 import type { LocalVoiceModelId } from './localVoiceModelTypes.js'
+import { DEFAULT_PERMISSION_RULES, PermissionRuleItem } from './permissionRules.js'
 
 
 type UnionOfKeys<T> = T extends T ? keyof T : never;
@@ -482,6 +483,7 @@ export type GlobalSettings = {
 	enableFastApply: boolean;
 	chatMode: ChatMode;
 	autoApprove: { [approvalType in ToolApprovalType]?: boolean };
+	permissionRules: PermissionRuleItem[];
 	showInlineSuggestions: boolean;
 	includeToolLintErrors: boolean;
 	isOnboardingComplete: boolean;
@@ -501,6 +503,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	// then never reached. It is on by default now; the setting still turns it
 	// off for anyone who wants their editor quiet.
 	enableAutocomplete: true,
+	permissionRules: DEFAULT_PERMISSION_RULES,
 	syncApplyToChat: true,
 	syncSCMToChat: true,
 	enableFastApply: true,

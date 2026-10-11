@@ -45,6 +45,7 @@ import { ITokenUsageService } from '../common/tokenUsageService.js';
 import { compact, Compaction, usableTokens } from './compactionService.js';
 import { getModelCapabilities, getReservedOutputTokenSpace, getIsReasoningEnabledState } from '../common/modelCapabilities.js';
 import { estimateTokens } from '../common/tokenizer.js';
+import { effectiveRuleLevel } from '../common/permissionRules.js';
 
 
 // related to retrying when LLM message has error
@@ -668,13 +669,22 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				&& (toolName === 'run_command' || toolName === 'run_persistent_command')
 				&& isReadOnlyShellCommand(String((toolParams as BuiltinToolCallParams['run_command']).command ?? ''));
 
-			if (approvalType && !isReadOnlyTerminalCommand) {
-				const autoApprove = this._settingsService.state.globalSettings.autoApprove[approvalType]
+			const ruleAction = effectiveRuleLevel(this._settingsService.state.globalSettings.permissionRules, toolName)
+
+			if (ruleAction === 'deny') {
+				this._addMessageToThread(threadId, { role: 'tool', type: 'rejected', content: `Blocked by a permission rule: ${toolName} is set to deny.`, result: null, name: toolName, params: toolParams, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
+				return {}
+			}
+
+			const needsApproval = approvalType
+				&& ruleAction === 'ask'
+				&& !isReadOnlyTerminalCommand
+				&& !this._settingsService.state.globalSettings.autoApprove[approvalType]
+
+			if (needsApproval) {
 				// add a tool_request because we use it for UI if a tool is loading (this should be improved in the future)
 				this._addMessageToThread(threadId, { role: 'tool', type: 'tool_request', content: '(Awaiting user permission...)', result: null, name: toolName, params: toolParams, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
-				if (!autoApprove) {
-					return { awaitingUserApproval: true }
-				}
+				return { awaitingUserApproval: true }
 			}
 		}
 		else {
