@@ -467,7 +467,10 @@ export const isFeatureNameDisabled = (featureName: FeatureName, settingsState: V
 
 
 
-export type ChatMode = 'agent' | 'gather' | 'normal' | 'plan' | 'debug'
+export type StaticChatMode = 'agent' | 'gather' | 'normal' | 'plan' | 'debug'
+// Custom modes are read from .loophole/modes/*.md, so any other string can be a
+// mode. The intersection keeps autocompletion for the built-in names.
+export type ChatMode = StaticChatMode | (string & {})
 
 
 export type GlobalSettings = {

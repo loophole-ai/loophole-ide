@@ -12,6 +12,7 @@ import { RawToolParamsObj } from '../sendLLMMessageTypes.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, BuiltinToolResultType, ToolName } from '../toolsServiceTypes.js';
 import { ChatMode, ProviderName } from '../voidSettingsTypes.js';
 import { prompt_plan_mode, prompt_plan_reminder_anthropic, prompt_debug_mode } from './modelPrompts.js';
+import type { CustomMode } from '../../browser/customModesService.js';
 
 // Triple backtick wrapper used throughout the prompts for code blocks
 export const tripleTick = ['```', '```']
@@ -488,7 +489,7 @@ export const isABuiltinToolName = (toolName: string): toolName is BuiltinToolNam
 
 
 
-export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined) => {
+export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, customMode?: CustomMode | null) => {
 
 	// Tools that only read: no approval type, so no approval dialog.
 	const readOnlyToolNames = () => (Object.keys(builtinTools) as BuiltinToolName[])
@@ -501,8 +502,9 @@ export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalTool
 	// to offer everywhere. Edits and terminal commands stay behind 'agent',
 	// where the approval dialog is the thing standing between the model and
 	// the workspace.
-	const builtinToolNames: BuiltinToolName[] | undefined =
-		(chatMode === 'normal' || chatMode === 'plan' || chatMode === 'gather') ? readOnlyToolNames()
+	const builtinToolNames: BuiltinToolName[] | undefined = customMode
+		? ((customMode.tools.length ? customMode.tools : readOnlyToolNames()) as BuiltinToolName[])
+		: (chatMode === 'normal' || chatMode === 'plan' || chatMode === 'gather') ? readOnlyToolNames()
 			: chatMode === 'agent' || chatMode === 'debug' ? Object.keys(builtinTools) as BuiltinToolName[]
 				: undefined
 
@@ -540,8 +542,8 @@ export const reParsedToolXMLString = (toolName: ToolName, toolParams: RawToolPar
 
 /* We expect tools to come at the end - not a hard limit, but that's just how we process them, and the flow makes more sense that way. */
 // - You are allowed to call multiple tools by specifying them consecutively. However, there should be NO text or writing between tool calls or after them.
-const systemToolsXMLPrompt = (chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined) => {
-	const tools = availableTools(chatMode, mcpTools)
+const systemToolsXMLPrompt = (chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, customMode?: CustomMode | null) => {
+	const tools = availableTools(chatMode, mcpTools, customMode)
 	if (!tools || tools.length === 0) return null
 
 	const toolXMLDefinitions = (`\
@@ -566,7 +568,7 @@ const systemToolsXMLPrompt = (chatMode: ChatMode, mcpTools: InternalToolInfo[] |
 // ======================================================== chat (normal, gather, agent) ========================================================
 
 
-export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, includeXMLToolDefinitions, providerName }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, includeXMLToolDefinitions: boolean, providerName?: ProviderName | null }) => {
+export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, includeXMLToolDefinitions, providerName, customMode }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, includeXMLToolDefinitions: boolean, providerName?: ProviderName | null, customMode?: CustomMode | null }) => {
 	const header = (`You are an expert coding ${(mode === 'agent' || mode === 'debug') ? 'agent' : 'assistant'} whose job is \
 ${(mode === 'agent' || mode === 'debug') ? `to help the user develop, run, and make changes to their codebase.`
 			: mode === 'gather' ? `to search, understand, and reference files in the user's codebase.`
@@ -600,7 +602,7 @@ ${directoryStr}
 </files_overview>`)
 
 
-	const toolDefinitions = includeXMLToolDefinitions ? systemToolsXMLPrompt(mode, mcpTools) : null
+	const toolDefinitions = includeXMLToolDefinitions ? systemToolsXMLPrompt(mode, mcpTools, customMode) : null
 
 	const taskManagement = (mode === 'agent' || mode === 'debug') ? `Use todo_write for any task with 3 or more steps. Break it down before starting. Mark each todo completed immediately when done — don't batch them. For simple one-step tasks, skip the todo and just do it.` : ''
 
@@ -677,6 +679,7 @@ ${details.map((d, i) => `${i + 1}. ${d}`).join('\n\n')}`)
 	ansStrs.push(fsInfo)
 	if (planModePrompt) ansStrs.push(planModePrompt)
 	if (debugModePrompt) ansStrs.push(debugModePrompt)
+	if (customMode?.prompt) ansStrs.push(`# ${customMode.name} mode — Active\n\n${customMode.prompt}`)
 
 	const fullSystemMsgStr = ansStrs
 		.join('\n\n\n')

@@ -77,6 +77,9 @@ export type LLMFIMMessage = {
 	stopTokens: string[];
 }
 
+// Only the fields the main process needs; the file path would not survive IPC.
+export type CustomModeWire = { id: string; name: string; tools: string[]; prompt: string };
+
 
 export type RawToolParamsObj = {
 	[paramName in ToolParamName<ToolName>]?: string;
@@ -112,6 +115,7 @@ type SendLLMType = {
 	messages: LLMChatMessage[]; // the type of raw chat messages that we send to Anthropic, OAI, etc
 	separateSystemMessage: string | undefined;
 	chatMode: ChatMode | null;
+	customMode?: CustomModeWire | null;
 } | {
 	messagesType: 'FIMMessage';
 	messages: LLMFIMMessage;
@@ -143,6 +147,7 @@ export type SendLLMMessageParams = {
 
 	settingsOfProvider: SettingsOfProvider;
 	mcpTools: InternalToolInfo[] | undefined;
+	customMode: CustomModeWire | null;
 } & SendLLMType
 
 

@@ -65,6 +65,7 @@ type SendChatParams_Internal = InternalCommonMessageParams & {
 	separateSystemMessage: string | undefined;
 	chatMode: ChatMode | null;
 	mcpTools: InternalToolInfo[] | undefined;
+	customMode?: CustomModeWire | null;
 }
 type SendFIMParams_Internal = InternalCommonMessageParams & { messages: LLMFIMMessage; separateSystemMessage: string | undefined; }
 export type ListParams_Internal<ModelResponse> = ModelListParams<ModelResponse>
@@ -319,7 +320,7 @@ const toOpenAICompatibleTool = (toolInfo: InternalToolInfo) => {
 }
 
 const openAITools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined) => {
-	const allowedTools = availableTools(chatMode, mcpTools)
+	const allowedTools = availableTools(chatMode, mcpTools, customMode)
 	if (!allowedTools || Object.keys(allowedTools).length === 0) return null
 
 	const openAITools: OpenAI.Chat.Completions.ChatCompletionTool[] = []
@@ -443,7 +444,7 @@ const _trimMessagesForToolBudget = (
 	return msgs
 }
 
-const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onError, settingsOfProvider, modelSelectionOptions, modelName: modelName_, _setAborter, providerName, chatMode, separateSystemMessage, overridesOfModel, mcpTools }: SendChatParams_Internal) => {
+const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onError, settingsOfProvider, modelSelectionOptions, modelName: modelName_, _setAborter, providerName, chatMode, separateSystemMessage, overridesOfModel, mcpTools, customMode }: SendChatParams_Internal) => {
 	const {
 		modelName,
 		specialToolFormat,
@@ -640,7 +641,7 @@ const toAnthropicTool = (toolInfo: InternalToolInfo) => {
 }
 
 const anthropicTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined) => {
-	const allowedTools = availableTools(chatMode, mcpTools)
+	const allowedTools = availableTools(chatMode, mcpTools, customMode)
 	if (!allowedTools || Object.keys(allowedTools).length === 0) return null
 
 	const anthropicTools: Anthropic.Messages.ToolUnion[] = []
@@ -653,7 +654,7 @@ const anthropicTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] 
 
 
 // ------------ ANTHROPIC ------------
-const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessage, onError, settingsOfProvider, modelSelectionOptions, overridesOfModel, modelName: modelName_, _setAborter, separateSystemMessage, chatMode, mcpTools }: SendChatParams_Internal) => {
+const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessage, onError, settingsOfProvider, modelSelectionOptions, overridesOfModel, modelName: modelName_, _setAborter, separateSystemMessage, chatMode, mcpTools, customMode }: SendChatParams_Internal) => {
 	const {
 		modelName,
 		specialToolFormat,
@@ -911,7 +912,7 @@ const toGeminiFunctionDecl = (toolInfo: InternalToolInfo) => {
 }
 
 const geminiTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined): GeminiTool[] | null => {
-	const allowedTools = availableTools(chatMode, mcpTools)
+	const allowedTools = availableTools(chatMode, mcpTools, customMode)
 	if (!allowedTools || Object.keys(allowedTools).length === 0) return null
 	const functionDecls: FunctionDeclaration[] = []
 	for (const t in allowedTools ?? {}) {
@@ -938,6 +939,7 @@ const sendGeminiChat = async ({
 	modelSelectionOptions,
 	chatMode,
 	mcpTools,
+	customMode,
 }: SendChatParams_Internal) => {
 
 	if (providerName !== 'gemini') throw new Error(`Sending Gemini chat, but provider was ${providerName}`)

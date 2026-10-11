@@ -46,6 +46,7 @@ import { compact, Compaction, usableTokens } from './compactionService.js';
 import { getModelCapabilities, getReservedOutputTokenSpace, getIsReasoningEnabledState } from '../common/modelCapabilities.js';
 import { estimateTokens } from '../common/tokenizer.js';
 import { effectiveRuleLevel } from '../common/permissionRules.js';
+import { ICustomModesService } from './customModesService.js';
 
 
 // related to retrying when LLM message has error
@@ -346,6 +347,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IFileService private readonly _fileService: IFileService,
 		@IMCPService private readonly _mcpService: IMCPService,
 		@ITokenUsageService private readonly _tokenUsageService: ITokenUsageService,
+		@ICustomModesService private readonly _customModesService: ICustomModesService,
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
@@ -786,6 +788,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		// above just defines helpers, below starts the actual function
 		const { chatMode: globalChatMode } = this._settingsService.state.globalSettings // should not change as we loop even if user changes it, so it goes here
 		const chatMode = this.state.allThreads[threadId]?.state.chatModeOverride ?? globalChatMode
+		const customMode = this._customModesService.getMode(chatMode) ?? null
 		const { overridesOfModel } = this._settingsService.state
 
 		let nMessagesSent = 0
@@ -845,6 +848,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				const llmCancelToken = this._llmMessageService.sendLLMMessage({
 					messagesType: 'chatMessages',
 					chatMode,
+					customMode: customMode && { id: customMode.id, name: customMode.name, tools: customMode.tools, prompt: customMode.prompt },
 					messages: messages,
 					modelSelection,
 					modelSelectionOptions,

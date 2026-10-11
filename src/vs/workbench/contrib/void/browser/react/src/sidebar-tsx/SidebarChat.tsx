@@ -38,6 +38,7 @@ import { ToolApprovalTypeSwitch } from '../void-settings-tsx/Settings.js';
 
 import { persistentTerminalNameOfId } from '../../../terminalToolService.js';
 import { removeMCPToolNamePrefix } from '../../../../common/mcpServiceTypes.js';
+import { ICustomModesService, CustomMode } from '../../../customModesService.js';
 
 
 
@@ -387,7 +388,7 @@ const ContextWindowIndicator = ({ featureName }: { featureName: FeatureName }) =
 }
 
 
-const nameOfChatMode = {
+const nameOfChatMode: Partial<Record<ChatMode, string>> = {
 	'normal': 'Chat',
 	'gather': 'Gather',
 	'agent': 'Agent',
@@ -395,7 +396,7 @@ const nameOfChatMode = {
 	'debug': 'Debug',
 }
 
-const detailOfChatMode = {
+const detailOfChatMode: Partial<Record<ChatMode, string>> = {
 	'normal': 'Normal chat',
 	'gather': 'Reads files, but can\'t edit',
 	'agent': 'Edits files and uses tools',
@@ -408,9 +409,21 @@ export const ChatModeDropdown = ({ className }: { className: string }) => {
 	const accessor = useAccessor()
 
 	const voidSettingsService = accessor.get('IVoidSettingsService')
+	const customModesService = accessor.get('ICustomModesService')
+	const [customModes, setCustomModes] = useState<CustomMode[]>([])
 	const settingsState = useSettingsState()
 
-	const options: ChatMode[] = useMemo(() => ['normal', 'gather', 'agent', 'plan', 'debug'], [])
+	useEffect(() => {
+		customModesService.refresh().then(setCustomModes).catch(() => { })
+	}, [customModesService])
+
+	const customModesState = { modes: customModes }
+
+	const options: ChatMode[] = useMemo(() => {
+	const builtin: ChatMode[] = ['normal', 'gather', 'agent', 'plan', 'debug']
+	const custom = customModesState.modes.map(m => m.id as ChatMode)
+	return [...builtin, ...custom]
+}, [customModesState.modes])
 
 	const onChangeOption = useCallback((newVal: ChatMode) => {
 		voidSettingsService.setGlobalSetting('chatMode', newVal)
@@ -421,9 +434,9 @@ export const ChatModeDropdown = ({ className }: { className: string }) => {
 		options={options}
 		selectedOption={settingsState.globalSettings.chatMode}
 		onChangeOption={onChangeOption}
-		getOptionDisplayName={(val) => nameOfChatMode[val]}
-		getOptionDropdownName={(val) => nameOfChatMode[val]}
-		getOptionDropdownDetail={(val) => detailOfChatMode[val]}
+		getOptionDisplayName={(val) => nameOfChatMode[val] ?? customModes.find(m => m.id === val)?.name ?? val}
+		getOptionDropdownName={(val) => nameOfChatMode[val] ?? customModes.find(m => m.id === val)?.name ?? val}
+		getOptionDropdownDetail={(val) => detailOfChatMode[val] ?? customModes.find(m => m.id === val)?.description ?? 'Custom mode'}
 		getOptionsEqual={(a, b) => a === b}
 	/>
 
