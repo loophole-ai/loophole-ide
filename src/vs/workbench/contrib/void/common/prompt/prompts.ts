@@ -350,6 +350,33 @@ export const builtinTools: {
 
 
 
+	apply_patch: {
+		name: 'apply_patch',
+		description: `Edits several files in one call using a simple patch format. Prefer this when a change spans more than one file, or when the same edit repeats across many.
+
+\`\`\`
+*** Begin Patch
+*** Add File: hello.txt
++Hello world
+*** Update File: src/app.py
+*** Move to: src/main.py
+@@ def greet():
+-print("Hi")
++print("Hello, world!")
+*** Delete File: obsolete.txt
+*** End Patch
+\`\`\`
+
+- Add File: every following line starts with +
+- Delete File: nothing follows it
+- Update File: @@ marks a hunk, then context lines start with a space, removals with - and additions with +
+
+Use exact paths relative to the workspace root. A hunk that cannot be matched fails the whole patch, so keep the context lines distinctive.`,
+		params: {
+			patchText: { description: 'The complete patch, from *** Begin Patch to *** End Patch.' }
+		}
+	},
+
 	question: {
 		name: 'question',
 		description: `Asks the user a question and waits for the answer, instead of guessing.

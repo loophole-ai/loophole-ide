@@ -28,6 +28,7 @@ import { ICodeEditorService } from '../../../../editor/browser/services/codeEdit
 import { ITodoService } from './todoService.js'
 import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js'
 import { window } from '../../../../platform/window/common/window.js'
+import { parsePatch, applyHunks } from './patchParser.js'
 import { estimateTokens } from '../common/tokenizer.js'
 
 
@@ -132,6 +133,15 @@ const checkIfIsFolder = (uriStr: string) => {
 	uriStr = uriStr.trim()
 	if (uriStr.endsWith('/') || uriStr.endsWith('\\')) return true
 	return false
+}
+
+function resolveWorkspacePath(fsPath: string): URI {
+	const workspaceFolders = workspaceContextService.getWorkspace().folders ?? []
+	const rel = fsPath.replace(/\\/g, '/').replace(/^\/+/, '')
+	if (workspaceFolders.length) {
+		return URI.joinPath(workspaceFolders[0].uri, ...rel.split('/'))
+	}
+	return URI.file(fsPath)
 }
 
 async function askUserQuestion(quickInputService: IQuickInputService, question: string, options: string[]): Promise<string> {
@@ -365,6 +375,11 @@ export class ToolsService implements IToolsService {
 				return { description, prompt }
 			},
 
+			apply_patch: (params: RawToolParamsObj) => {
+				const patchText = validateStr('patchText', params.patchText)
+				return { patchText }
+			},
+
 			question: (params: RawToolParamsObj) => {
 				const question = validateStr('question', params.question)
 				const rawOptions = params.options
@@ -596,6 +611,48 @@ export class ToolsService implements IToolsService {
 				return { result: { content } };
 			},
 
+			apply_patch: async ({ patchText }) => {
+				const ops = parsePatch(patchText)
+				const touched: string[] = []
+
+				for (const op of ops) {
+					if (op.kind === 'add') {
+						const uri = resolveWorkspacePath(op.path)
+						await voidModelService.initializeModel(uri)
+						await this.fileService.writeFile(uri, Buffer.from(op.content, 'utf8'))
+						touched.push(op.path)
+						continue
+					}
+					if (op.kind === 'delete') {
+						const uri = resolveWorkspacePath(op.path)
+						await this.fileService.del(uri, { recursive: true })
+						touched.push(op.path)
+						continue
+					}
+
+					const uri = resolveWorkspacePath(op.path)
+					await voidModelService.initializeModel(uri)
+					const { model } = await voidModelService.getModelSafe(uri)
+					if (!model) { throw new Error(`apply_patch: ${op.path} does not exist`) }
+					const updated = applyHunks(model.getValue(), op.hunks)
+
+					if (op.moveTo) {
+						const target = resolveWorkspacePath(op.moveTo)
+						await this.fileService.writeFile(target, Buffer.from(updated, 'utf8'))
+						await this.fileService.del(uri, { recursive: true })
+						touched.push(op.moveTo)
+					}
+					else {
+						// Goes through the same path as a rewrite, so the change
+						// shows up as an inline diff the user can accept or reject.
+						editCodeService.instantlyRewriteFile({ uri, newContent: updated })
+						touched.push(op.path)
+					}
+				}
+
+				return { result: { filesTouched: touched } }
+			},
+
 			question: async ({ question, options }) => {
 				const quickInputService = instantiationService.invokeFunction(a => a.get(IQuickInputService))
 				const answer = await askUserQuestion(quickInputService, question, options)
@@ -746,6 +803,10 @@ export class ToolsService implements IToolsService {
 
 			task: (params, result) => {
 				return `Subagent "${params.description}" reported:\n\n${result.content}`
+			},
+
+			apply_patch: (_params, result) => {
+				return `Patched:\n${result.filesTouched.map(f => `- ${f}`).join('\n')}`
 			},
 
 			question: (_params, result) => {

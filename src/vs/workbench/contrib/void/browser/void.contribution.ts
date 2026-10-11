@@ -44,6 +44,7 @@ import './lspService.js'
 import './compactionService.js'
 import './customModesService.js'
 import './todoService.js'
+import './patchParser.js'
 
 // register Thread History
 import './chatThreadService.js'

@@ -23,6 +23,7 @@ export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: '
 	'delete_file_or_folder': 'edits',
 	'rewrite_file': 'edits',
 	'edit_file': 'edits',
+	'apply_patch': 'edits',
 	'write_project_memory': 'edits',
 	'run_command': 'terminal',
 	'run_persistent_command': 'terminal',
@@ -83,6 +84,8 @@ export type BuiltinToolCallParams = {
 	'lsp': { operation: string; uri: URI | null; line: number | null; character: number | null },
 	// --- user input ---
 	'question': { question: string; options: string[] },
+	// --- patch ---
+	'apply_patch': { patchText: string },
 }
 
 // RESULT OF TOOL CALL
@@ -116,6 +119,8 @@ export type BuiltinToolResultType = {
 	'lsp': { result: string },
 	// --- user input ---
 	'question': { answer: string },
+	// --- patch ---
+	'apply_patch': { filesTouched: string[] },
 }
 
 
