@@ -27,7 +27,7 @@ import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../co
 import { estimateTokens } from '../../../../common/tokenizer.js';
 import { AlertTriangle, File, Ban, Check, ChevronRight, Dot, FileIcon, Mic, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Paperclip } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage } from '../../../../common/chatThreadServiceTypes.js';
-import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolName, LintErrorItem, ToolApprovalType, toolApprovalTypes } from '../../../../common/toolsServiceTypes.js';
+import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolName, LintErrorItem, ToolApprovalType, toolApprovalTypes, TodoItem } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, JumpToFileButton, JumpToTerminalButton, StatusIndicator, StatusIndicatorForApplyButton, useApplyStreamState, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
 import { IsRunningType } from '../../../chatThreadService.js';
 import { acceptAllBg, acceptBorder, buttonFontSize, buttonTextColor, rejectAllBg, rejectBg, rejectBorder } from '../../../../common/helpers/colors.js';
@@ -39,6 +39,7 @@ import { ToolApprovalTypeSwitch } from '../void-settings-tsx/Settings.js';
 import { persistentTerminalNameOfId } from '../../../terminalToolService.js';
 import { removeMCPToolNamePrefix } from '../../../../common/mcpServiceTypes.js';
 import { ICustomModesService, CustomMode } from '../../../customModesService.js';
+import { ITodoService } from '../../../todoService.js';
 
 
 
@@ -405,6 +406,47 @@ const detailOfChatMode: Partial<Record<ChatMode, string>> = {
 }
 
 
+const TodoPanel = () => {
+	const accessor = useAccessor()
+	const todoService = accessor.get('ITodoService')
+	const [todos, setTodos] = useState<TodoItem[]>([])
+
+	useEffect(() => {
+		setTodos(todoService.getTodos())
+		return todoService.onDidChangeTodos(setTodos)
+	}, [todoService])
+
+	const [collapsed, setCollapsed] = useState(false)
+
+	if (todos.length === 0) return null
+	const done = todos.filter(t => t.status === 'completed').length
+
+	const color = (t: TodoItem) => {
+		if (t.status === 'completed') return 'text-loophole-fg-3 line-through'
+		if (t.status === 'in_progress') return 'text-loophole-fg-1'
+		if (t.status === 'cancelled') return 'text-loophole-fg-3 line-through opacity-60'
+		return 'text-loophole-fg-2'
+	}
+
+	return <div className="px-2 py-1.5 border-b border-loophole-border-3 text-xs">
+		<div className="flex items-center gap-2 cursor-pointer select-none" onClick={() => setCollapsed(c => !c)}>
+			<span className="text-loophole-fg-2 font-medium">Tasks</span>
+			<div className="flex-1 h-1 rounded bg-loophole-bg-3 overflow-hidden">
+				<div className="h-full bg-loophole-fg-2" style={{ width: `${(done / todos.length) * 100}%` }} />
+			</div>
+			<span className="text-loophole-fg-3">{done}/{todos.length}</span>
+		</div>
+		{!collapsed && <ul className="mt-1.5 flex flex-col gap-1">
+			{todos.map((t, i) => <li key={i} className={`flex items-start gap-1.5 ${color(t)}`}>
+				<span className="mt-[3px] shrink-0">
+					{t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '•' : t.status === 'cancelled' ? '×' : '○'}
+				</span>
+				<span className="flex-1">{t.content}</span>
+			</li>)}
+		</ul>}
+	</div>
+}
+
 export const ChatModeDropdown = ({ className }: { className: string }) => {
 	const accessor = useAccessor()
 
@@ -551,6 +593,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 				)}
 			</div>
 
+			{featureName === 'Chat' && <TodoPanel />}
 			{/* Bottom row */}
 			<div className='flex flex-row justify-between items-end gap-1'>
 				{showModelDropdown && (

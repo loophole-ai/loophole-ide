@@ -42,6 +42,7 @@ import './terminalToolService.js'
 import './lspService.js'
 import './compactionService.js'
 import './customModesService.js'
+import './todoService.js'
 
 // register Thread History
 import './chatThreadService.js'

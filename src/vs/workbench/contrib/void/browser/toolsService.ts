@@ -25,6 +25,7 @@ import { PROJECT_MEMORY_STORAGE_KEY, TODO_STORAGE_KEY } from '../common/storageK
 import { IChatThreadService } from './chatThreadService.js'
 import { ILspService, LspLocation } from './lspService.js'
 import { ICodeEditorService } from '../../../../editor/browser/services/codeEditorService.js'
+import { ITodoService } from './todoService.js'
 import { estimateTokens } from '../common/tokenizer.js'
 
 
@@ -170,7 +171,9 @@ export class ToolsService implements IToolsService {
 		@IMarkerService private readonly markerService: IMarkerService,
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		@IStorageService private readonly storageService: IStorageService,
+		@ICustomModesService private readonly customModesService: ICustomModesService,
 		@ILspService private readonly lspService: ILspService,
+		@ITodoService private readonly todoService: ITodoService,
 		@ICodeEditorService private readonly editorService: ICodeEditorService,
 	) {
 		const queryBuilder = instantiationService.createInstance(QueryBuilder);
@@ -555,7 +558,7 @@ export class ToolsService implements IToolsService {
 				return { result: {} }
 			},
 			todo_write: async ({ todos }) => {
-				this.storageService.store(TODO_STORAGE_KEY, JSON.stringify(todos), StorageScope.WORKSPACE, StorageTarget.MACHINE)
+				this.todoService.setTodos(todos)
 				return { result: { todos } }
 			},
 			fetch_url: async ({ url, format, timeout }) => {
