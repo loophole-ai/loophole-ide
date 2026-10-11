@@ -37,9 +37,27 @@ export interface IMCPService {
 	getMCPTools(): InternalToolInfo[] | undefined;
 	callMCPTool(toolData: MCPToolCallParams): Promise<{ result: RawMCPToolCall }>;
 	stringifyResult(result: RawMCPToolCall): string
+
+	listResources(serverName: string): Promise<MCPResourcesResponse>;
+	readResource(serverName: string, uri: string): Promise<MCPResourceContentsResponse>;
+	listPrompts(serverName: string): Promise<MCPPromptsResponse>;
+	getPrompt(serverName: string, promptName: string, args?: Record<string, string>): Promise<MCPPromptResponse>;
 }
 
 export const IMCPService = createDecorator<IMCPService>('mcpConfigService');
+
+export type MCPResourceEntry = { uri: string; name: string; description?: string; mimeType?: string };
+export type MCPResourcesResponse = {
+	resources: MCPResourceEntry[];
+	resourceTemplates: { uriTemplate: string; name: string; description?: string }[];
+	error?: string;
+};
+export type MCPResourceContentsResponse = { contents: unknown[]; error?: string };
+export type MCPPromptsResponse = {
+	prompts: { name: string; description?: string; arguments: { name: string; description?: string; required?: boolean }[] }[];
+	error?: string;
+};
+export type MCPPromptResponse = { messages: unknown[]; error?: string };
 
 
 
@@ -181,6 +199,22 @@ class MCPService extends Disposable implements IMCPService {
 		} catch (error) {
 			console.error('Error opening MCP config file:', error);
 		}
+	}
+
+	public listResources(serverName: string): Promise<MCPResourcesResponse> {
+		return this.channel.call<MCPResourcesResponse>('listResources', { serverName });
+	}
+
+	public readResource(serverName: string, uri: string): Promise<MCPResourceContentsResponse> {
+		return this.channel.call<MCPResourceContentsResponse>('readResource', { serverName, uri });
+	}
+
+	public listPrompts(serverName: string): Promise<MCPPromptsResponse> {
+		return this.channel.call<MCPPromptsResponse>('listPrompts', { serverName });
+	}
+
+	public getPrompt(serverName: string, promptName: string, args?: Record<string, string>): Promise<MCPPromptResponse> {
+		return this.channel.call<MCPPromptResponse>('getPrompt', { serverName, promptName, args });
 	}
 
 	public getMCPTools(): InternalToolInfo[] | undefined {

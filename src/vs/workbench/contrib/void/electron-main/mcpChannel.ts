@@ -100,6 +100,22 @@ export class MCPChannel implements IServerChannel {
 				const response = await this._safeCallTool(p.serverName, p.toolName, p.params)
 				return response
 			}
+			else if (command === 'listResources') {
+				const { serverName } = params as { serverName: string }
+				return await this._listResources(serverName)
+			}
+			else if (command === 'readResource') {
+				const { serverName, uri } = params as { serverName: string; uri: string }
+				return await this._readResource(serverName, uri)
+			}
+			else if (command === 'listPrompts') {
+				const { serverName } = params as { serverName: string }
+				return await this._listPrompts(serverName)
+			}
+			else if (command === 'getPrompt') {
+				const { serverName, promptName, args } = params as { serverName: string; promptName: string; args?: Record<string, string> }
+				return await this._getPrompt(serverName, promptName, args)
+			}
 			else {
 				throw new Error(`Loophole sendLLM: command "${command}" not recognized.`)
 			}
@@ -298,6 +314,60 @@ export class MCPChannel implements IServerChannel {
 				}
 			})
 		}
+	}
+
+	// resource and prompt functions
+
+	private _clientOf(serverName: string) {
+		const server = this.infoOfClientId[serverName]
+		if (!server) throw new Error(`Server ${serverName} not found`)
+		if (!server._client) throw new Error(`Client for server ${serverName} not found`)
+		return server._client
+	}
+
+	private async _listResources(serverName: string) {
+		try {
+			const client = this._clientOf(serverName)
+			const result = await client.listResources()
+			return {
+				resources: result.resources.map(r => ({ uri: r.uri, name: r.name, description: r.description, mimeType: r.mimeType })),
+				resourceTemplates: result.resourceTemplates?.map(t => ({ uriTemplate: t.uriTemplate, name: t.name, description: t.description })) ?? [],
+			}
+		}
+		catch (e) { return { resources: [], resourceTemplates: [], error: String(e) } }
+	}
+
+	private async _readResource(serverName: string, uri: string) {
+		try {
+			const client = this._clientOf(serverName)
+			const result = await client.readResource({ uri })
+			return { contents: result.contents }
+		}
+		catch (e) { return { contents: [], error: String(e) } }
+	}
+
+	private async _listPrompts(serverName: string) {
+		try {
+			const client = this._clientOf(serverName)
+			const result = await client.listPrompts()
+			return {
+				prompts: result.prompts.map(p => ({
+					name: p.name,
+					description: p.description,
+					arguments: p.arguments?.map(a => ({ name: a.name, description: a.description, required: a.required })) ?? [],
+				})),
+			}
+		}
+		catch (e) { return { prompts: [], error: String(e) } }
+	}
+
+	private async _getPrompt(serverName: string, promptName: string, args?: Record<string, string>) {
+		try {
+			const client = this._clientOf(serverName)
+			const result = await client.getPrompt({ name: promptName, arguments: args })
+			return { messages: result.messages }
+		}
+		catch (e) { return { messages: [], error: String(e) } }
 	}
 
 	// tool call functions
