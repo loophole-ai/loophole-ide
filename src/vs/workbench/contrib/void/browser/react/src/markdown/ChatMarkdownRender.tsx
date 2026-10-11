@@ -13,6 +13,7 @@ import { URI } from '../../../../../../../base/common/uri.js'
 import { isAbsolute } from '../../../../../../../base/common/path.js'
 import { separateOutFirstLine } from '../../../../common/helpers/util.js'
 import { BlockCode } from '../util/inputs.js'
+import { MermaidBlock } from './MermaidBlock.js'
 import { CodespanLocationLink } from '../../../../common/chatThreadServiceTypes.js'
 import { getBasename, getRelative, voidOpenFileFn } from '../sidebar-tsx/SidebarChat.js'
 
@@ -287,6 +288,10 @@ const RenderToken = ({ token, inPTag, codeURI, chatMessageLocation, tokenIdx, ..
 		const contents = firstLineIsURI ? (remainingContents?.trimStart() || '') : t.text // exclude first-line URI from contents
 
 		if (!contents) return null
+
+		if (t.lang?.toLowerCase() === 'mermaid') {
+			return <MermaidBlock code={contents} />
+		}
 
 		// figure out langauge and URI
 		let uri: URI | null

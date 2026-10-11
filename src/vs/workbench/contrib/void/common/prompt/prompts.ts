@@ -696,6 +696,7 @@ ${directoryStr}
 	}
 	else {
 		details.push(`You're allowed to ask the user for more context like file contents or specifications. If this comes up, tell them to reference files and folders by typing @.`)
+		details.push(`Use a mermaid diagram in a code block when a picture explains something that prose would not, such as how a value flows through the system, how state changes, or how components relate. Leave it out when plain text is clearer.`)
 	}
 
 	if (mode === 'agent' || mode === 'debug') {
