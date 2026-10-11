@@ -38,7 +38,12 @@ export default defineConfig({
 	external: [ // these imports should be kept external ../../../ are external (this is just an optimization so the output file doesn't re-implement functions)
 		new RegExp('../../../*.js'
 			.replaceAll('.', '\\.')
-			.replaceAll('*', '.*'))
+			.replaceAll('*', '.*')),
+		// Absolute URLs are fetched at runtime, not resolved at build time. The
+		// noExternal rule above matches everything that does not start with a dot,
+		// so these have to be listed here or the bundler tries to look them up in
+		// node_modules and fails.
+		/^https?:\/\//,
 	],
 	treeshake: true,
 	esbuildOptions(options) {
