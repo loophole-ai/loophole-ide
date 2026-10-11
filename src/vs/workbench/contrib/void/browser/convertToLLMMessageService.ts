@@ -626,7 +626,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		const activeURI = this.editorService.activeEditor?.resource?.fsPath;
 
 		const directoryStr = await this.directoryStrService.getAllDirectoriesStr({
-			cutOffMessage: chatMode === 'agent' || chatMode === 'gather' ?
+			cutOffMessage: chatMode === 'agent' || chatMode === 'debug' || chatMode === 'gather' ?
 				`...Directories string cut off, use tools to read more...`
 				: `...Directories string cut off, ask user for more if necessary...`
 		})
