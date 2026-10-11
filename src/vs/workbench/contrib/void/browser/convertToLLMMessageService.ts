@@ -13,7 +13,7 @@ import { AnthropicLLMChatMessage, AnthropicReasoning, GeminiLLMChatMessage, LLMC
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { ChatMode, FeatureName, ModelSelection, ProviderName } from '../common/voidSettingsTypes.js';
 import { IDirectoryStrService } from '../common/directoryStrService.js';
-import { Compaction } from './compactionService.js';
+import { Compaction, pruneToolResults } from './compactionService.js';
 import { ITerminalToolService } from './terminalToolService.js';
 import { IVoidModelService } from '../common/voidModelService.js';
 import { URI } from '../../../../base/common/uri.js';
@@ -27,7 +27,7 @@ export const EMPTY_MESSAGE = '(empty message)'
 
 
 
-type SimpleLLMMessage = {
+export type SimpleLLMMessage = {
 	role: 'tool';
 	content: string;
 	id: string;
@@ -742,7 +742,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		}
 
 		const { messages, separateSystemMessage } = prepareMessages({
-			messages: llmMessages,
+			messages: pruneToolResults(llmMessages),
 			systemMessage,
 			aiInstructions,
 			supportsSystemMessage,

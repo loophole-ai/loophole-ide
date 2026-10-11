@@ -48,6 +48,42 @@ export function preserveRecentBudget(usable: number): number {
 	return Math.min(MAX_PRESERVE_RECENT_TOKENS, Math.max(MIN_PRESERVE_RECENT_TOKENS, Math.floor(usable * 0.25)));
 }
 
+export const PRUNE_MINIMUM = 20_000;
+export const PRUNE_PROTECT = 40_000;
+
+/**
+ * Replaces the payloads of old tool calls with a placeholder.
+ *
+ * A tool result is the bulkiest thing in a long session and almost never needs
+ * to be re-read verbatim once the assistant has moved on from it. Dropping the
+ * bodies buys back most of the window for the cost of one pass and no model
+ * call, which is why it runs separately from summarisation: pruning is cheap
+ * and lossy, summarising is expensive and keeps the shape of the conversation.
+ */
+export function pruneToolResults(messages: SimpleLLMMessage[]): SimpleLLMMessage[] {
+	if (messages.length < 4) return messages
+
+	const out = messages.map(m => ({ ...m }))
+	const protectFrom = out.length - 1
+	while (protectFrom > 0) {
+		if (out[protectFrom].role === 'tool') { protectFrom -= 1 } else { break }
+	}
+	if (protectFrom <= 0) return messages
+
+	let budget = 0
+	for (let i = protectFrom - 1; i >= 0; i--) {
+		const m = out[i]
+		if (m.role !== 'tool') continue
+		const size = estimateTokens(m.content)
+		if (budget + size <= PRUNE_MINIMUM) break
+		if (size <= PRUNE_PROTECT) continue
+		budget += size
+		out[i] = { ...m, content: `[tool output removed to save context: ${size} tokens]` }
+	}
+
+	return out
+}
+
 /**
  * Indices where a user message starts, oldest first.
  */
