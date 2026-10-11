@@ -26,6 +26,8 @@ import { IChatThreadService } from './chatThreadService.js'
 import { ILspService, LspLocation } from './lspService.js'
 import { ICodeEditorService } from '../../../../editor/browser/services/codeEditorService.js'
 import { ITodoService } from './todoService.js'
+import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js'
+import { window } from '../../../../platform/window/common/window.js'
 import { estimateTokens } from '../common/tokenizer.js'
 
 
@@ -130,6 +132,15 @@ const checkIfIsFolder = (uriStr: string) => {
 	uriStr = uriStr.trim()
 	if (uriStr.endsWith('/') || uriStr.endsWith('\\')) return true
 	return false
+}
+
+async function askUserQuestion(quickInputService: IQuickInputService, question: string, options: string[]): Promise<string> {
+	if (options.length > 0) {
+		const picked = await quickInputService.pick(options, { placeHolder: question })
+		if (picked) return picked
+	}
+	const typed = await window.showInputBox({ prompt: question, ignoreFocusOut: true })
+	return typed ?? '(the user did not answer)'
 }
 
 function formatLspLocations(locations: LspLocation[]): string {
@@ -354,6 +365,15 @@ export class ToolsService implements IToolsService {
 				return { description, prompt }
 			},
 
+			question: (params: RawToolParamsObj) => {
+				const question = validateStr('question', params.question)
+				const rawOptions = params.options
+				const options = typeof rawOptions === 'string'
+					? rawOptions.split(',').map(o => o.trim()).filter(Boolean).slice(0, 4)
+					: []
+				return { question, options }
+			},
+
 			lsp: (params: RawToolParamsObj) => {
 				const operation = validateStr('operation', params.operation).trim().toLowerCase()
 				const known = ['definition', 'references', 'hover', 'symbols']
@@ -576,6 +596,12 @@ export class ToolsService implements IToolsService {
 				return { result: { content } };
 			},
 
+			question: async ({ question, options }) => {
+				const quickInputService = instantiationService.invokeFunction(a => a.get(IQuickInputService))
+				const answer = await askUserQuestion(quickInputService, question, options)
+				return { result: { answer } }
+			},
+
 			lsp: async ({ operation, uri, line, character }) => {
 				const activeUri = editorService.getActiveCodeEditor()?.getModel()?.uri ?? null
 				const targetUri = uri ?? activeUri
@@ -720,6 +746,10 @@ export class ToolsService implements IToolsService {
 
 			task: (params, result) => {
 				return `Subagent "${params.description}" reported:\n\n${result.content}`
+			},
+
+			question: (_params, result) => {
+				return `The user answered: ${result.answer}`
 			},
 
 			lsp: (_params, result) => {

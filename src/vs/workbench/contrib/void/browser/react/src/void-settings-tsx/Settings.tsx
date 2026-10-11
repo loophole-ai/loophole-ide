@@ -16,6 +16,7 @@ import { LocalVoiceModelSettings } from '../local-voice/LocalVoiceModelSettings.
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
 import { WarningBox } from './WarningBox.js'
 import { IconLoading } from '../sidebar-tsx/SidebarChat.js'
+import { WORK_STYLE_PRESETS, WorkStyle } from '../../../../common/permissionRules.js';
 import { ToolApprovalType, toolApprovalTypes } from '../../../../common/toolsServiceTypes.js'
 import Severity from '../../../../../../../base/common/severity.js'
 import { getModelCapabilities, modelOverrideKeys, ModelOverrides } from '../../../../common/modelCapabilities.js';
@@ -1461,6 +1462,30 @@ export const Settings = () => {
 
 
 										{/* Tools Section */}
+										<div>
+											<h4 className={`text-base`}>Work Style</h4>
+											<div className='text-sm text-loophole-fg-3 mt-1'>{`How much the agent is allowed to do without stopping to ask.`}</div>
+
+											<div className='my-2'>
+												{Object.entries(WORK_STYLE_PRESETS).map(([key, preset]) => {
+													const active = voidSettingsState.globalSettings.workStyle === key
+													return <button
+														key={key}
+														className={`flex flex-col items-start gap-0.5 w-full text-left px-2 py-1.5 my-1 rounded-sm border ${active
+															? 'border-loophole-border-2 bg-loophole-bg-3'
+															: 'border-loophole-border-1 hover:brightness-95'}`}
+														onClick={() => {
+															voidSettingsService.setGlobalSetting('workStyle', key as WorkStyle)
+															voidSettingsService.setGlobalSetting('permissionRules', preset.rules)
+														}}
+													>
+														<span className='text-sm'>{preset.label}</span>
+														<span className='text-xs text-loophole-fg-3'>{preset.description}</span>
+													</button>
+												})}
+											</div>
+										</div>
+
 										<div>
 											<h4 className={`text-base`}>Tools</h4>
 											<div className='text-sm text-loophole-fg-3 mt-1'>{`Tools are functions that LLMs can call. Some tools require user approval.`}</div>

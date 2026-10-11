@@ -16,6 +16,32 @@ export const DEFAULT_PERMISSION_RULES: PermissionRuleItem[] = [
 	{ permission: 'terminal', pattern: '*', action: 'ask' },
 ];
 
+/**
+ * Kilo's Work Style presets. One click sets the ruleset and the display
+ * density together, because they are two halves of the same decision: a
+ * supervised session wants to be interrupted, an autonomous one does not.
+ */
+export type WorkStyle = 'supervised' | 'autonomous';
+
+export const WORK_STYLE_PRESETS: Record<WorkStyle, { label: string; description: string; rules: PermissionRuleItem[] }> = {
+	supervised: {
+		label: 'Supervised',
+		description: 'Ask before every edit and command',
+		rules: [
+			{ permission: '*', pattern: '*', action: 'ask' },
+		],
+	},
+	autonomous: {
+		label: 'Autonomous',
+		description: 'Only ask before commands that can break things',
+		rules: [
+			{ permission: '*', pattern: '*', action: 'allow' },
+			{ permission: 'delete_file_or_folder', pattern: '*', action: 'ask' },
+			{ permission: 'terminal', pattern: '*', action: 'ask' },
+		],
+	},
+};
+
 const escapeRe = (s: string) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
 
 export function matchTool(tool: string, pattern: string): boolean {

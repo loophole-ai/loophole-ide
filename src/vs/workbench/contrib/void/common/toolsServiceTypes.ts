@@ -81,6 +81,8 @@ export type BuiltinToolCallParams = {
 	'task': { description: string; prompt: string },
 	// --- language server ---
 	'lsp': { operation: string; uri: URI | null; line: number | null; character: number | null },
+	// --- user input ---
+	'question': { question: string; options: string[] },
 }
 
 // RESULT OF TOOL CALL
@@ -112,6 +114,8 @@ export type BuiltinToolResultType = {
 	'task': { content: string },
 	// --- language server ---
 	'lsp': { result: string },
+	// --- user input ---
+	'question': { answer: string },
 }
 
 

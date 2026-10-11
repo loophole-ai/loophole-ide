@@ -350,6 +350,21 @@ export const builtinTools: {
 
 
 
+	question: {
+		name: 'question',
+		description: `Asks the user a question and waits for the answer, instead of guessing.
+
+Use this whenever a wrong guess would cost more than an interruption: two readings of the requirement, a choice between approaches, or a fact you cannot determine from the code.
+
+Do not use it for anything you can find out yourself by reading the code or running a command. A question you could have answered yourself is an interruption the user did not ask for.
+
+The user can answer with text, or pick one of the options you give them.`,
+		params: {
+			question: { description: `The question to ask. Keep it to one thing; if there are several, ask the most important one first.` },
+			options: { description: `Optional. Up to four short answers the user can pick from, in preference order. Leave empty to let them type freely.` },
+		}
+	},
+
 	lsp: {
 		name: 'lsp',
 		description: `Asks the language server about the code instead of guessing. Works only where a language server is installed and running for that file.

@@ -312,6 +312,7 @@ class VoidSettingsService extends Disposable implements IVoidSettingsService {
 			if (typeof readS.globalSettings.autoApprove === 'boolean') readS.globalSettings.autoApprove = {}
 
 			if (!readS.globalSettings.permissionRules) readS.globalSettings.permissionRules = DEFAULT_PERMISSION_RULES
+			if (!readS.globalSettings.workStyle) readS.globalSettings.workStyle = 'supervised'
 
 			// 1.3.5 add source control feature
 			if (readS.modelSelectionOfFeature && !readS.modelSelectionOfFeature['SCM']) {
