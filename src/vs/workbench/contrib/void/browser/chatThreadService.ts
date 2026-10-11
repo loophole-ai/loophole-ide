@@ -42,6 +42,9 @@ import { IFileService } from '../../../../platform/files/common/files.js';
 import { IMCPService } from '../common/mcpService.js';
 import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
 import { ITokenUsageService } from '../common/tokenUsageService.js';
+import { compact, Compaction, usableTokens } from './compactionService.js';
+import { getModelCapabilities, getReservedOutputTokenSpace, getIsReasoningEnabledState } from '../common/modelCapabilities.js';
+import { estimateTokens } from '../common/tokenizer.js';
 
 
 // related to retrying when LLM message has error
@@ -139,6 +142,7 @@ export type ThreadType = {
 
 		chatModeOverride?: ChatMode;
 		isSubagent?: boolean;
+		compaction?: Compaction;
 
 		mountedInfo?: {
 			whenMounted: Promise<WhenMounted>
@@ -789,6 +793,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		}
 		this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' })  // just decorative, for clarity
 
+		await this._maybeCompact(threadId, modelSelection)
+
 
 		// tool use loop
 		while (shouldSendAnotherMessage) {
@@ -803,7 +809,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			const { messages, separateSystemMessage } = await this._convertToLLMMessagesService.prepareLLMChatMessages({
 				chatMessages,
 				modelSelection,
-				chatMode
+				chatMode,
+				compaction: this.state.allThreads[threadId]?.state.compaction,
 			})
 
 			if (interruptedWhenIdle) {
@@ -1680,6 +1687,45 @@ We only need to do it for files that were edited since `from`, ie files between 
 		}
 		this._storeAllThreads(newThreads)
 		this._setState({ allThreads: newThreads, currentThreadId: newThread.id })
+	}
+
+	private async _maybeCompact(threadId: string, modelSelection: ModelSelection | null) {
+		if (!modelSelection) return
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return
+		// A summary that has not been re-summarised yet still counts towards the
+		// window, so compaction is only ever considered once a real number of
+		// messages have accumulated past the last one.
+		if (thread.messages.length < 12) return
+
+		const { overridesOfModel } = this._settingsService.state
+		const { providerName, modelName } = modelSelection
+		const { contextWindow } = getModelCapabilities(providerName, modelName, overridesOfModel)
+		const modelSelectionOptions = this._settingsService.state.optionsOfModelSelection['Chat'][providerName]?.[modelName]
+		const isReasoningEnabled = getIsReasoningEnabledState('Chat', providerName, modelName, modelSelectionOptions, overridesOfModel)
+		const reserved = getReservedOutputTokenSpace(providerName, modelName, { isReasoningEnabled, overridesOfModel })
+		const usable = usableTokens(contextWindow, reserved)
+
+		const alreadyCompacted = thread.state.compaction?.upToMessageIdx ?? 0
+		const total = thread.messages
+			.reduce((acc, m) => acc + estimateTokens(m.role === 'user' ? m.content : m.role === 'assistant' ? m.displayContent : m.role === 'tool' ? m.content : ''), 0)
+
+		if (total < usable) return
+
+		try {
+			const result = await compact({
+				llmMessageService: this._llmMessageService,
+				voidSettingsService: this._settingsService,
+				messages: thread.messages,
+				modelSelection,
+				usable,
+			})
+			if (!result || result.upToMessageIdx <= alreadyCompacted) return
+			this._setThreadState(threadId, { compaction: result })
+		}
+		catch (e) {
+			console.error('Compaction failed, continuing without it', e)
+		}
 	}
 
 	async runSubagent({ description, prompt, timeoutMs = 300_000 }: { description: string; prompt: string; timeoutMs?: number }): Promise<string> {
