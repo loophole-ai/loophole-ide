@@ -1,5 +1,5 @@
-import { Emitter } from '../../../../base/common/event.js';
-import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
+import { Emitter, Event } from '../../../../base/common/event.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { TodoItem } from '../common/toolsServiceTypes.js';
@@ -36,7 +36,7 @@ class TodoService implements ITodoService {
 	}
 
 	setTodos(todos: TodoItem[]): void {
-		this.storageService.store(TODO_STORAGE_KEY, JSON.stringify(todos), StorageScope.WORKSPACE)
+		this.storageService.store(TODO_STORAGE_KEY, JSON.stringify(todos), StorageScope.WORKSPACE, StorageTarget.MACHINE)
 		this._onDidChangeTodos.fire(todos)
 	}
 

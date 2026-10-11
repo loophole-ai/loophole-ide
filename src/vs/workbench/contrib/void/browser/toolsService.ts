@@ -21,13 +21,13 @@ import { MAX_CHILDREN_URIs_PAGE, MAX_FILE_CHARS_PAGE, MAX_PROJECT_MEMORY_TOKENS,
 import { IVoidSettingsService } from '../common/voidSettingsService.js'
 import { generateUuid } from '../../../../base/common/uuid.js'
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js'
-import { PROJECT_MEMORY_STORAGE_KEY, TODO_STORAGE_KEY } from '../common/storageKeys.js'
-import { IChatThreadService } from './chatThreadService.js'
+import { PROJECT_MEMORY_STORAGE_KEY } from '../common/storageKeys.js'
+import { runSubagent } from './subagentRegistry.js'
 import { ILspService, LspLocation } from './lspService.js'
 import { ICodeEditorService } from '../../../../editor/browser/services/codeEditorService.js'
 import { ITodoService } from './todoService.js'
 import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js'
-import { window } from '../../../../platform/window/common/window.js'
+import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js'
 import { parsePatch, applyHunks } from './patchParser.js'
 import { ISkillService } from './skillService.js'
 import { ICodebaseIndexService } from './codebaseIndexService.js'
@@ -146,13 +146,24 @@ function resolveWorkspacePath(fsPath: string): URI {
 	return URI.file(fsPath)
 }
 
-async function askUserQuestion(quickInputService: IQuickInputService, question: string, options: string[]): Promise<string> {
+async function askUserQuestion(
+	quickInputService: IQuickInputService,
+	dialogService: IDialogService,
+	question: string,
+	options: string[],
+): Promise<string> {
 	if (options.length > 0) {
-		const picked = await quickInputService.pick(options, { placeHolder: question })
-		if (picked) return picked
+		const picked = await quickInputService.pick(
+			options.map(o => ({ label: o })),
+			{ placeHolder: question }
+		)
+		if (picked) return picked.label
 	}
-	const typed = await window.showInputBox({ prompt: question, ignoreFocusOut: true })
-	return typed ?? '(the user did not answer)'
+	const { result } = await dialogService.prompt<{ value?: string }>({
+		type: 'input',
+		message: question,
+	})
+	return result?.value ?? '(the user did not answer)'
 }
 
 function formatLspLocations(locations: LspLocation[]): string {
@@ -182,8 +193,8 @@ export class ToolsService implements IToolsService {
 	public stringOfResult: BuiltinToolResultToString;
 
 	constructor(
-		@IFileService fileService: IFileService,
-		@IWorkspaceContextService workspaceContextService: IWorkspaceContextService,
+		@IFileService private readonly fileService: IFileService,
+		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@ISearchService searchService: ISearchService,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IVoidModelService voidModelService: IVoidModelService,
@@ -194,7 +205,6 @@ export class ToolsService implements IToolsService {
 		@IMarkerService private readonly markerService: IMarkerService,
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		@IStorageService private readonly storageService: IStorageService,
-		@ICustomModesService private readonly customModesService: ICustomModesService,
 		@ILspService private readonly lspService: ILspService,
 		@ITodoService private readonly todoService: ITodoService,
 		@ISkillService private readonly skillService: ISkillService,
@@ -373,10 +383,11 @@ export class ToolsService implements IToolsService {
 				return { url, format, timeout: validateNumber(timeoutUnknown, { default: null }) ?? undefined }
 			},
 
-			task: ({ description, prompt }) => {
-				validateStr('description', description)
-				validateStr('prompt', prompt)
-				return { description, prompt }
+			task: (params: RawToolParamsObj) => {
+				return {
+					description: validateStr('description', params.description),
+					prompt: validateStr('prompt', params.prompt),
+				}
 			},
 
 			codebase_search: (params: RawToolParamsObj) => {
@@ -393,8 +404,7 @@ export class ToolsService implements IToolsService {
 			available_skills: () => ({}),
 
 			apply_patch: (params: RawToolParamsObj) => {
-				const patchText = validateStr('patchText', params.patchText)
-				return { patchText }
+				return { patchText: validateStr('patchText', params.patch_text) }
 			},
 
 			question: (params: RawToolParamsObj) => {
@@ -623,8 +633,7 @@ export class ToolsService implements IToolsService {
 			},
 
 			task: async ({ description, prompt }) => {
-				const chatThreadService = instantiationService.invokeFunction(accessor => accessor.get(IChatThreadService));
-				const content = await chatThreadService.runSubagent({ description, prompt });
+				const content = await runSubagent({ description, prompt });
 				return { result: { content } };
 			},
 
@@ -696,7 +705,8 @@ export class ToolsService implements IToolsService {
 
 			question: async ({ question, options }) => {
 				const quickInputService = instantiationService.invokeFunction(a => a.get(IQuickInputService))
-				const answer = await askUserQuestion(quickInputService, question, options)
+				const dialogService = instantiationService.invokeFunction(a => a.get(IDialogService))
+				const answer = await askUserQuestion(quickInputService, dialogService, question, options)
 				return { result: { answer } }
 			},
 

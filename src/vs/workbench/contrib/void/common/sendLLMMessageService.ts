@@ -142,7 +142,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 			settingsOfProvider,
 			modelSelection,
 			mcpTools,
-			customMode: proxyParams.customMode ?? null,
+			customMode: 'customMode' in proxyParams ? proxyParams.customMode ?? null : null,
 		} satisfies MainSendLLMMessageParams);
 
 		return requestId

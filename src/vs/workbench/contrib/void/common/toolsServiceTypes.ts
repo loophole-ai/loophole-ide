@@ -87,8 +87,8 @@ export type BuiltinToolCallParams = {
 	// --- patch ---
 	'apply_patch': { patchText: string },
 	// --- skills ---
-	'skill': { content: string },
-	'available_skills': { content: string },
+	'skill': { name: string },
+	'available_skills': {},
 	// --- index ---
 	'codebase_search': { query: string; path_prefix?: string },
 }

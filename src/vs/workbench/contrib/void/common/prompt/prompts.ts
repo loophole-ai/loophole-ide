@@ -404,7 +404,7 @@ The first search builds the index and takes a moment; later ones are instant.`,
 
 Use exact paths relative to the workspace root. A hunk that cannot be matched fails the whole patch, so keep the context lines distinctive.`,
 		params: {
-			patchText: { description: 'The complete patch, from *** Begin Patch to *** End Patch.' }
+			patch_text: { description: 'The complete patch, from *** Begin Patch to *** End Patch.' }
 		}
 	},
 

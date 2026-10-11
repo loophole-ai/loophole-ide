@@ -36,40 +36,50 @@ export function decodeDataUrl(dataUrl: string): { mime: string; data: string } |
 }
 
 /**
- * Builds the user message content for whichever tool format is in play.
+ * Builds the user message content for whichever provider is being targeted.
  *
- * Empty or corrupt attachments are reported in the text, the way Kilo does,
- * because a silently dropped image leaves the model answering about something
- * the user thinks it was shown.
+ * The XML tool format has no content blocks to put an image in, so there the
+ * attachment is reported as text instead of silently vanishing.
+ *
+ * Empty or corrupt attachments are reported the same way, because a dropped
+ * image leaves the model answering about something the user thinks it saw.
  */
 function buildUserContentWithImages(
 	content: string,
 	images: AttachedImage[],
-	specialToolFormat: 'openai-style' | 'anthropic-style' | undefined,
-): AnthropicOrOpenAILLMMessage['content'] {
+	mode: 'openai' | 'anthropic' | 'none',
+): string | ({ type: string; text?: string; source?: unknown; image_url?: unknown })[] {
 	const notes: string[] = []
 	const blocks: Record<string, unknown>[] = []
 
 	for (const img of images) {
-		const decoded = decodeDataUrl(img.dataUrl)
+		const decoded = decodeDataUrl(img.dataUrl);
 		if (!decoded) {
-			notes.push('An attached image was empty or corrupted and could not be read.')
-			continue
+			notes.push('An attached image was empty or corrupted and could not be read.');
+			continue;
 		}
-		if (specialToolFormat === 'anthropic-style') {
-			blocks.push({ type: 'image', source: { type: 'base64', media_type: decoded.mime, data: decoded.data } })
+		if (mode === 'none') {
+			notes.push(`An image was attached (${decoded.mime}) but this model format cannot carry it inline.`);
+			continue;
+		}
+		if (mode === 'anthropic') {
+			blocks.push({
+				type: 'image',
+				source: { type: 'base64', media_type: decoded.mime as 'image/png', data: decoded.data },
+			});
 		}
 		else {
-			blocks.push({ type: 'image_url', image_url: { url: img.dataUrl } })
+			blocks.push({ type: 'image_url', image_url: { url: img.dataUrl } });
 		}
 	}
 
-	const text = notes.length ? `${content}\n\n${notes.join('\n')}` : content
-	if (!blocks.length) return text
-	return [{ type: 'text', text }, ...blocks] as AnthropicOrOpenAILLMMessage['content']
+	const text = notes.length ? `${content}\n\n${notes.join('\n')}` : content;
+	if (!blocks.length) return text;
+	return [{ type: 'text', text }, ...blocks];
 }
 
 export type SimpleLLMMessage = {
+	role: 'tool';
 	content: string;
 	id: string;
 	name: ToolName;
@@ -284,13 +294,13 @@ const prepareMessages_XML_tools = (messages: SimpleLLMMessage[], supportsAnthrop
 			if (llmChatMessages.length === 0 || llmChatMessages[llmChatMessages.length - 1].role !== 'user')
 				llmChatMessages.push({
 					role: 'user',
-					content: images?.length ? buildUserContentWithImages(c.content, images, specialToolFormat) : c.content
+					content: images?.length ? buildUserContentWithImages(c.content, images, 'none') as string : c.content
 				})
 			else {
 				llmChatMessages[llmChatMessages.length - 1].content += '\n\n' + c.content
 				if (images?.length) {
 					const prev = llmChatMessages[llmChatMessages.length - 1]
-					const withImages = buildUserContentWithImages(prev.content, images, specialToolFormat)
+					const withImages = buildUserContentWithImages(prev.content, images, 'none') as string
 					llmChatMessages[llmChatMessages.length - 1] = { role: 'user', content: withImages }
 				}
 			}

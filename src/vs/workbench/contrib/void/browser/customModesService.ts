@@ -103,7 +103,7 @@ class CustomModesService extends Disposable implements ICustomModesService {
 			try { listing = await this.fileService.resolve(dirUri) } catch { continue }
 			if (!listing?.isDirectory) continue
 
-			for (const name of listing.children.map(c => c.name)) {
+			for (const name of (listing.children ?? []).map(c => c.name)) {
 				if (!name.endsWith('.md')) continue
 				const fileUri = dirUri.with({ path: `${dirUri.path}/${name}` })
 				try {

@@ -24,6 +24,7 @@ export const sendLLMMessage = async ({
 	chatMode,
 	separateSystemMessage,
 	mcpTools,
+	customMode,
 }: SendLLMMessageParams,
 
 	metricsService: IMetricsService

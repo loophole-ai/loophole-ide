@@ -48,6 +48,7 @@ import { estimateTokens } from '../common/tokenizer.js';
 import { effectiveRuleLevel } from '../common/permissionRules.js';
 import { ICustomModesService } from './customModesService.js';
 import { ISkillService } from './skillService.js';
+import { registerSubagentRunner } from './subagentRegistry.js';
 
 
 // related to retrying when LLM message has error
@@ -60,6 +61,13 @@ const findStagingSelectionIndex = (currentSelections: StagingSelectionItem[] | u
 
 	for (let i = 0; i < currentSelections.length; i += 1) {
 		const s = currentSelections[i]
+
+		if (s.type === 'Image' || newSelection.type === 'Image') {
+			if (s.type === 'Image' && newSelection.type === 'Image' && s.dataUrl === newSelection.dataUrl) {
+				return i
+			}
+			continue
+		}
 
 		if (s.uri.fsPath !== newSelection.uri.fsPath) continue
 
@@ -353,6 +361,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
+
+		registerSubagentRunner(opts => this.runSubagent(opts))
 
 		const readThreads = this._readAllThreads() || {}
 
@@ -1402,7 +1412,7 @@ We only need to do it for files that were edited since `from`, ie files between 
 			// URIs of user selections
 			if (m.role === 'user') {
 				for (const sel of m.selections ?? []) {
-					addURI(sel.uri)
+					if (sel.type !== 'Image') addURI(sel.uri)
 				}
 			}
 			// URIs of files that have been read
@@ -1719,8 +1729,9 @@ We only need to do it for files that were edited since `from`, ie files between 
 
 		const { overridesOfModel } = this._settingsService.state
 		const { providerName, modelName } = modelSelection
+		if (!providerName || !modelName) return
 		const { contextWindow } = getModelCapabilities(providerName, modelName, overridesOfModel)
-		const modelSelectionOptions = this._settingsService.state.optionsOfModelSelection['Chat'][providerName]?.[modelName]
+		const modelSelectionOptions = this._settingsService.state.optionsOfModelSelection['Chat']?.[providerName]?.[modelName]
 		const isReasoningEnabled = getIsReasoningEnabledState('Chat', providerName, modelName, modelSelectionOptions, overridesOfModel)
 		const reserved = getReservedOutputTokenSpace(providerName, modelName, { isReasoningEnabled, overridesOfModel })
 		const usable = usableTokens(contextWindow, reserved)
@@ -1756,11 +1767,11 @@ We only need to do it for files that were edited since `from`, ie files between 
 
 		const unsubscribe = this.onDidChangeStreamState(({ threadId }) => {
 			if (threadId === parentThreadId) { return }
-			if (threadId === subagentThread.id && !this.streamState[threadId]?.isRunning) { done() }
+			if (threadId === subagentThread.id && !this.streamState[threadId]?.isRunning) { resolveDone() }
 		})
 
-		let finish: () => void = () => { }
-		const done = new Promise<void>(res => { finish = res })
+		let resolveDone: () => void = () => { }
+		const done = new Promise<void>(res => { resolveDone = res })
 		const timeout = new Promise<void>(res => setTimeout(res, timeoutMs))
 
 		try {

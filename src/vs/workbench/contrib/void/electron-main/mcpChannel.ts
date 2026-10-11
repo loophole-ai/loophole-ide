@@ -328,10 +328,13 @@ export class MCPChannel implements IServerChannel {
 	private async _listResources(serverName: string) {
 		try {
 			const client = this._clientOf(serverName)
-			const result = await client.listResources()
+			const result = await client.listResources() as {
+				resources?: { uri: string; name: string; description?: string; mimeType?: string }[];
+				resourceTemplates?: { uriTemplate: string; name: string; description?: string }[];
+			};
 			return {
-				resources: result.resources.map(r => ({ uri: r.uri, name: r.name, description: r.description, mimeType: r.mimeType })),
-				resourceTemplates: result.resourceTemplates?.map(t => ({ uriTemplate: t.uriTemplate, name: t.name, description: t.description })) ?? [],
+				resources: (result.resources ?? []).map(r => ({ uri: r.uri, name: r.name, description: r.description, mimeType: r.mimeType })),
+				resourceTemplates: (result.resourceTemplates ?? []).map(t => ({ uriTemplate: t.uriTemplate, name: t.name, description: t.description })),
 			}
 		}
 		catch (e) { return { resources: [], resourceTemplates: [], error: String(e) } }

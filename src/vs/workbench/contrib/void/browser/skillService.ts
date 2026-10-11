@@ -95,7 +95,7 @@ class SkillService extends Disposable implements ISkillService {
 		if (!listing?.isDirectory) return [];
 
 		const out: URI[] = [];
-		for (const child of listing.children) {
+		for (const child of listing.children ?? []) {
 			if (child.isDirectory) {
 				out.push(...await this._collect(child.resource, depth + 1));
 			}

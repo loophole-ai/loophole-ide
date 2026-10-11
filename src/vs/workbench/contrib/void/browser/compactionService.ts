@@ -60,11 +60,11 @@ export const PRUNE_PROTECT = 40_000;
  * call, which is why it runs separately from summarisation: pruning is cheap
  * and lossy, summarising is expensive and keeps the shape of the conversation.
  */
-export function pruneToolResults(messages: SimpleLLMMessage[]): SimpleLLMMessage[] {
+export function pruneToolResults(messages: { role: string; content: string }[]): { role: string; content: string }[] {
 	if (messages.length < 4) return messages
 
 	const out = messages.map(m => ({ ...m }))
-	const protectFrom = out.length - 1
+	let protectFrom = out.length - 1
 	while (protectFrom > 0) {
 		if (out[protectFrom].role === 'tool') { protectFrom -= 1 } else { break }
 	}
@@ -72,7 +72,7 @@ export function pruneToolResults(messages: SimpleLLMMessage[]): SimpleLLMMessage
 
 	let budget = 0
 	for (let i = protectFrom - 1; i >= 0; i--) {
-		const m = out[i]
+		const m = out[i];
 		if (m.role !== 'tool') continue
 		const size = estimateTokens(m.content)
 		if (budget + size <= PRUNE_MINIMUM) break
@@ -173,7 +173,11 @@ export async function compact({
 			separateSystemMessage: COMPACTION_PROMPT,
 			chatMode: null,
 			modelSelection,
-			modelSelectionOptions: voidSettingsService.state.optionsOfModelSelection['Chat'][modelSelection?.providerName ?? '']?.[modelSelection?.modelName ?? ''],
+			if (!modelSelection) {
+				resolve('');
+				return;
+			}
+			modelSelectionOptions: voidSettingsService.state.optionsOfModelSelection['Chat']?.[modelSelection.providerName]?.[modelSelection.modelName],
 			overridesOfModel: voidSettingsService.state.overridesOfModel,
 			onText: () => { },
 			onFinalMessage: ({ fullText }) => resolve(fullText.trim()),

@@ -3,6 +3,7 @@ import { URI } from '../../../../base/common/uri.js';
 import { Position } from '../../../../editor/common/core/position.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
 import { ITextModel } from '../../../../editor/common/model.js';
+import { Location } from '../../../../editor/common/languages.js';
 import { getHoverProviderResultsAsAsyncIterable } from '../../../../editor/contrib/hover/browser/getHover.js';
 import { IVoidModelService } from '../common/voidModelService.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
@@ -13,7 +14,7 @@ const MAX_RESULTS = 200;
 export type LspLocation = { uri: string; line: number; preview: string };
 
 function previewAt(model: ITextModel, offset: number): string {
-	return model.getLineContent(model.getLineNumberAt(offset)).trim().substring(0, 300);
+	return model.getLineContent(model.getPositionAt(offset).lineNumber).trim().substring(0, 300);
 }
 
 function stringifyHoverContents(contents: unknown): string {
@@ -67,17 +68,22 @@ class LspService implements ILspService {
 			const result = await provider.provideDefinition(model, position, CancellationToken.None)
 			if (!result) continue
 
+			// Definition is a single Location, an array of them, or LocationLinks.
+			const locations: Location[] = Array.isArray(result) ? result as Location[] : [result as Location]
+
 			const seen = new Set<string>()
 			const out: LspLocation[] = []
-			for (const location of result) {
+			for (const location of locations) {
 				if (out.length >= MAX_RESULTS) break
+				if (!location || !location.uri) continue
 				if (seen.has(location.uri.fsPath)) continue
 				seen.add(location.uri.fsPath)
+				const targetLine = location.range?.startLineNumber ?? 1
 				const target = await this._model(location.uri)
 				out.push({
 					uri: location.uri.fsPath,
-					line: target ? target.getLineNumberAt(location.range.startLineNumber - 1) : 1,
-					preview: target ? target.getLineContent(Math.max(location.range.startLineNumber, 1)).trim().substring(0, 300) : '',
+					line: targetLine,
+					preview: target ? target.getLineContent(Math.min(Math.max(targetLine, 1), target.getLineCount())).trim().substring(0, 300) : '',
 				})
 			}
 			return out
@@ -98,13 +104,16 @@ class LspService implements ILspService {
 			const out: LspLocation[] = []
 			for (const reference of result) {
 				if (out.length >= MAX_RESULTS) break
-				const refModel = await this._model(reference.location.uri)
-				if (!refModel) continue
-				out.push({
-					uri: reference.location.uri.fsPath,
-					line: refModel.getLineNumberAt(reference.location.offset),
-					preview: previewAt(refModel, reference.location.offset),
-				})
+				if (!reference || !reference.uri) continue
+				const refModel = await this._model(reference.uri)
+				const refLine = reference.range?.startLineNumber ?? 1
+				if (refModel && refLine >= 1 && refLine <= refModel.getLineCount()) {
+					out.push({
+						uri: reference.uri.fsPath,
+						line: refLine,
+						preview: refModel.getLineContent(refLine).trim().substring(0, 300),
+					})
+				}
 			}
 			return out
 		}

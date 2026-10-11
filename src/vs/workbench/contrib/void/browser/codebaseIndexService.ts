@@ -140,7 +140,7 @@ class CodebaseIndexService extends Disposable implements ICodebaseIndexService {
 		if (!listing?.isDirectory) return []
 
 		const out: URI[] = []
-		for (const child of listing.children) {
+		for (const child of listing.children ?? []) {
 			if (out.length >= MAX_FILES) break
 			if (child.isDirectory) {
 				if (SKIP_DIRS.has(child.name)) continue
