@@ -19,10 +19,16 @@ class ConvertContribWorkbenchContribution extends Disposable implements IWorkben
 	) {
 		super()
 
+		// Every candidate instruction file has to have a model reference before it
+		// can be read, and a reference only exists once it has been initialised
+		// here. Files that do not exist come back with empty contents, which the
+		// reader skips, so it is safe to initialise all three names.
+		const instructionFilenames = ['AGENTS.md', 'CLAUDE.md', '.loopholerules']
+
 		const initializeURI = (uri: URI) => {
-			this.workspaceContext.getWorkspace()
-			const voidRulesURI = URI.joinPath(uri, '.loopholerules')
-			this.voidModelService.initializeModel(voidRulesURI)
+			instructionFilenames.forEach(filename => {
+				this.voidModelService.initializeModel(URI.joinPath(uri, filename))
+			})
 		}
 
 		// call

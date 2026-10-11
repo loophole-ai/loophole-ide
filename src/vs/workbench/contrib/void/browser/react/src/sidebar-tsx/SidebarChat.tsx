@@ -3382,7 +3382,7 @@ export const SidebarChat = () => {
 		{[
 			'Summarize my codebase',
 			'How do types work in Rust?',
-			'Create a .loopholerules file for me'
+			'Create an AGENTS.md file for me'
 		].map((text, index) => (
 			<div
 				key={index}

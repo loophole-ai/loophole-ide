@@ -496,7 +496,11 @@ export const defaultGlobalSettings: GlobalSettings = {
 	autoSetupAppleFoundationModels: true,
 	autoSetupMlx: true,
 	aiInstructions: '',
-	enableAutocomplete: false,
+	// Autocomplete shipped switched off, which meant the inline completion
+	// provider, the FIM plumbing and the model picker for it were all built and
+	// then never reached. It is on by default now; the setting still turns it
+	// off for anyone who wants their editor quiet.
+	enableAutocomplete: true,
 	syncApplyToChat: true,
 	syncSCMToChat: true,
 	enableFastApply: true,

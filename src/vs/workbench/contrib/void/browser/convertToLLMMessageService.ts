@@ -281,7 +281,7 @@ const prepareOpenAIOrAnthropicMessages = ({
 	// A COMPLETE HACK: last message is system message for context purposes
 
 	const sysMsgParts: string[] = []
-	if (aiInstructions) sysMsgParts.push(`GUIDELINES AND MEMORY (from the user's settings, .loopholerules file, and project memory):\n${aiInstructions}`)
+	if (aiInstructions) sysMsgParts.push(`GUIDELINES AND MEMORY (from the user's settings, the project's instruction files such as AGENTS.md, and project memory):\n${aiInstructions}`)
 	if (systemMessage) sysMsgParts.push(systemMessage)
 	const combinedSystemMessage = sysMsgParts.join('\n\n')
 
@@ -564,18 +564,34 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		super()
 	}
 
-	// Read .loopholerules files from workspace folders
-	private _getVoidRulesFileContents(): string {
+	// Instruction files the wider tooling ecosystem has standardised on.
+	//
+	// These are conventions other tools write and expect a coding agent to
+	// honour, so a project that already keeps one gets it for free instead of
+	// being asked to maintain a separate .loopholerules alongside it. The first
+	// one found per workspace folder wins, since a project rarely keeps two and
+	// reading both would just repeat itself.
+	private static readonly _INSTRUCTION_FILENAMES = ['AGENTS.md', 'CLAUDE.md', '.loopholerules'];
+
+	// Read the project's instruction files from workspace folders
+	private _getInstructionFileContents(): string {
 		try {
 			const workspaceFolders = this.workspaceContextService.getWorkspace().folders;
-			let voidRules = '';
+			const sections: string[] = [];
 			for (const folder of workspaceFolders) {
-				const uri = URI.joinPath(folder.uri, '.loopholerules')
-				const { model } = this.voidModelService.getModel(uri)
-				if (!model) continue
-				voidRules += model.getValue(EndOfLinePreference.LF) + '\n\n';
+				for (const filename of ConvertToLLMMessageService._INSTRUCTION_FILENAMES) {
+					const uri = URI.joinPath(folder.uri, filename);
+					const { model } = this.voidModelService.getModel(uri);
+					// A file that is not open has no model, which is how this loop
+					// moves on to the next name and then to the next folder.
+					if (!model) continue;
+					const contents = model.getValue(EndOfLinePreference.LF).trim();
+					if (!contents) continue;
+					sections.push(`From ${filename}:\n${contents}`);
+					break;
+				}
 			}
-			return voidRules.trim();
+			return sections.join('\n\n');
 		}
 		catch (e) {
 			return ''
@@ -587,10 +603,11 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		return this.storageService.get(PROJECT_MEMORY_STORAGE_KEY, StorageScope.WORKSPACE) ?? ''
 	}
 
-	// Get combined AI instructions from settings, .loopholerules files, and saved project memory
+	// Get combined AI instructions from settings, the project's instruction files,
+	// and saved project memory
 	private _getCombinedAIInstructions(): string {
 		const globalAIInstructions = this.voidSettingsService.state.globalSettings.aiInstructions;
-		const voidRulesFileContent = this._getVoidRulesFileContents();
+		const voidRulesFileContent = this._getInstructionFileContents();
 		const projectMemory = this._getProjectMemory();
 
 		const ans: string[] = []
