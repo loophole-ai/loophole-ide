@@ -86,6 +86,9 @@ export type BuiltinToolCallParams = {
 	'question': { question: string; options: string[] },
 	// --- patch ---
 	'apply_patch': { patchText: string },
+	// --- skills ---
+	'skill': { content: string },
+	'available_skills': { content: string },
 }
 
 // RESULT OF TOOL CALL
@@ -121,6 +124,9 @@ export type BuiltinToolResultType = {
 	'question': { answer: string },
 	// --- patch ---
 	'apply_patch': { filesTouched: string[] },
+	// --- skills ---
+	'skill': { content: string },
+	'available_skills': { content: string },
 }
 
 

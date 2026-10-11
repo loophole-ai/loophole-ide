@@ -47,6 +47,7 @@ import { getModelCapabilities, getReservedOutputTokenSpace, getIsReasoningEnable
 import { estimateTokens } from '../common/tokenizer.js';
 import { effectiveRuleLevel } from '../common/permissionRules.js';
 import { ICustomModesService } from './customModesService.js';
+import { ISkillService } from './skillService.js';
 
 
 // related to retrying when LLM message has error
@@ -348,6 +349,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IMCPService private readonly _mcpService: IMCPService,
 		@ITokenUsageService private readonly _tokenUsageService: ITokenUsageService,
 		@ICustomModesService private readonly _customModesService: ICustomModesService,
+		@ISkillService private readonly _skillService: ISkillService,
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
@@ -789,6 +791,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		const { chatMode: globalChatMode } = this._settingsService.state.globalSettings // should not change as we loop even if user changes it, so it goes here
 		const chatMode = this.state.allThreads[threadId]?.state.chatModeOverride ?? globalChatMode
 		const customMode = this._customModesService.getMode(chatMode) ?? null
+		await this._skillService.refresh()
 		const { overridesOfModel } = this._settingsService.state
 
 		let nMessagesSent = 0

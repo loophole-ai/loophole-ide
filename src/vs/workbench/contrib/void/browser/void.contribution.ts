@@ -45,6 +45,7 @@ import './compactionService.js'
 import './customModesService.js'
 import './todoService.js'
 import './patchParser.js'
+import './skillService.js'
 
 // register Thread History
 import './chatThreadService.js'

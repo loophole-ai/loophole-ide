@@ -29,6 +29,7 @@ import { ITodoService } from './todoService.js'
 import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js'
 import { window } from '../../../../platform/window/common/window.js'
 import { parsePatch, applyHunks } from './patchParser.js'
+import { ISkillService } from './skillService.js'
 import { estimateTokens } from '../common/tokenizer.js'
 
 
@@ -195,6 +196,7 @@ export class ToolsService implements IToolsService {
 		@ICustomModesService private readonly customModesService: ICustomModesService,
 		@ILspService private readonly lspService: ILspService,
 		@ITodoService private readonly todoService: ITodoService,
+		@ISkillService private readonly skillService: ISkillService,
 		@ICodeEditorService private readonly editorService: ICodeEditorService,
 	) {
 		const queryBuilder = instantiationService.createInstance(QueryBuilder);
@@ -374,6 +376,12 @@ export class ToolsService implements IToolsService {
 				validateStr('prompt', prompt)
 				return { description, prompt }
 			},
+
+			skill: (params: RawToolParamsObj) => {
+				return { name: validateStr('name', params.name) }
+			},
+
+			available_skills: () => ({}),
 
 			apply_patch: (params: RawToolParamsObj) => {
 				const patchText = validateStr('patchText', params.patchText)
@@ -611,6 +619,18 @@ export class ToolsService implements IToolsService {
 				return { result: { content } };
 			},
 
+			skill: async ({ name }) => {
+				const skill = skillService.getSkill(name)
+				if (!skill) {
+					return { result: { content: `No skill called "${name}".\n\n${skillService.describeSkills()}` } }
+				}
+				return { result: { content: `# Skill: ${skill.name}\n${skill.description ? `\n${skill.description}\n` : ''}\n${skill.body}` } }
+			},
+
+			available_skills: async () => {
+				return { result: { content: skillService.describeSkills() } }
+			},
+
 			apply_patch: async ({ patchText }) => {
 				const ops = parsePatch(patchText)
 				const touched: string[] = []
@@ -803,6 +823,14 @@ export class ToolsService implements IToolsService {
 
 			task: (params, result) => {
 				return `Subagent "${params.description}" reported:\n\n${result.content}`
+			},
+
+			available_skills: (_params, result) => {
+				return result.content
+			},
+
+			skill: (_params, result) => {
+				return result.content
 			},
 
 			apply_patch: (_params, result) => {

@@ -350,6 +350,24 @@ export const builtinTools: {
 
 
 
+	available_skills: {
+		name: 'available_skills',
+		description: `Lists the saved skills you can load with the skill tool. Call this when you are unsure which skills exist.`,
+		params: {}
+	},
+
+	skill: {
+		name: 'skill',
+		description: `Loads a saved set of instructions for a kind of task you do often.
+
+Call it when the name matches what you are about to do, and follow what it returns. A skill is a procedure someone wrote down because doing it from memory goes wrong; it will usually be more reliable than your own approach to that task.
+
+If no skills are installed it will say so, and you should carry on without one.`,
+		params: {
+			name: { description: 'The skill to load, exactly as listed by available_skills.' }
+		}
+	},
+
 	apply_patch: {
 		name: 'apply_patch',
 		description: `Edits several files in one call using a simple patch format. Prefer this when a change spans more than one file, or when the same edit repeats across many.
