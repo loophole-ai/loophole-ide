@@ -16,6 +16,7 @@ import './quickEditActions.js'
 
 // register editor context menu AI actions (Explain, Fix Error, Add Tests, Docs)
 import './editorContextActions.js'
+import './terminalContextActions.js'
 
 
 // register Autocomplete
