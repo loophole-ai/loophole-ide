@@ -59,6 +59,16 @@ export async function fetchUrl(rawUrl: string, format: FetchFormat, timeoutMs?: 
 				content = body;
 		}
 
+		// A page that converts to nothing is a failure, not a result. An empty
+		// body here previously came back as a successful tool call holding
+		// nothing, and the only sensible thing the model could do with that was
+		// tell the user the fetch had failed - which is exactly what it did,
+		// with the real reason nowhere on screen. Throwing puts the reason in
+		// the tool call the user can already see.
+		if (!content.trim()) {
+			throw new Error('The page was fetched but contains no readable text. It may render its content with JavaScript, which this tool cannot execute.');
+		}
+
 		return clip(content);
 	} catch (e) {
 		if (e instanceof Error && e.name === 'AbortError') {
@@ -196,5 +206,5 @@ export function htmlToMarkdown(html: string): string {
 		.replace(/\n{3,}/g, '\n\n')
 		.trim();
 
-	return out || '(no readable content)';
+	return out;
 }

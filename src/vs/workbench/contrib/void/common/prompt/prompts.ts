@@ -28,7 +28,11 @@ export const MAX_CHILDREN_URIs_PAGE = 500
 
 // terminal tool info
 export const MAX_TERMINAL_CHARS = 100_000
-export const MAX_TERMINAL_INACTIVE_TIME = 8 // seconds
+// The window a command may stay silent before it is killed. Eight seconds was
+// short enough to kill an ordinary build, install or test run that simply does
+// not print until it finishes, so the default now matches the CLI's one minute.
+// The parameter stays optional and is for the cases that need longer still.
+export const MAX_TERMINAL_INACTIVE_TIME = 60 // seconds
 export const MAX_TERMINAL_INACTIVITY_TIME = 600 // seconds, the ceiling a caller may ask for
 export const MAX_TERMINAL_BG_COMMAND_TIME = 5
 
