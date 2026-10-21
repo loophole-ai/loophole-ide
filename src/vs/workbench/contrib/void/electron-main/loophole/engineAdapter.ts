@@ -186,11 +186,13 @@ async function isLive(credentials: EngineCredentials): Promise<boolean> {
 
 function stateDirectories(): string[] {
 	const directories: string[] = [];
+	// Only the Loophole namespace is trusted. Sharing files or URLs with an OpenCode
+	// install would make both clients connect to whichever server won the race.
 	const xdg = process.env.XDG_STATE_HOME;
 	if (xdg) {
-		directories.push(join(xdg, 'loophole'), join(xdg, 'opencode'));
+		directories.push(join(xdg, 'loophole'));
 	}
-	directories.push(join(homedir(), '.local', 'state', 'loophole'), join(homedir(), '.local', 'state', 'opencode'));
+	directories.push(join(homedir(), '.local', 'state', 'loophole'));
 	return [...new Set(directories)];
 }
 
@@ -204,8 +206,8 @@ function registrationRank(name: string): number {
 /** Running servers advertise themselves through a small registration file. */
 function readRegistrations(): EngineCredentials[] {
 	const found: EngineCredentials[] = [];
-	const explicitUrl = process.env.LOOPHOLE_SERVER_URL ?? process.env.OPENCODE_SERVER_URL ?? process.env.OPENCODE_SERVER;
-	const explicitPassword = process.env.LOOPHOLE_SERVER_PASSWORD ?? process.env.OPENCODE_SERVER_PASSWORD;
+	const explicitUrl = process.env.LOOPHOLE_SERVER_URL;
+	const explicitPassword = process.env.LOOPHOLE_SERVER_PASSWORD;
 	if (explicitUrl) {
 		found.push({ url: explicitUrl.replace(/\/+$/, ''), password: explicitPassword ?? '' });
 	}
