@@ -36,7 +36,7 @@ import {
 	subscribe,
 	switchAgent,
 	switchModel,
-} from './loophole/engineAdapter.js';
+} from '../loophole/engineAdapter.js';
 
 export const providerNameLoophole = 'loophole' satisfies ProviderName;
 
@@ -483,7 +483,7 @@ async function runSessionPrompt(
 		dispose = await subscribe(
 			credentials,
 			handleEvent,
-			(error) => {
+			(error: unknown) => {
 				if (aborted || settled) {
 					return;
 				}
