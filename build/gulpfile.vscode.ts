@@ -252,6 +252,22 @@ function esSrc(globs: string | string[], opts?: Parameters<typeof gulp.src>[1]):
 }
 
 /**
+ * Resolve the Loophole CLI that ships with the IDE, mirroring the desktop app's bundled CLI.
+ * The source can be overridden with LOOPHOLE_CLI_PATH; otherwise the build looks next to the
+ * IDE repo (the loophole-app checkout) and finally in the IDE's own resources folder.
+ */
+function resolveLoopholeCliSource(platform: string): string | undefined {
+	const name = `loophole-cli${platform === 'win32' ? '.exe' : ''}`;
+	const candidates = [
+		process.env.LOOPHOLE_CLI_PATH,
+		path.resolve(root, 'resources', name),
+		path.resolve(root, '..', 'loophole-app', 'packages', 'desktop', 'resources', name),
+		path.resolve(root, '..', 'loophole-app', 'packages', 'cli', 'dist', name, 'bin', name),
+	];
+	return candidates.find((candidate): candidate is string => !!candidate && fs.existsSync(candidate) && fs.statSync(candidate).isFile());
+}
+
+/**
  * inlineMeta() needs the edited package.json/product.json contents as plain strings,
  * ahead of when the bootstrap entry point files stream through it. es.merge() does not
  * guarantee the single-file jsonEditor streams flow before those entry points, so reading
@@ -281,6 +297,21 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 	const task = () => {
 		const out = sourceFolderName;
 		const versionedResourcesFolder = util.getVersionedResourcesFolder(platform, commit!);
+
+		// Ship the Loophole CLI inside the IDE install so a fresh install works without a
+		// separately installed server. The copy is a build artifact, not committed source.
+		const loopholeCliSource = resolveLoopholeCliSource(platform);
+		if (loopholeCliSource) {
+			const resourcesDir = path.join(root, 'resources');
+			fs.mkdirSync(resourcesDir, { recursive: true });
+			const loopholeCli = path.join(resourcesDir, `loophole-cli${platform === 'win32' ? '.exe' : ''}`);
+			if (loopholeCliSource !== loopholeCli) {
+				fs.copyFileSync(loopholeCliSource, loopholeCli);
+			}
+			if (platform !== 'win32') {
+				fs.chmodSync(loopholeCli, 0o755);
+			}
+		}
 
 		const checksums = computeChecksums(out, [
 			'vs/base/parts/sandbox/electron-browser/preload.js',
@@ -475,6 +506,9 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 				...(platform === 'darwin' ? ['!**/Contents/Applications', '!**/Contents/Applications/**'] : []),
 				...(platform === 'win32' ? ['!**/electron_proxy.exe'] : []),
 			], { dot: true }));
+
+		// Keep the bundled CLI as a real file next to app.asar so the main process can execute it.
+		result = es.merge(result, optionalSrc('resources', `resources/loophole-cli${platform === 'win32' ? '.exe' : ''}`, { base: '.', allowEmpty: true }));
 
 		if (platform === 'linux') {
 			result = es.merge(result, gulp.src('resources/completions/bash/code', { base: '.' })

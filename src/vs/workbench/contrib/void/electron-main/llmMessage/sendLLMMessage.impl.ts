@@ -21,6 +21,7 @@ import { extractReasoningWrapper, extractXMLToolsWrapper } from './extractGramma
 import { availableTools, InternalToolInfo } from '../../common/prompt/prompts.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { estimateTokens } from '../../common/tokenizer.js';
+import { sendLLMMessageToLoopholeImplementation } from './loopholeProvider.impl.js';
 
 const estimateTokensFromText = (text: string): number => Math.ceil(text.length / 4);
 
@@ -65,6 +66,10 @@ type SendChatParams_Internal = InternalCommonMessageParams & {
 	separateSystemMessage: string | undefined;
 	chatMode: ChatMode | null;
 	mcpTools: InternalToolInfo[] | undefined;
+	/** Present for sidebar chat; identifies the engine session that owns the thread. */
+	threadId?: string;
+	/** Folder the engine's tools should operate in. */
+	workspaceDir?: string;
 }
 type SendFIMParams_Internal = InternalCommonMessageParams & { messages: LLMFIMMessage; separateSystemMessage: string | undefined; }
 export type ListParams_Internal<ModelResponse> = ModelListParams<ModelResponse>
@@ -1156,6 +1161,12 @@ export const sendLLMMessageToProviderImplementation = {
 	},
 	awsBedrock: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params),
+		sendFIM: null,
+		list: null,
+	},
+	// The Loophole engine: sessions, tools and agents live there, so this only streams text.
+	loophole: {
+		sendChat: sendLLMMessageToLoopholeImplementation.sendChat,
 		sendFIM: null,
 		list: null,
 	},

@@ -13,7 +13,7 @@ import { toErrorMessage } from '../../base/common/errorMessage.js';
 import { Event } from '../../base/common/event.js';
 import { parse } from '../../base/common/jsonc.js';
 import { getPathLabel } from '../../base/common/labels.js';
-import { Disposable, DisposableStore, MutableDisposable } from '../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
 import { Schemas, VSCODE_AUTHORITY } from '../../base/common/network.js';
 import { join, posix } from '../../base/common/path.js';
 import { IProcessEnvironment, isLinux, isLinuxSnap, isMacintosh, isWindows, OS } from '../../base/common/platform.js';
@@ -150,6 +150,7 @@ import { ILoopholeUpdateService } from '../../workbench/contrib/void/common/void
 import { MetricsMainService } from '../../workbench/contrib/void/electron-main/metricsMainService.js';
 import { LoopholeMainUpdateService } from '../../workbench/contrib/void/electron-main/voidUpdateMainService.js';
 import { LLMMessageChannel } from '../../workbench/contrib/void/electron-main/sendLLMMessageChannel.js';
+import { LoopholeEngineChannel } from '../../workbench/contrib/void/electron-main/loopholeEngineChannel.js';
 import { VoidSCMService } from '../../workbench/contrib/void/electron-main/voidSCMMainService.js';
 import { AppleFoundationModelsMainService } from '../../workbench/contrib/void/electron-main/appleFoundationModelsMainService.js';
 import { IAppleFoundationModelsMainService } from '../../workbench/contrib/void/common/appleFoundationModelsTypes.js';
@@ -1337,6 +1338,10 @@ export class CodeApplication extends Disposable {
 
 		const sendLLMMessageChannel = new LLMMessageChannel(accessor.get(IMetricsService));
 		mainProcessElectronServer.registerChannel('void-channel-llmMessage', sendLLMMessageChannel);
+
+		const loopholeEngineChannel = new LoopholeEngineChannel();
+		mainProcessElectronServer.registerChannel('void-channel-loopholeEngine', loopholeEngineChannel);
+		disposables.add(toDisposable(() => loopholeEngineChannel.dispose()));
 
 		// Kodia added this
 		const voidSCMChannel = ProxyChannel.fromService(accessor.get(IVoidSCMService), disposables);

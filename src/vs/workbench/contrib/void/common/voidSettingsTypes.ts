@@ -65,7 +65,10 @@ type DisplayInfoForProviderName = {
 }
 
 export const displayInfoOfProviderName = (providerName: ProviderName): DisplayInfoForProviderName => {
-	if (providerName === 'anthropic') {
+	if (providerName === 'loophole') {
+		return { title: 'Loophole', }
+	}
+	else if (providerName === 'anthropic') {
 		return { title: 'Anthropic', }
 	}
 	else if (providerName === 'openAI') {
@@ -125,6 +128,7 @@ export const displayInfoOfProviderName = (providerName: ProviderName): DisplayIn
 
 export const subTextMdOfProviderName = (providerName: ProviderName): string => {
 
+	if (providerName === 'loophole') return 'Models and tools are provided by the Loophole engine.'
 	if (providerName === 'anthropic') return 'Get your [API Key here](https://console.anthropic.com/settings/keys).'
 	if (providerName === 'openAI') return 'Get your [API Key here](https://platform.openai.com/api-keys).'
 	if (providerName === 'deepseek') return 'Get your [API Key here](https://platform.deepseek.com/api_keys).'
@@ -381,6 +385,12 @@ export const defaultSettingsOfProvider: SettingsOfProvider = {
 		...defaultCustomSettings,
 		...defaultProviderSettings.awsBedrock,
 		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.awsBedrock),
+		_didFillInProviderSettings: undefined,
+	},
+	loophole: {
+		...defaultCustomSettings,
+		...defaultProviderSettings.loophole,
+		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.loophole),
 		_didFillInProviderSettings: undefined,
 	},
 }

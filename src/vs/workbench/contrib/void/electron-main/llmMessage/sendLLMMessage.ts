@@ -32,6 +32,11 @@ export const sendLLMMessage = async ({
 
 	const { providerName, modelName } = modelSelection
 
+	// The engine reuses logging extras for its routing metadata, but a local workspace
+	// path must never reach telemetry.
+	const metricsExtras = { ...(loggingExtras ?? {}) }
+	delete metricsExtras.workspaceDir
+
 	// only captures number of messages and message "shape", no actual code, instructions, prompts, etc
 	const captureLLMEvent = (eventId: string, extras?: object) => {
 
@@ -47,7 +52,7 @@ export const sendLLMMessage = async ({
 				prefixLength: messages_.prefix.length,
 				suffixLength: messages_.suffix.length,
 			} : {},
-			...loggingExtras,
+			...metricsExtras,
 			...extras,
 		})
 	}
@@ -108,7 +113,8 @@ export const sendLLMMessage = async ({
 		}
 		const { sendFIM, sendChat } = implementation
 		if (messagesType === 'chatMessages') {
-			await sendChat({ messages: messages_, onText, onFinalMessage, onError, settingsOfProvider, modelSelectionOptions, overridesOfModel, modelName, _setAborter, providerName, separateSystemMessage, chatMode, mcpTools })
+			const engineExtras = loggingExtras as { threadId?: string; workspaceDir?: string } | undefined
+			await sendChat({ messages: messages_, onText, onFinalMessage, onError, settingsOfProvider, modelSelectionOptions, overridesOfModel, modelName, _setAborter, providerName, separateSystemMessage, chatMode, mcpTools, threadId: engineExtras?.threadId, workspaceDir: engineExtras?.workspaceDir })
 			return
 		}
 		if (messagesType === 'FIMMessage') {

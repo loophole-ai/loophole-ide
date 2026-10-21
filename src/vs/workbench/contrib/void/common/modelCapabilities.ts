@@ -72,6 +72,10 @@ export const defaultProviderSettings = {
 		endpoint: '', // optionally allow overriding default
 	},
 
+	// The Loophole engine owns models, sessions and tools. No key lives here — the engine
+	// keeps its own credentials in its own store, so this entry intentionally stays empty.
+	loophole: {},
+
 } as const
 
 
@@ -162,7 +166,8 @@ export const defaultModelsOfProvider = {
 	microsoftAzure: [],
 	awsBedrock: [],
 	liteLLM: [],
-
+	// Discovered at runtime from the engine's own catalogue; see engineAdapter.listModels.
+	loophole: [],
 
 } as const satisfies Record<ProviderName, string[]>
 
@@ -1820,6 +1825,45 @@ const openRouterSettings: VoidStaticProviderInfo = {
 
 // ---------------- model settings of everything above ----------------
 
+// The Loophole engine: reasoning is the engine's business, so nothing is injected here.
+// The catalog is filled in at runtime from /api/model so context limits match the engine.
+const loopholeModelOptions: { [key: string]: VoidStaticModelInfo } = {}
+
+export type LoopholeModelCapabilities = {
+	modelName: string;
+	contextWindow?: number;
+	outputTokens?: number;
+	supportsTools?: boolean;
+	cost?: { input: number; output: number };
+}
+
+export const setLoopholeModelCapabilities = (models: ReadonlyArray<LoopholeModelCapabilities>) => {
+	for (const modelName of Object.keys(loopholeModelOptions)) {
+		delete loopholeModelOptions[modelName]
+	}
+	for (const model of models) {
+		const contextWindow = Math.max(model.contextWindow ?? 200_000, 1)
+		const reservedOutputTokenSpace = Math.min(Math.max(model.outputTokens ?? 16_384, 1), contextWindow)
+		loopholeModelOptions[model.modelName] = {
+			...defaultModelOptions,
+			contextWindow,
+			reservedOutputTokenSpace,
+			cost: model.cost ?? { input: 0, output: 0 },
+		}
+	}
+}
+
+const loopholeSettings: VoidStaticProviderInfo = {
+	modelOptions: loopholeModelOptions,
+	modelOptionsFallback: (modelName) => ({
+		modelName,
+		recognizedModelName: 'unknown',
+		...defaultModelOptions,
+		contextWindow: 200_000,
+		reservedOutputTokenSpace: 16_384,
+	}),
+}
+
 const modelSettingsOfProvider: { [providerName in ProviderName]: VoidStaticProviderInfo } = {
 	openAI: openAISettings,
 	anthropic: anthropicSettings,
@@ -1845,6 +1889,10 @@ const modelSettingsOfProvider: { [providerName in ProviderName]: VoidStaticProvi
 	googleVertex: googleVertexSettings,
 	microsoftAzure: microsoftAzureSettings,
 	awsBedrock: awsBedrockSettings,
+
+	// The engine resolves its own model capabilities per request, so the IDE does not
+	// second-guess context size or reasoning controls for this provider.
+	loophole: loopholeSettings,
 } as const
 
 

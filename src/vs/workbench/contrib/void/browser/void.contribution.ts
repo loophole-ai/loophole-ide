@@ -25,6 +25,9 @@ import './autocompleteService.js'
 // settings pane
 import './voidSettingsPane.js'
 
+// engine model discovery (chat requests are routed through loopholeProvider.impl.ts)
+import './loopholeEngineWorkbenchService.js'
+
 // register css
 import './media/void.css'
 

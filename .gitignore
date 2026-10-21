@@ -26,6 +26,7 @@ yarn.lock
 .build/
 dist/
 build/
+resources/loophole-cli*
 *.tgz
 sourcemaps/
 /out*/

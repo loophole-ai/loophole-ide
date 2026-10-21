@@ -116,11 +116,18 @@ export class LLMMessageChannel implements IServerChannel {
 
 	private async _callAbort(params: MainLLMMessageAbortParams) {
 		const { requestId } = params;
-		if (!(requestId in this._infoOfRunningRequest)) return
-		const { waitForSend, abortRef } = this._infoOfRunningRequest[requestId]
-		await waitForSend // wait for the send to finish so we know abortRef was set
-		abortRef?.current?.()
-		delete this._infoOfRunningRequest[requestId]
+		const entry = this._infoOfRunningRequest[requestId];
+		if (!entry) return;
+		// Abort immediately. sendLLMMessage installs the aborter synchronously before its
+		// first await, so waiting for the request to finish would deadlock the abort behind
+		// the very request it is meant to stop.
+		entry.abortRef?.current?.();
+		if (entry.waitForSend) {
+			await entry.waitForSend.catch(() => undefined);
+		}
+		if (this._infoOfRunningRequest[requestId] === entry) {
+			delete this._infoOfRunningRequest[requestId];
+		}
 	}
 
 
