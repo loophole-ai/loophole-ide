@@ -56,7 +56,7 @@ import { IStorageService, StorageScope } from '../../../../../../../platform/sto
 import { ITokenUsageService } from '../../../../common/tokenUsageService.js'
 import { IDailyActivityService } from '../../../../common/dailyActivityService.js'
 import { ILoopholeEngineService } from '../../../../common/loopholeEngineService.js'
-import { ILoopholeEngineWorkbenchService } from '../../loopholeEngineWorkbenchService.js'
+import { ILoopholeEngineWorkbenchService } from '../../../loopholeEngineWorkbenchService.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IFileDialogService } from '../../../../../../../platform/dialogs/common/dialogs.js'
 
