@@ -160,6 +160,28 @@ jobs:
         working-directory: cli
         run: cargo build --release --target x86_64-pc-windows-msvc
 
+      - name: Fetch bundled Loophole CLI from npm
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "loophole-cli"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Push-Location $dir
+          try {
+            npm pack "@loophole-ai/cli-windows-x64@latest" --silent
+            $tarball = Get-ChildItem "*.tgz" | Select-Object -First 1
+            tar -xzf $tarball.Name
+            $exe = Get-ChildItem -Recurse -Filter "loophole.exe" | Select-Object -First 1
+            if (-not $exe) {
+              Write-Error "loophole.exe not found inside the npm package"
+              exit 1
+            }
+            Copy-Item $exe.FullName "resources/loophole-cli.exe" -Force
+            $size = [math]::Round((Get-Item "resources/loophole-cli.exe").Length / 1MB, 1)
+            Write-Host "Bundled CLI: resources/loophole-cli.exe ($size MB)"
+          } finally {
+            Pop-Location
+          }
+
       - name: Package Electron app
         run: npm run gulp vscode-win32-x64
         env:
@@ -366,6 +388,28 @@ jobs:
       - name: Build CLI (Rust, arm64)
         working-directory: cli
         run: cargo build --release --target aarch64-pc-windows-msvc
+
+      - name: Fetch bundled Loophole CLI from npm
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "loophole-cli"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Push-Location $dir
+          try {
+            npm pack "@loophole-ai/cli-windows-arm64@latest" --silent
+            $tarball = Get-ChildItem "*.tgz" | Select-Object -First 1
+            tar -xzf $tarball.Name
+            $exe = Get-ChildItem -Recurse -Filter "loophole.exe" | Select-Object -First 1
+            if (-not $exe) {
+              Write-Error "loophole.exe not found inside the npm package"
+              exit 1
+            }
+            Copy-Item $exe.FullName "resources/loophole-cli.exe" -Force
+            $size = [math]::Round((Get-Item "resources/loophole-cli.exe").Length / 1MB, 1)
+            Write-Host "Bundled CLI: resources/loophole-cli.exe ($size MB)"
+          } finally {
+            Pop-Location
+          }
 
       - name: Package Electron app
         run: npm run gulp vscode-win32-arm64

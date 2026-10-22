@@ -7,7 +7,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import { spawn, type ChildProcess } from 'child_process';
-import { existsSync, readFileSync, readdirSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { delimiter, join } from 'path';
 import { homedir } from 'os';
 import { randomBytes } from 'crypto';
@@ -282,7 +282,27 @@ function binaryCandidates(): string[] {
 		'/usr/local/bin/loophole',
 		'/opt/homebrew/bin/loophole',
 	];
-	return [...new Set(candidates.filter((candidate): candidate is string => !!candidate))];
+	return [...new Set(candidates.filter((candidate): candidate is string => !!candidate && isEngineBinary(candidate)))];
+}
+
+function isEngineBinary(candidate: string): boolean {
+	if (!existsSync(candidate)) {
+		return false;
+	}
+	if (/\.(cmd|bat)$/i.test(candidate)) {
+		try {
+			const head = readFileSync(candidate, 'utf8').slice(0, 4_000).toLowerCase();
+			// Editor installs ship command shims that forward every argument to Electron.
+			return !head.includes('electron_run_as_node') && !head.includes('cli.js');
+		} catch {
+			return false;
+		}
+	}
+	const extension = candidate.slice(candidate.lastIndexOf('.') + 1).toLowerCase();
+	if (extension === 'exe' && statSync(candidate).size < 1_000_000) {
+		return false;
+	}
+	return true;
 }
 
 /**
@@ -310,12 +330,15 @@ let cached: EngineCredentials | undefined;
 let connecting: Promise<EngineCredentials> | undefined;
 let spawned: ChildProcess | undefined;
 
-function waitForReady(child: ChildProcess): Promise<string> {
+function waitForReady(child: ChildProcess, binary: string): Promise<string> {
 	return new Promise((resolve, reject) => {
 		let buffer = '';
 		let stderr = '';
 		let settled = false;
-		const timer = setTimeout(() => finish(new Error('The Loophole engine did not become ready in time.')), 30_000);
+		const timer = setTimeout(
+			() => finish(new Error(`The Loophole engine at ${binary} did not become ready in time.${stderr ? ` Last output: ${stderr.trim()}` : ''}`)),
+			60_000,
+		);
 
 		const cleanup = () => {
 			clearTimeout(timer);
@@ -363,7 +386,7 @@ function waitForReady(child: ChildProcess): Promise<string> {
 			stderr = (stderr + chunk).slice(-4_000);
 		};
 		const onExit = (code: number | null) => {
-			finish(new Error(`The Loophole engine exited before it was ready (code ${code ?? 'unknown'})${stderr ? `: ${stderr.trim()}` : ''}`));
+			finish(new Error(`The Loophole engine at ${binary} exited before it was ready (code ${code ?? 'unknown'})${stderr ? `: ${stderr.trim()}` : ''}`));
 		};
 		const onError = (error: Error) => finish(error);
 
@@ -407,7 +430,7 @@ async function spawnEngine(): Promise<EngineCredentials> {
 	});
 
 	try {
-		const url = await waitForReady(child);
+		const url = await waitForReady(child, binary);
 		return { url, password };
 	} catch (error) {
 		// A server that never became ready must not linger and block the next attempt.
