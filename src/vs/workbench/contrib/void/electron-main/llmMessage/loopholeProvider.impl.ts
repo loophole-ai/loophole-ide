@@ -533,7 +533,7 @@ async function sendViaSession(params: SendChatParams, forceReplay: boolean): Pro
 	const credentials = await connect();
 	const model = await resolveModelRef(credentials, params.modelName, params.workspaceDir);
 	const modelName = formatModelRef(model);
-	const agent = params.chatMode === 'agent' ? 'build' : 'plan';
+	const agent = params.chatMode === 'build' ? 'build' : 'plan';
 	const texts = userTexts(params.messages);
 	const currentText = texts[texts.length - 1];
 	if (!currentText?.trim()) {
@@ -622,7 +622,7 @@ async function sendViaGenerate(params: SendChatParams): Promise<void> {
 
 const sendChat = async (params: SendChatParams): Promise<void> => {
 	const usesSession = !!params.threadId
-		&& (params.chatMode === 'agent' || params.chatMode === 'plan' || params.chatMode === 'normal' || params.chatMode === 'gather');
+		&& (params.chatMode === 'build' || params.chatMode === 'plan');
 	try {
 		if (usesSession) {
 			await sendViaSession(params, false);

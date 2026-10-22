@@ -39,7 +39,7 @@ class ProjectMemoryBootstrapContribution extends Disposable implements IWorkbenc
 
 		const settingsState = this.voidSettingsService.state
 		if (!settingsState.globalSettings.isOnboardingComplete) return
-		if (settingsState.globalSettings.chatMode !== 'agent') return // needs tool-calling to write memory
+		if (settingsState.globalSettings.chatMode !== 'build') return // needs tool-calling to write memory
 		if (isFeatureNameDisabled('Chat', settingsState)) return // no usable model configured yet
 
 		// re-check after the await, and mark as attempted before running so we never fire twice

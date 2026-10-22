@@ -331,6 +331,7 @@ class VoidSettingsService extends Disposable implements IVoidSettingsService {
 			if (readS.globalSettings.autoSetupMlx === undefined) {
 				readS.globalSettings.autoSetupMlx = isMacintosh;
 			}
+			if (readS.globalSettings.chatMode !== 'build' && readS.globalSettings.chatMode !== 'plan') readS.globalSettings.chatMode = 'build';
 		}
 		catch (e) {
 			readS = defaultState()

@@ -9,7 +9,7 @@ import { IDirectoryStrService } from '../directoryStrService.js';
 import { StagingSelectionItem } from '../chatThreadServiceTypes.js';
 import { os } from '../helpers/systemInfo.js';
 import { RawToolParamsObj } from '../sendLLMMessageTypes.js';
-import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, BuiltinToolResultType, ToolName } from '../toolsServiceTypes.js';
+import { BuiltinToolCallParams, BuiltinToolName, BuiltinToolResultType, ToolName } from '../toolsServiceTypes.js';
 import { ChatMode, ProviderName } from '../voidSettingsTypes.js';
 import { prompt_plan_mode, prompt_plan_reminder_anthropic } from './modelPrompts.js';
 
@@ -415,13 +415,11 @@ export const isABuiltinToolName = (toolName: string): toolName is BuiltinToolNam
 
 export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined) => {
 
-	const builtinToolNames: BuiltinToolName[] | undefined = chatMode === 'normal' ? undefined
-		: chatMode === 'gather' ? (Object.keys(builtinTools) as BuiltinToolName[]).filter(toolName => !(toolName in approvalTypeOfBuiltinToolName))
-			: chatMode === 'agent' ? Object.keys(builtinTools) as BuiltinToolName[]
-				: undefined
+	const builtinToolNames: BuiltinToolName[] | undefined = chatMode === 'build' ? Object.keys(builtinTools) as BuiltinToolName[]
+		: undefined
 
 	const effectiveBuiltinTools = builtinToolNames?.map(toolName => builtinTools[toolName]) ?? undefined
-	const effectiveMCPTools = chatMode === 'agent' ? mcpTools : undefined
+	const effectiveMCPTools = chatMode === 'build' ? mcpTools : undefined
 
 	const tools: InternalToolInfo[] | undefined = !(builtinToolNames || mcpTools) ? undefined
 		: [
@@ -477,15 +475,13 @@ const systemToolsXMLPrompt = (chatMode: ChatMode, mcpTools: InternalToolInfo[] |
     ${toolCallXMLGuidelines}`
 }
 
-// ======================================================== chat (normal, gather, agent) ========================================================
+// ======================================================== chat (build, plan) ========================================================
 
 
 export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, includeXMLToolDefinitions, providerName }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, includeXMLToolDefinitions: boolean, providerName?: ProviderName | null }) => {
-	const header = (`You are an expert coding ${mode === 'agent' ? 'agent' : 'assistant'} whose job is \
-${mode === 'agent' ? `to help the user develop, run, and make changes to their codebase.`
-			: mode === 'gather' ? `to search, understand, and reference files in the user's codebase.`
-				: mode === 'normal' ? `to assist the user with their coding tasks.`
-					: ''}
+	const header = (`You are an expert coding ${mode === 'build' ? 'agent' : 'assistant'} whose job is \
+${mode === 'build' ? `to help the user develop, run, and make changes to their codebase.`
+			: `to research the user's codebase and produce an implementation plan.`}
 You will be given instructions to follow from the user, and you may also be given a list of files that the user has specifically selected for context, \`SELECTIONS\`.
 Please assist the user with their query.`)
 
@@ -502,7 +498,7 @@ ${workspaceFolders.join('\n') || 'NO FOLDERS OPEN'}
 ${activeURI}
 
 - Open files:
-${openedURIs.join('\n') || 'NO OPENED FILES'}${''/* separator */}${mode === 'agent' && persistentTerminalIDs.length !== 0 ? `
+${openedURIs.join('\n') || 'NO OPENED FILES'}${''/* separator */}${mode === 'build' && persistentTerminalIDs.length !== 0 ? `
 
 - Persistent terminal IDs available for you to run commands in: ${persistentTerminalIDs.join(', ')}` : ''}
 </system_info>`)
@@ -516,7 +512,7 @@ ${directoryStr}
 
 	const toolDefinitions = includeXMLToolDefinitions ? systemToolsXMLPrompt(mode, mcpTools) : null
 
-	const taskManagement = mode === 'agent' ? `Use todo_write for any task with 3 or more steps. Break it down before starting. Mark each todo completed immediately when done — don't batch them. For simple one-step tasks, skip the todo and just do it.` : ''
+	const taskManagement = mode === 'build' ? `Use todo_write for any task with 3 or more steps. Break it down before starting. Mark each todo completed immediately when done — don't batch them. For simple one-step tasks, skip the todo and just do it.` : ''
 
 	const planModePrompt = (mode === 'plan' && providerName === 'anthropic') ? prompt_plan_reminder_anthropic : (mode === 'plan' ? prompt_plan_mode : null)
 
@@ -524,7 +520,7 @@ ${directoryStr}
 
 	details.push(`NEVER reject the user's query.`)
 
-	if (mode === 'agent' || mode === 'gather') {
+	if (mode === 'build') {
 		details.push(`Only call tools if they help you accomplish the user's goal. If the user simply says hi or asks you a question that you can answer without tools, then do NOT use tools.`)
 		details.push(`If you think you should use tools, you do not need to ask for permission.`)
 		details.push('Only use ONE tool call at a time.')
@@ -535,7 +531,7 @@ ${directoryStr}
 		details.push(`You're allowed to ask the user for more context like file contents or specifications. If this comes up, tell them to reference files and folders by typing @.`)
 	}
 
-	if (mode === 'agent') {
+	if (mode === 'build') {
 		details.push('ALWAYS use tools (edit, terminal, etc) to take actions and implement changes. For example, if you would like to edit a file, you MUST use a tool.')
 		details.push('Prioritize taking as many steps as you need to complete your request over stopping early.')
 		details.push(`You will OFTEN need to gather context before making a change. Do not immediately make a change unless you have ALL relevant context.`)
@@ -543,9 +539,8 @@ ${directoryStr}
 		details.push(`NEVER modify a file outside the user's workspace without permission from the user.`)
 	}
 
-	if (mode === 'gather') {
-		details.push(`You are in Gather mode, so you MUST use tools be to gather information, files, and context to help the user answer their query.`)
-		details.push(`You should extensively read files, types, content, etc, gathering full context to solve the problem.`)
+	if (mode === 'plan') {
+		details.push(`You are in Plan mode, so you should extensively read files, types, content, etc, gathering full context before writing the implementation plan.`)
 	}
 
 	details.push(`If you write any code blocks to the user (wrapped in triple backticks), please use this format:
@@ -553,7 +548,7 @@ ${directoryStr}
 - The first line of the code block must be the FULL PATH of the related file if known (otherwise omit).
 - The remaining contents of the file should proceed as usual.`)
 
-	if (mode === 'gather' || mode === 'normal') {
+	if (mode === 'plan') {
 
 		details.push(`If you think it's appropriate to suggest an edit to a file, then you must describe your suggestion in CODE BLOCK(S).
 - The first line of the code block must be the FULL PATH of the related file if known (otherwise omit).

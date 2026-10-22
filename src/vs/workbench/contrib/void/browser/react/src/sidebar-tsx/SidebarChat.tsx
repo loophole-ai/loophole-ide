@@ -315,7 +315,7 @@ const ContextWindowIndicator = ({ featureName }: { featureName: FeatureName }) =
 		//   - Tool definitions: ~1500-2000 tokens per tool in agent mode
 		//   - Base conversation overhead: ~3 tokens
 		const chatMode = settingsState.globalSettings.chatMode
-		const numTools = chatMode === 'agent' ? 10 : chatMode === 'gather' ? 2 : 0 // approximate
+		const numTools = chatMode === 'build' ? 10 : 0 // approximate
 		const toolOverhead = numTools * 150 // ~150 tokens per tool definition (conservative)
 
 		let totalTokens = 3 // base overhead
@@ -388,16 +388,12 @@ const ContextWindowIndicator = ({ featureName }: { featureName: FeatureName }) =
 
 
 const nameOfChatMode = {
-	'normal': 'Chat',
-	'gather': 'Gather',
-	'agent': 'Agent',
+	'build': 'Build',
 	'plan': 'Plan',
 }
 
 const detailOfChatMode = {
-	'normal': 'Normal chat',
-	'gather': 'Reads files, but can\'t edit',
-	'agent': 'Edits files and uses tools',
+	'build': 'Edits files and uses tools',
 	'plan': 'Research and write an implementation plan',
 }
 
@@ -408,7 +404,7 @@ export const ChatModeDropdown = ({ className }: { className: string }) => {
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const settingsState = useSettingsState()
 
-	const options: ChatMode[] = useMemo(() => ['normal', 'gather', 'agent', 'plan'], [])
+	const options: ChatMode[] = useMemo(() => ['build', 'plan'], [])
 
 	const onChangeOption = useCallback((newVal: ChatMode) => {
 		voidSettingsService.setGlobalSetting('chatMode', newVal)
