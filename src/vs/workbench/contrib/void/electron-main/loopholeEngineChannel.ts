@@ -10,9 +10,25 @@ import { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { Event } from '../../../../base/common/event.js';
 import { EngineModel } from '../common/loopholeEngineTypes.js';
 import {
+	activateCredential,
+	beginCommand,
+	beginOAuth,
+	cancelCommand,
+	cancelOAuth,
+	commandStatus,
+	completeOAuth,
 	connect,
+	connectWithExternal,
+	connectWithKey,
 	defaultModel,
+	getIntegration,
+	listCredentials,
+	listIntegrations,
 	listModels,
+	listProviders,
+	oauthStatus,
+	removeCredential,
+	renameCredential,
 	stop,
 	type EngineCredentials,
 } from './loophole/engineAdapter.js';
@@ -27,7 +43,8 @@ export class LoopholeEngineChannel implements IServerChannel {
 
 	async call(_: unknown, command: string, params: any): Promise<any> {
 		// ProxyChannel passes the method's arguments as an array.
-		const arg = Array.isArray(params) ? params[0] : params;
+		const args = Array.isArray(params) ? params : [params];
+		const arg = args[0];
 		switch (command) {
 			case 'connect':
 				return this._connect();
@@ -35,6 +52,38 @@ export class LoopholeEngineChannel implements IServerChannel {
 				return this._listModels(typeof arg === 'string' ? arg : undefined);
 			case 'defaultModel':
 				return this._defaultModel(typeof arg === 'string' ? arg : undefined);
+			case 'listIntegrations':
+				return this._use((credentials) => listIntegrations(credentials, arg));
+			case 'getIntegration':
+				return this._use((credentials) => getIntegration(credentials, args[1], arg));
+			case 'connectWithKey':
+				return this._use((credentials) => connectWithKey(credentials, args[1], args[2], arg, args[3]));
+			case 'connectWithExternal':
+				return this._use((credentials) => connectWithExternal(credentials, args[1], args[2], arg, args[3]));
+			case 'beginOAuth':
+				return this._use((credentials) => beginOAuth(credentials, args[1], args[2], arg, args[3]));
+			case 'oauthStatus':
+				return this._use((credentials) => oauthStatus(credentials, args[1], args[2], arg));
+			case 'completeOAuth':
+				return this._use((credentials) => completeOAuth(credentials, args[1], args[2], args[3], arg));
+			case 'cancelOAuth':
+				return this._use((credentials) => cancelOAuth(credentials, args[1], args[2], arg));
+			case 'beginCommand':
+				return this._use((credentials) => beginCommand(credentials, args[1], args[2], arg, args[3]));
+			case 'commandStatus':
+				return this._use((credentials) => commandStatus(credentials, args[1], args[2], arg));
+			case 'cancelCommand':
+				return this._use((credentials) => cancelCommand(credentials, args[1], args[2], arg));
+			case 'listCredentials':
+				return this._use((credentials) => listCredentials(credentials, arg));
+			case 'renameCredential':
+				return this._use((credentials) => renameCredential(credentials, args[1], args[2], arg));
+			case 'activateCredential':
+				return this._use((credentials) => activateCredential(credentials, args[1], arg));
+			case 'removeCredential':
+				return this._use((credentials) => removeCredential(credentials, args[1], arg));
+			case 'listProviders':
+				return this._use((credentials) => listProviders(credentials, arg));
 			default:
 				throw new Error(`Method not found: ${command}`);
 		}
@@ -83,6 +132,15 @@ export class LoopholeEngineChannel implements IServerChannel {
 		} catch {
 			this.credentials = undefined;
 			return null;
+		}
+	}
+
+	private async _use<T>(action: (credentials: EngineCredentials) => Promise<T>): Promise<T> {
+		try {
+			return await action(await this.ensure());
+		} catch (error) {
+			this.credentials = undefined;
+			throw error;
 		}
 	}
 

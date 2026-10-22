@@ -11,7 +11,16 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import { delimiter, join } from 'path';
 import { homedir } from 'os';
 import { randomBytes } from 'crypto';
-import { EngineModel } from '../../common/loopholeEngineTypes.js';
+import {
+	EngineIntegration,
+	EngineIntegrationConnection,
+	EngineIntegrationMethod,
+	EngineCredential,
+	EngineModel,
+	EngineOAuthAttempt,
+	EngineOAuthAttemptStatus,
+	EngineProvider,
+} from '../../common/loopholeEngineTypes.js';
 
 export interface EngineCredentials {
 	readonly url: string;
@@ -133,6 +142,10 @@ function numberField(value: unknown): number | undefined {
 
 function recordField(value: unknown): Record<string, unknown> | undefined {
 	return value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+}
+
+function stringField(value: unknown): string | undefined {
+	return typeof value === 'string' ? value : undefined;
 }
 
 function modelFromInfo(value: unknown): EngineModel | undefined {
@@ -691,4 +704,337 @@ export async function subscribe(
 		signal?.removeEventListener('abort', onExternalAbort);
 		controller.abort();
 	};
+}
+
+function methodFromInfo(value: unknown): EngineIntegrationMethod | undefined {
+	const info = recordField(value);
+	if (!info || typeof info.type !== 'string') {
+		return undefined;
+	}
+	const type = info.type;
+	if (type === 'oauth' || type === 'command' || type === 'external') {
+		if (typeof info.id !== 'string') {
+			return undefined;
+		}
+		return { type, id: info.id, label: stringField(info.label) };
+	}
+	if (type === 'key') {
+		return { type, label: stringField(info.label) };
+	}
+	if (type === 'env') {
+		const names = Array.isArray(info.names)
+			? info.names.filter((name): name is string => typeof name === 'string')
+			: undefined;
+		return { type, names };
+	}
+	return undefined;
+}
+
+function connectionFromInfo(value: unknown): EngineIntegrationConnection | undefined {
+	const info = recordField(value);
+	if (!info || typeof info.type !== 'string') {
+		return undefined;
+	}
+	const needsAuth = recordField(info.status)?.status === 'needs_auth';
+	if (info.type === 'credential') {
+		if (typeof info.id !== 'string') {
+			return undefined;
+		}
+		return {
+			type: 'credential',
+			id: info.id,
+			label: stringField(info.label),
+			method: stringField(info.method),
+			needsAuth,
+		};
+	}
+	if (info.type === 'env') {
+		if (typeof info.name !== 'string') {
+			return undefined;
+		}
+		return { type: 'env', name: info.name, needsAuth };
+	}
+	return undefined;
+}
+
+function integrationFromInfo(value: unknown): EngineIntegration | undefined {
+	const info = recordField(value);
+	if (!info || typeof info.id !== 'string' || typeof info.name !== 'string') {
+		return undefined;
+	}
+	return {
+		id: info.id,
+		name: info.name,
+		methods: Array.isArray(info.methods)
+			? info.methods.map(methodFromInfo).filter((method): method is EngineIntegrationMethod => !!method)
+			: [],
+		connections: Array.isArray(info.connections)
+			? info.connections.map(connectionFromInfo).filter((connection): connection is EngineIntegrationConnection => !!connection)
+			: [],
+	};
+}
+
+function credentialFromEntry(value: unknown): EngineCredential | undefined {
+	const entry = recordField(value);
+	if (!entry || typeof entry.id !== 'string' || typeof entry.integrationID !== 'string') {
+		return undefined;
+	}
+	const kind = recordField(entry.value)?.type;
+	return {
+		id: entry.id,
+		integrationID: entry.integrationID,
+		label: stringField(entry.label) ?? '',
+		active: entry.active === true,
+		kind: kind === 'oauth' ? 'oauth' : kind === 'external' ? 'external' : 'key',
+	};
+}
+
+function providerFromInfo(value: unknown): EngineProvider | undefined {
+	const info = recordField(value);
+	if (!info || typeof info.id !== 'string') {
+		return undefined;
+	}
+	return {
+		id: info.id,
+		name: stringField(info.name) ?? info.id,
+		integrationID: stringField(info.integrationID),
+	};
+}
+
+function attemptStatusFromInfo(value: unknown): EngineOAuthAttemptStatus {
+	const info = recordField(value);
+	const status = stringField(info?.status);
+	if (status === 'complete') {
+		return { status: 'complete' };
+	}
+	if (status === 'failed') {
+		return { status: 'failed', message: stringField(info?.message) };
+	}
+	if (status === 'expired') {
+		return { status: 'expired' };
+	}
+	return { status: 'pending' };
+}
+
+export async function listIntegrations(credentials: EngineCredentials, directory?: string): Promise<EngineIntegration[]> {
+	const raw = unwrap(await requestJson(credentials, `/api/integration${locationQuery(directory)}`));
+	return Array.isArray(raw)
+		? raw.map(integrationFromInfo).filter((integration): integration is EngineIntegration => !!integration)
+		: [];
+}
+
+export async function getIntegration(
+	credentials: EngineCredentials,
+	integrationID: string,
+	directory?: string,
+): Promise<EngineIntegration> {
+	const raw = unwrap(await requestJson(
+		credentials,
+		`/api/integration/${encodeURIComponent(integrationID)}${locationQuery(directory)}`,
+	));
+	const integration = integrationFromInfo(raw);
+	if (!integration) {
+		throw new Error(`The Loophole engine returned an unknown shape for integration ${integrationID}.`);
+	}
+	return integration;
+}
+
+export async function connectWithKey(
+	credentials: EngineCredentials,
+	integrationID: string,
+	key: string,
+	directory?: string,
+	label?: string,
+): Promise<void> {
+	const body: Record<string, unknown> = { key };
+	if (label) body.label = label;
+	await requestVoid(
+		credentials,
+		`/api/integration/${encodeURIComponent(integrationID)}/connect/key${locationQuery(directory)}`,
+		{ method: 'POST', body: JSON.stringify(body) },
+	);
+}
+
+export async function connectWithExternal(
+	credentials: EngineCredentials,
+	integrationID: string,
+	methodID: string,
+	directory?: string,
+	label?: string,
+): Promise<void> {
+	const body: Record<string, unknown> = { methodID };
+	if (label) body.label = label;
+	await requestVoid(
+		credentials,
+		`/api/integration/${encodeURIComponent(integrationID)}/connect/external${locationQuery(directory)}`,
+		{ method: 'POST', body: JSON.stringify(body) },
+	);
+}
+
+export async function beginOAuth(
+	credentials: EngineCredentials,
+	integrationID: string,
+	methodID: string,
+	directory?: string,
+	label?: string,
+): Promise<EngineOAuthAttempt> {
+	const body: Record<string, unknown> = { methodID };
+	if (label) body.label = label;
+	const raw = unwrap(await requestJson(
+		credentials,
+		`/api/integration/${encodeURIComponent(integrationID)}/connect/oauth${locationQuery(directory)}`,
+		{ method: 'POST', body: JSON.stringify(body) },
+	));
+	const attempt = recordField(raw);
+	if (!attempt || typeof attempt.attemptID !== 'string' || typeof attempt.url !== 'string') {
+		throw new Error('The Loophole engine did not return an authorization attempt.');
+	}
+	const time = recordField(attempt.time);
+	return {
+		attemptID: attempt.attemptID,
+		url: attempt.url,
+		instructions: stringField(attempt.instructions) ?? '',
+		mode: attempt.mode === 'code' ? 'code' : 'auto',
+		expires: numberField(time?.expires),
+	};
+}
+
+export async function oauthStatus(
+	credentials: EngineCredentials,
+	integrationID: string,
+	attemptID: string,
+	directory?: string,
+): Promise<EngineOAuthAttemptStatus> {
+	const raw = unwrap(await requestJson(
+		credentials,
+		`/api/integration/${encodeURIComponent(integrationID)}/connect/oauth/${encodeURIComponent(attemptID)}${locationQuery(directory)}`,
+	));
+	return attemptStatusFromInfo(raw);
+}
+
+export async function completeOAuth(
+	credentials: EngineCredentials,
+	integrationID: string,
+	attemptID: string,
+	code: string | undefined,
+	directory?: string,
+): Promise<void> {
+	const body: Record<string, unknown> = {};
+	if (code) body.code = code;
+	await requestVoid(
+		credentials,
+		`/api/integration/${encodeURIComponent(integrationID)}/connect/oauth/${encodeURIComponent(attemptID)}/complete${locationQuery(directory)}`,
+		{ method: 'POST', body: JSON.stringify(body) },
+	);
+}
+
+export async function cancelOAuth(
+	credentials: EngineCredentials,
+	integrationID: string,
+	attemptID: string,
+	directory?: string,
+): Promise<void> {
+	await requestVoid(
+		credentials,
+		`/api/integration/${encodeURIComponent(integrationID)}/connect/oauth/${encodeURIComponent(attemptID)}${locationQuery(directory)}`,
+		{ method: 'DELETE' },
+	);
+}
+
+export async function beginCommand(
+	credentials: EngineCredentials,
+	integrationID: string,
+	methodID: string,
+	directory?: string,
+	label?: string,
+): Promise<{ readonly attemptID: string }> {
+	const body: Record<string, unknown> = { methodID };
+	if (label) body.label = label;
+	const raw = unwrap(await requestJson(
+		credentials,
+		`/api/integration/${encodeURIComponent(integrationID)}/connect/command${locationQuery(directory)}`,
+		{ method: 'POST', body: JSON.stringify(body) },
+	));
+	const attemptID = stringField(recordField(raw)?.attemptID);
+	if (!attemptID) {
+		throw new Error('The Loophole engine did not return a connection attempt.');
+	}
+	return { attemptID };
+}
+
+export async function commandStatus(
+	credentials: EngineCredentials,
+	integrationID: string,
+	attemptID: string,
+	directory?: string,
+): Promise<EngineOAuthAttemptStatus> {
+	const raw = unwrap(await requestJson(
+		credentials,
+		`/api/integration/${encodeURIComponent(integrationID)}/connect/command/${encodeURIComponent(attemptID)}${locationQuery(directory)}`,
+	));
+	return attemptStatusFromInfo(raw);
+}
+
+export async function cancelCommand(
+	credentials: EngineCredentials,
+	integrationID: string,
+	attemptID: string,
+	directory?: string,
+): Promise<void> {
+	await requestVoid(
+		credentials,
+		`/api/integration/${encodeURIComponent(integrationID)}/connect/command/${encodeURIComponent(attemptID)}${locationQuery(directory)}`,
+		{ method: 'DELETE' },
+	);
+}
+
+export async function listCredentials(credentials: EngineCredentials, directory?: string): Promise<EngineCredential[]> {
+	const raw = unwrap(await requestJson(credentials, '/api/credential'));
+	return Array.isArray(raw)
+		? raw.map(credentialFromEntry).filter((credential): credential is EngineCredential => !!credential)
+		: [];
+}
+
+export async function renameCredential(
+	credentials: EngineCredentials,
+	credentialID: string,
+	label: string,
+	directory?: string,
+): Promise<void> {
+	await requestVoid(
+		credentials,
+		`/api/credential/${encodeURIComponent(credentialID)}${locationQuery(directory)}`,
+		{ method: 'PATCH', body: JSON.stringify({ label }) },
+	);
+}
+
+export async function activateCredential(
+	credentials: EngineCredentials,
+	credentialID: string,
+	directory?: string,
+): Promise<void> {
+	await requestVoid(
+		credentials,
+		`/api/credential/${encodeURIComponent(credentialID)}/activate${locationQuery(directory)}`,
+		{ method: 'POST' },
+	);
+}
+
+export async function removeCredential(
+	credentials: EngineCredentials,
+	credentialID: string,
+	directory?: string,
+): Promise<void> {
+	await requestVoid(
+		credentials,
+		`/api/credential/${encodeURIComponent(credentialID)}${locationQuery(directory)}`,
+		{ method: 'DELETE' },
+	);
+}
+
+export async function listProviders(credentials: EngineCredentials, directory?: string): Promise<EngineProvider[]> {
+	const raw = unwrap(await requestJson(credentials, `/api/provider${locationQuery(directory)}`));
+	return Array.isArray(raw)
+		? raw.map(providerFromInfo).filter((provider): provider is EngineProvider => !!provider)
+		: [];
 }
