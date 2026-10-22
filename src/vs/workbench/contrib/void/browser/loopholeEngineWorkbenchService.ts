@@ -21,6 +21,8 @@ export interface ILoopholeEngineWorkbenchService {
 	readonly _serviceBrand: undefined;
 	/** Re-read the engine catalog and refresh the model picker. */
 	refreshModels(): Promise<void>;
+	/** Refresh the catalog, then point every engine feature at the integration's provider. */
+	preferIntegration(integrationID: string): Promise<void>;
 }
 
 export const ILoopholeEngineWorkbenchService = createDecorator<ILoopholeEngineWorkbenchService>('loopholeEngineWorkbenchService');
@@ -104,6 +106,29 @@ export class LoopholeEngineWorkbenchService extends Disposable implements ILooph
 
 		for (const feature of engineFeatures) {
 			await this._settings.setModelSelectionOfFeature(feature, selectionFor(feature));
+		}
+	}
+
+	async preferIntegration(integrationID: string): Promise<void> {
+		try {
+			await this.refreshModelsOrThrow();
+			const directory = this._workspaceContext.getWorkspace().folders[0]?.uri.fsPath;
+			const providers = await this._engine.listProviders(directory);
+			const provider = providers.find((entry) => entry.integrationID === integrationID);
+			if (!provider) {
+				return;
+			}
+			const models = await this._engine.listModels(directory);
+			const target = models.find((model) => model.providerID === provider.id);
+			if (!target) {
+				return;
+			}
+			const selection: ModelSelection = { providerName: 'loophole', modelName: `${target.providerID}/${target.id}` };
+			for (const feature of engineFeatures) {
+				await this._settings.setModelSelectionOfFeature(feature, selection);
+			}
+		} catch (error) {
+			this._logService.warn(`[Loophole] Could not switch to the new provider: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 }

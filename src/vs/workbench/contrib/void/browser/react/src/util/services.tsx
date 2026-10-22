@@ -55,6 +55,8 @@ import { IMCPService } from '../../../../common/mcpService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
 import { ITokenUsageService } from '../../../../common/tokenUsageService.js'
 import { IDailyActivityService } from '../../../../common/dailyActivityService.js'
+import { ILoopholeEngineService } from '../../../../common/loopholeEngineService.js'
+import { ILoopholeEngineWorkbenchService } from '../../loopholeEngineWorkbenchService.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IFileDialogService } from '../../../../../../../platform/dialogs/common/dialogs.js'
 
@@ -250,6 +252,8 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		ITokenUsageService: accessor.get(ITokenUsageService),
 		IFileDialogService: accessor.get(IFileDialogService),
 		IDailyActivityService: accessor.get(IDailyActivityService),
+		ILoopholeEngineService: accessor.get(ILoopholeEngineService),
+		ILoopholeEngineWorkbenchService: accessor.get(ILoopholeEngineWorkbenchService),
 
 	} as const
 	return reactAccessor

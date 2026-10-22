@@ -21,12 +21,14 @@ import Severity from '../../../../../../../base/common/severity.js'
 import { getModelCapabilities, modelOverrideKeys, ModelOverrides } from '../../../../common/modelCapabilities.js';
 import { TransferEditorType, TransferFilesInfo } from '../../../extensionTransferTypes.js';
 import { MCPServer } from '../../../../common/mcpServiceTypes.js';
+import { EngineProvidersSection } from './EngineProviders.js'
 import { useMCPServiceState } from '../util/services.js';
 import { OPT_OUT_KEY, PROJECT_MEMORY_STORAGE_KEY } from '../../../../common/storageKeys.js';
 import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js';
 
 type Tab =
 	| 'models'
+	| 'engineProviders'
 	| 'voice'
 	| 'ollama'
 	| 'mlx'
@@ -1141,6 +1143,7 @@ export const Settings = () => {
 
 	const navItems: { tab: Tab; label: string }[] = [
 		{ tab: 'models', label: 'Models' },
+		{ tab: 'engineProviders', label: 'Providers' },
 		{ tab: 'voice', label: 'Microphone' },
 		{ tab: 'ollama', label: 'Ollama' },
 		...(os === 'mac' ? ([
@@ -1303,6 +1306,12 @@ export const Settings = () => {
 							<div className={shouldShowTab('voice') ? `` : 'hidden'}>
 								<ErrorBoundary>
 									<LocalVoiceModelSettings />
+								</ErrorBoundary>
+							</div>
+
+							<div className={shouldShowTab('engineProviders') ? `` : 'hidden'}>
+								<ErrorBoundary>
+									<EngineProvidersSection />
 								</ErrorBoundary>
 							</div>
 
