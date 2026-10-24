@@ -663,7 +663,7 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 						server.status === 'success' ? 'bg-[var(--vscode-testing-iconPassed)]'
 							: server.status === 'error' ? 'bg-[var(--vscode-errorForeground)]'
 								: server.status === 'loading' ? 'bg-[var(--vscode-charts-yellow)]'
-									: 'bg-[var(--vscode-descriptionForeground)]'
+									: 'bg-[var(--vscode-descriptionForeground)]'}
 					`}></div>
 					<div className="text-[13px] font-medium text-[var(--vscode-foreground)]">{name}</div>
 				</div>
@@ -1141,7 +1141,7 @@ export const Settings = () => {
 									<div className='mb-6'>
 										<div className='text-[13px] font-medium text-[var(--vscode-foreground)] mb-2'>Project Memory</div>
 										<div className='text-[12px] text-[var(--vscode-descriptionForeground)] mb-3'>
-											Durable notes for {workspaceName ? `"${workspaceName}"`} stored locally
+											Durable notes for {workspaceName ? `"${workspaceName}"` : ''} stored locally
 										</div>
 										<VoidInputBox2
 											key={`project-memory-${s}`}
@@ -1178,16 +1178,16 @@ export const Settings = () => {
 							</div>
 
 							<div className={shouldShowTab('agentBehavior') ? `` : 'hidden'}>
-								<SettingsSection title=\"Agent Behavior\" description=\"Configure how the AI agent behaves in your workspace\">
+								<SettingsSection title="Agent Behavior" description="Configure how the AI agent behaves in your workspace">
 									<SettingsCard>
-										<SettingsRow title=\"Agent Mode\" description=\"Default mode for agent interactions\"><span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Auto</span></SettingsRow>
-										<SettingsRow title=\"Max Tool Calls\" description=\"Maximum number of tool calls per request\"><span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Unlimited</span></SettingsRow>
+										<SettingsRow title="Agent Mode" description="Default mode for agent interactions"><span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Auto</span></SettingsRow>
+										<SettingsRow title="Max Tool Calls" description="Maximum number of tool calls per request"><span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Unlimited</span></SettingsRow>
 									</SettingsCard>
 								</SettingsSection>
 							</div>
 
 							<div className={shouldShowTab('autoApprove') ? `` : 'hidden'}>
-								<SettingsSection title=\"Auto Approve\" description=\"Auto-approve tools without asking for confirmation\">
+								<SettingsSection title="Auto Approve" description="Auto-approve tools without asking for confirmation">
 									<SettingsCard>
 										{[...toolApprovalTypes].map((approvalType) => (
 											<ToolApprovalTypeSwitch key={approvalType} approvalType={approvalType} size='xs' desc={approvalType} />
@@ -1197,12 +1197,12 @@ export const Settings = () => {
 							</div>
 
 							<div className={shouldShowTab('autocomplete') ? `` : 'hidden'}>
-								<SettingsSection title=\"Autocomplete\" description=\"Inline code completions\">
+								<SettingsSection title="Autocomplete" description="Inline code completions">
 									<SettingsCard>
-										<SettingsRow title=\"Enable Autocomplete\" description=\"Show AI suggestions as you type\">
+										<SettingsRow title="Enable Autocomplete" description="Show AI suggestions as you type">
 											<VoidSwitch size='xs' value={settingsState.globalSettings.enableAutocomplete} onChange={(newVal) => voidSettingsService.setGlobalSetting('enableAutocomplete', newVal)} />
 										</SettingsRow>
-										<SettingsRow title=\"Model\" description=\"Model used for autocomplete\">
+										<SettingsRow title="Model" description="Model used for autocomplete">
 											<ModelDropdown featureName={'Autocomplete'} className='text-[12px]' />
 										</SettingsRow>
 									</SettingsCard>
@@ -1210,9 +1210,9 @@ export const Settings = () => {
 							</div>
 
 							<div className={shouldShowTab('display') ? `` : 'hidden'}>
-								<SettingsSection title=\"Display\" description=\"Visual preferences\">
+								<SettingsSection title="Display" description="Visual preferences">
 									<SettingsCard>
-										<SettingsRow title=\"Show Inline Suggestions\" description=\"Display AI suggestions inline in the editor\">
+										<SettingsRow title="Show Inline Suggestions" description="Display AI suggestions inline in the editor">
 											<VoidSwitch size='xs' value={settingsState.globalSettings.showInlineSuggestions} onChange={(newVal) => voidSettingsService.setGlobalSetting('showInlineSuggestions', newVal)} />
 										</SettingsRow>
 									</SettingsCard>
@@ -1220,9 +1220,9 @@ export const Settings = () => {
 							</div>
 
 							<div className={shouldShowTab('notifications') ? `` : 'hidden'}>
-								<SettingsSection title=\"Notifications\" description=\"Notification preferences\">
+								<SettingsSection title="Notifications" description="Notification preferences">
 									<SettingsCard>
-										<SettingsRow title=\"Enable Notifications\" description=\"Show notifications for AI actions\">
+										<SettingsRow title="Enable Notifications" description="Show notifications for AI actions">
 											<VoidSwitch size='xs' value={true} onChange={() => {}} />
 										</SettingsRow>
 									</SettingsCard>
@@ -1230,12 +1230,12 @@ export const Settings = () => {
 							</div>
 
 							<div className={shouldShowTab('context') ? `` : 'hidden'}>
-								<SettingsSection title=\"Context\" description=\"Context and memory management\">
+								<SettingsSection title="Context" description="Context and memory management">
 									<SettingsCard>
-										<SettingsRow title=\"Include Tool Lint Errors\" description=\"Include lint errors in tool context\">
+										<SettingsRow title="Include Tool Lint Errors" description="Include lint errors in tool context">
 											<VoidSwitch size='xs' value={settingsState.globalSettings.includeToolLintErrors} onChange={(newVal) => voidSettingsService.setGlobalSetting('includeToolLintErrors', newVal)} />
 										</SettingsRow>
-										<SettingsRow title=\"Auto-accept LLM Changes\" description=\"Automatically accept file changes\">
+										<SettingsRow title="Auto-accept LLM Changes" description="Automatically accept file changes">
 											<VoidSwitch size='xs' value={settingsState.globalSettings.autoAcceptLLMChanges} onChange={(newVal) => voidSettingsService.setGlobalSetting('autoAcceptLLMChanges', newVal)} />
 										</SettingsRow>
 									</SettingsCard>
@@ -1243,9 +1243,9 @@ export const Settings = () => {
 							</div>
 
 							<div className={shouldShowTab('checkpoints') ? `` : 'hidden'}>
-								<SettingsSection title=\"Checkpoints\" description=\"Checkpoint and history management\">
+								<SettingsSection title="Checkpoints" description="Checkpoint and history management">
 									<SettingsCard>
-										<SettingsRow title=\"Enable Checkpoints\" description=\"Create checkpoints before AI changes\">
+										<SettingsRow title="Enable Checkpoints" description="Create checkpoints before AI changes">
 											<VoidSwitch size='xs' value={true} onChange={() => {}} />
 										</SettingsRow>
 									</SettingsCard>
@@ -1253,9 +1253,9 @@ export const Settings = () => {
 							</div>
 
 							<div className={shouldShowTab('language') ? `` : 'hidden'}>
-								<SettingsSection title=\"Language\" description=\"Language preferences\">
+								<SettingsSection title="Language" description="Language preferences">
 									<SettingsCard>
-										<SettingsRow title=\"Display Language\" description=\"Language for the UI\">
+										<SettingsRow title="Display Language" description="Language for the UI">
 											<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>English</span>
 										</SettingsRow>
 									</SettingsCard>
@@ -1263,9 +1263,9 @@ export const Settings = () => {
 							</div>
 
 							<div className={shouldShowTab('experimental') ? `` : 'hidden'}>
-								<SettingsSection title=\"Experimental\" description=\"Experimental features\">
+								<SettingsSection title="Experimental" description="Experimental features">
 									<SettingsCard>
-										<SettingsRow title=\"Fast Apply\" description=\"Use fast apply for code changes\">
+										<SettingsRow title="Fast Apply" description="Use fast apply for code changes">
 											<FastApplyMethodDropdown />
 										</SettingsRow>
 									</SettingsCard>
@@ -1273,12 +1273,12 @@ export const Settings = () => {
 							</div>
 
 							<div className={shouldShowTab('about') ? `` : 'hidden'}>
-								<SettingsSection title=\"About\" description=\"About Loophole\">
+								<SettingsSection title="About" description="About Loophole">
 									<SettingsCard>
-										<SettingsRow title=\"Version\" description=\"Loophole IDE version\">
+										<SettingsRow title="Version" description="Loophole IDE version">
 											<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Latest</span>
 										</SettingsRow>
-										<SettingsRow title=\"Redo Onboarding\" description=\"Restart the onboarding flow\">
+										<SettingsRow title="Redo Onboarding" description="Restart the onboarding flow">
 											<RedoOnboardingButton />
 										</SettingsRow>
 									</SettingsCard>
