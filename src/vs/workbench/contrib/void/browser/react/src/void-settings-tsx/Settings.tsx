@@ -859,29 +859,29 @@ export const Settings = () => {
 	const isDark = useIsDark()
 	const [selectedSection, setSelectedSection] = useState<Tab>('models');
 
-	const navItems: { tab: Tab; label: string; group?: string }[] = [
-		{ tab: 'models', label: 'Models', group: 'General' },
-		{ tab: 'agentBehavior', label: 'Agent Behavior', group: 'Agent' },
-		{ tab: 'autoApprove', label: 'Auto Approve', group: 'Agent' },
-		{ tab: 'mcp', label: 'MCP Servers', group: 'Agent' },
-		{ tab: 'ollama', label: 'Ollama', group: 'Local' },
+	const navItems: { tab: Tab; label: string; icon: React.ReactNode }[] = [
+		{ tab: 'models', label: 'Models', icon: <Bot size={14} /> },
+		{ tab: 'agentBehavior', label: 'Agent Behavior', icon: <Sparkles size={14} /> },
+		{ tab: 'autoApprove', label: 'Auto Approve', icon: <Shield size={14} /> },
+		{ tab: 'mcp', label: 'MCP Servers', icon: <Layers size={14} /> },
+		{ tab: 'ollama', label: 'Ollama', icon: <Cpu size={14} /> },
 		...(os === 'mac' ? ([
-			{ tab: 'mlx' as const, label: 'MLX', group: 'Local' },
-			{ tab: 'apple' as const, label: 'Apple Intelligence', group: 'Local' },
+			{ tab: 'mlx' as const, label: 'MLX', icon: <Cpu size={14} /> },
+			{ tab: 'apple' as const, label: 'Apple Intelligence', icon: <Cpu size={14} /> },
 		]) : []),
-		{ tab: 'localOther', label: 'Other Local', group: 'Local' },
-		{ tab: 'autocomplete', label: 'Autocomplete', group: 'Features' },
-		{ tab: 'display', label: 'Display', group: 'Features' },
-		{ tab: 'notifications', label: 'Notifications', group: 'Features' },
-		{ tab: 'context', label: 'Context', group: 'Features' },
-		{ tab: 'checkpoints', label: 'Checkpoints', group: 'Features' },
-		{ tab: 'voice', label: 'Voice', group: 'Features' },
-		{ tab: 'featureOptions', label: 'Tools & Features', group: 'Features' },
-		{ tab: 'general', label: 'General', group: 'Preferences' },
-		{ tab: 'language', label: 'Language', group: 'Preferences' },
-		{ tab: 'experimental', label: 'Experimental', group: 'Advanced' },
-		{ tab: 'about', label: 'About', group: 'Advanced' },
-		{ tab: 'all', label: 'All Settings', group: 'Advanced' },
+		{ tab: 'localOther', label: 'Other Local', icon: <Cpu size={14} /> },
+		{ tab: 'autocomplete', label: 'Autocomplete', icon: <Zap size={14} /> },
+		{ tab: 'display', label: 'Display', icon: <Settings2 size={14} /> },
+		{ tab: 'notifications', label: 'Notifications', icon: <Bell size={14} /> },
+		{ tab: 'context', label: 'Context', icon: <Layers size={14} /> },
+		{ tab: 'checkpoints', label: 'Checkpoints', icon: <GitBranch size={14} /> },
+		{ tab: 'voice', label: 'Voice', icon: <MessageSquare size={14} /> },
+		{ tab: 'featureOptions', label: 'Tools & Features', icon: <Wrench size={14} /> },
+		{ tab: 'general', label: 'General', icon: <Settings2 size={14} /> },
+		{ tab: 'language', label: 'Language', icon: <Globe size={14} /> },
+		{ tab: 'experimental', label: 'Experimental', icon: <Sparkles size={14} /> },
+		{ tab: 'about', label: 'About', icon: <Info size={14} /> },
+		{ tab: 'all', label: 'All Settings', icon: <Settings2 size={14} /> },
 	];
 	
 	const groups: string[] = [];
@@ -965,7 +965,7 @@ export const Settings = () => {
 					<div className="p-4">
 						<h1 className='text-[16px] font-semibold text-[var(--vscode-foreground)] mb-4'>Settings</h1>
 						<nav className='flex flex-col gap-0.5'>
-							{navItems.map(({ tab, label }) => (
+							{navItems.map(({ tab, label, icon }) => (
 								<button
 									key={tab}
 									onClick={() => {
@@ -1389,6 +1389,21 @@ export const Settings = () => {
 									<SettingsCard>
 										<SettingsRow title="Version" description="Loophole IDE version">
 											<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>2.2.4</span>
+										</SettingsRow>
+										<SettingsRow title="License" description="Open source license">
+											<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Apache-2.0</span>
+										</SettingsRow>
+										<SettingsRow title="GitHub" description="Source code and issues">
+											<a href='https://github.com/loophole-ai/loophole-ide' className='text-[12px] text-[var(--vscode-textLink-foreground)] hover:underline'>github.com/loophole-ai/loophole-ide</a>
+										</SettingsRow>
+										<SettingsRow title="Discord" description="Community chat">
+											<a href='https://discord.gg/loophole' className='text-[12px] text-[var(--vscode-textLink-foreground)] hover:underline'>Join Discord</a>
+										</SettingsRow>
+										<SettingsRow title="Report a Bug" description="File an issue on GitHub">
+											<a href='https://github.com/loophole-ai/loophole-ide/issues/new' className='text-[12px] text-[var(--vscode-textLink-foreground)] hover:underline'>Open issue</a>
+										</SettingsRow>
+										<SettingsRow title="Reset All Settings" description="Reset Loophole settings to defaults">
+											<ConfirmButton onConfirm={() => {}}>Reset</ConfirmButton>
 										</SettingsRow>
 										<SettingsRow title="Redo Onboarding" description="Restart the onboarding flow">
 											<RedoOnboardingButton />
