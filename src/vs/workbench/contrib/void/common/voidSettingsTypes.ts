@@ -506,7 +506,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	autoSetupAppleFoundationModels: true,
 	autoSetupMlx: true,
 	aiInstructions: '',
-	enableAutocomplete: false,
+	enableAutocomplete: true,
 	syncApplyToChat: true,
 	syncSCMToChat: true,
 	enableFastApply: true,
