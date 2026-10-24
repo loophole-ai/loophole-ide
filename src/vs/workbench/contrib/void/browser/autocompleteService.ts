@@ -162,10 +162,22 @@ type Autocompletion = {
 	_newlineCount: number,
 }
 
-const DEBOUNCE_TIME = 500
-const TIMEOUT_TIME = 60000
+const DEBOUNCE_TIME_INITIAL = 300
+const DEBOUNCE_TIME_MIN = 150
+const DEBOUNCE_TIME_MAX = 1000
+const LATENCY_SAMPLE_SIZE = 10
+const TIMEOUT_TIME = 10000
 const MAX_CACHE_SIZE = 20
 const MAX_PENDING_REQUESTS = 2
+
+// Adaptive debounce delay: starts at the initial value, then tracks the average
+// of recent request latencies so fast providers feel instant and slow ones
+// aren't flooded with cancelled requests.
+const calcDebounceDelay = (latencies: number[]): number => {
+	if (latencies.length === 0) return DEBOUNCE_TIME_INITIAL
+	const avg = latencies.reduce((a, b) => a + b, 0) / latencies.length
+	return Math.max(DEBOUNCE_TIME_MIN, Math.min(DEBOUNCE_TIME_MAX, Math.round(avg)))
+}
 
 // postprocesses the result
 const processStartAndEndSpaces = (result: string) => {
@@ -622,7 +634,17 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 
 	private _lastCompletionStart = 0
 	private _lastCompletionAccept = 0
+	private _debounceDelayMs = DEBOUNCE_TIME_INITIAL
+	private _latencyHistory: number[] = []
 	// private _lastPrefix: string = ''
+
+	private _recordLatency(latencyMs: number) {
+		this._latencyHistory.push(latencyMs)
+		if (this._latencyHistory.length > LATENCY_SAMPLE_SIZE) {
+			this._latencyHistory.shift()
+			this._debounceDelayMs = calcDebounceDelay(this._latencyHistory)
+		}
+	}
 
 	// used internally by vscode
 	// fires after every keystroke and returns the completion to show
@@ -674,20 +696,11 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		// if there is a cached autocompletion, return it
 		if (cachedAutocompletion && autocompletionMatchup) {
 
-			console.log('AA')
-
-
-			// console.log('id: ' + cachedAutocompletion.id)
-
 			if (cachedAutocompletion.status === 'finished') {
-				console.log('A1')
-
-				const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position, debug: true })
+				const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position })
 				return inlineCompletions
 
 			} else if (cachedAutocompletion.status === 'pending') {
-				console.log('A2')
-
 				try {
 					await cachedAutocompletion.llmPromise;
 					const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position })
@@ -698,10 +711,6 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 					console.error('Error creating autocompletion (1): ' + e)
 				}
 
-			} else if (cachedAutocompletion.status === 'error') {
-				console.log('A3')
-			} else {
-				console.log('A4')
 			}
 
 			return []
@@ -722,7 +731,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 				} else {
 					resolve(true)
 				}
-			}, DEBOUNCE_TIME)
+			}, this._debounceDelayMs)
 		)
 
 		// if more typing happened, then do not go forwards with the request
@@ -783,7 +792,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 			_newlineCount: 0,
 		}
 
-		console.log('starting autocomplete...', predictionType)
+		const _startTime = Date.now()
 
 		const featureName: FeatureName = 'Autocomplete'
 		const overridesOfModel = this._settingsService.state.overridesOfModel
@@ -832,6 +841,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 					// console.log('____res: ', JSON.stringify(newAutocompletion.insertText))
 
 					newAutocompletion.endTime = Date.now()
+					this._recordLatency(newAutocompletion.endTime - _startTime)
 					newAutocompletion.status = 'finished'
 					const [text, _] = extractCodeFromRegular({ text: fullText, recentlyAddedTextLen: 0 })
 					newAutocompletion.insertText = processStartAndEndSpaces(text)
