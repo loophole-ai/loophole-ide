@@ -1168,7 +1168,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		const res = this._startStreamingDiffZone({
 			uri,
 			streamRequestIdRef: { current: null },
-			startBehavior: 'keep-conflicts',
+			startBehavior: 'accept-conflicts',
 			linkedCtrlKZone: null,
 			onWillUndo: () => { },
 		})
