@@ -861,8 +861,6 @@ export const Settings = () => {
 
 	const navItems: { tab: Tab; label: string; group?: string }[] = [
 		{ tab: 'models', label: 'Models', group: 'General' },
-		{ tab: 'providers', label: 'Providers', group: 'Providers' },
-		{ tab: 'engineProviders', label: 'Engine Providers', group: 'Providers' },
 		{ tab: 'agentBehavior', label: 'Agent Behavior', group: 'Agent' },
 		{ tab: 'autoApprove', label: 'Auto Approve', group: 'Agent' },
 		{ tab: 'mcp', label: 'MCP Servers', group: 'Agent' },
@@ -886,7 +884,7 @@ export const Settings = () => {
 		{ tab: 'all', label: 'All Settings', group: 'Advanced' },
 	];
 	
-	const groups = ['General', 'Providers', 'Agent', 'Local', 'Features', 'Preferences', 'Advanced'];
+	const groups: string[] = [];
 	const shouldShowTab = (tab: Tab) => selectedSection === 'all' || selectedSection === tab;
 	
 	const accessor = useAccessor()
@@ -1035,14 +1033,6 @@ export const Settings = () => {
 								</ErrorBoundary>
 							</div>
 
-							<div className={shouldShowTab('engineProviders') ? `` : 'hidden'}>
-								<ErrorBoundary>
-									<SettingsSection title="Engine Providers" description="Configure Loophole engine providers">
-										<EngineProvidersSection />
-									</SettingsSection>
-								</ErrorBoundary>
-							</div>
-
 							<div className={shouldShowTab('ollama') ? `` : 'hidden'}>
 								<ErrorBoundary>
 									<LocalProviderSection
@@ -1095,16 +1085,6 @@ export const Settings = () => {
 										description='OpenAI-compatible local servers'
 										providerNames={otherLocalProviderNames}
 									/>
-								</ErrorBoundary>
-							</div>
-
-							<div className={shouldShowTab('providers') ? `` : 'hidden'}>
-								<ErrorBoundary>
-									<SettingsSection title="API Providers" description="Configure cloud AI providers like Anthropic, OpenAI, OpenRouter, and more">
-										{nonlocalProviderNames.map((providerName) => (
-											<SettingsForProvider key={providerName} providerName={providerName} showProviderTitle={true} showProviderSuggestions={true} />
-										))}
-									</SettingsSection>
 								</ErrorBoundary>
 							</div>
 
