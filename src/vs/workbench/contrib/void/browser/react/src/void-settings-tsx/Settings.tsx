@@ -36,16 +36,11 @@ type Tab =
 	| 'providers'
 	| 'featureOptions'
 	| 'autocomplete'
-	| 'display'
-	| 'notifications'
 	| 'context'
-	| 'checkpoints'
 	| 'agentBehavior'
 	| 'autoApprove'
 	| 'mcp'
 	| 'general'
-	| 'language'
-	| 'experimental'
 	| 'about'
 	| 'all';
 
@@ -871,15 +866,10 @@ export const Settings = () => {
 		]) : []),
 		{ tab: 'localOther', label: 'Other Local', icon: <Cpu size={14} /> },
 		{ tab: 'autocomplete', label: 'Autocomplete', icon: <Zap size={14} /> },
-		{ tab: 'display', label: 'Display', icon: <Settings2 size={14} /> },
-		{ tab: 'notifications', label: 'Notifications', icon: <Bell size={14} /> },
 		{ tab: 'context', label: 'Context', icon: <Layers size={14} /> },
-		{ tab: 'checkpoints', label: 'Checkpoints', icon: <GitBranch size={14} /> },
 		{ tab: 'voice', label: 'Voice', icon: <MessageSquare size={14} /> },
 		{ tab: 'featureOptions', label: 'Tools & Features', icon: <Wrench size={14} /> },
 		{ tab: 'general', label: 'General', icon: <Settings2 size={14} /> },
-		{ tab: 'language', label: 'Language', icon: <Globe size={14} /> },
-		{ tab: 'experimental', label: 'Experimental', icon: <Sparkles size={14} /> },
 		{ tab: 'about', label: 'About', icon: <Info size={14} /> },
 		{ tab: 'all', label: 'All Settings', icon: <Settings2 size={14} /> },
 	];
@@ -1321,27 +1311,7 @@ export const Settings = () => {
 								</SettingsSection>
 							</div>
 
-							<div className={shouldShowTab('display') ? `` : 'hidden'}>
-								<SettingsSection title="Display" description="Visual preferences">
-									<SettingsCard>
-										<SettingsRow title="Show Inline Suggestions" description="Display AI suggestions inline in the editor">
-											<VoidSwitch size='xs' value={settingsState.globalSettings.showInlineSuggestions} onChange={(newVal) => voidSettingsService.setGlobalSetting('showInlineSuggestions', newVal)} />
-										</SettingsRow>
-									</SettingsCard>
-								</SettingsSection>
-							</div>
-
-							<div className={shouldShowTab('notifications') ? `` : 'hidden'}>
-								<SettingsSection title="Notifications" description="Notification preferences">
-									<SettingsCard>
-										<SettingsRow title="Enable Notifications" description="Show notifications for AI actions">
-											<VoidSwitch size='xs' value={true} onChange={() => {}} />
-										</SettingsRow>
-									</SettingsCard>
-								</SettingsSection>
-							</div>
-
-							<div className={shouldShowTab('context') ? `` : 'hidden'}>
+																					<div className={shouldShowTab('context') ? `` : 'hidden'}>
 								<SettingsSection title="Context" description="Context and memory management">
 									<SettingsCard>
 										<SettingsRow title="Include Tool Lint Errors" description="Include lint errors in tool context">
@@ -1354,37 +1324,7 @@ export const Settings = () => {
 								</SettingsSection>
 							</div>
 
-							<div className={shouldShowTab('checkpoints') ? `` : 'hidden'}>
-								<SettingsSection title="Checkpoints" description="Checkpoint and history management">
-									<SettingsCard>
-										<SettingsRow title="Enable Checkpoints" description="Create checkpoints before AI changes">
-											<VoidSwitch size='xs' value={true} onChange={() => {}} />
-										</SettingsRow>
-									</SettingsCard>
-								</SettingsSection>
-							</div>
-
-							<div className={shouldShowTab('language') ? `` : 'hidden'}>
-								<SettingsSection title="Language" description="Language preferences">
-									<SettingsCard>
-										<SettingsRow title="Display Language" description="Language for the UI">
-											<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>English</span>
-										</SettingsRow>
-									</SettingsCard>
-								</SettingsSection>
-							</div>
-
-							<div className={shouldShowTab('experimental') ? `` : 'hidden'}>
-								<SettingsSection title="Experimental" description="Experimental features">
-									<SettingsCard>
-										<SettingsRow title="Fast Apply" description="Use fast apply for code changes">
-											<FastApplyMethodDropdown />
-										</SettingsRow>
-									</SettingsCard>
-								</SettingsSection>
-							</div>
-
-							<div className={shouldShowTab('about') ? `` : 'hidden'}>
+																												<div className={shouldShowTab('about') ? `` : 'hidden'}>
 								<SettingsSection title="About" description="About Loophole">
 									<SettingsCard>
 										<SettingsRow title="Version" description="Loophole IDE version">
