@@ -964,37 +964,26 @@ export const Settings = () => {
 				<aside className="w-56 flex-shrink-0 border-r border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)] overflow-y-auto">
 					<div className="p-4">
 						<h1 className='text-[16px] font-semibold text-[var(--vscode-foreground)] mb-4'>Settings</h1>
-						<nav className='flex flex-col gap-4'>
-							{groups.map(group => {
-								const items = navItems.filter(item => item.group === group);
-								if (items.length === 0) return null;
-								return (
-									<div key={group}>
-										<div className='text-[11px] font-medium text-[var(--vscode-descriptionForeground)] uppercase tracking-wide mb-1.5 px-2'>{group}</div>
-										<div className='flex flex-col gap-0.5'>
-											{items.map(({ tab, label }) => (
-												<button
-													key={tab}
-													onClick={() => {
-														setSelectedSection(tab);
-														if (tab !== 'all') {
-															const mainEl = document.querySelector('.settings-main-content');
-															if (mainEl) mainEl.scrollTop = 0;
-														}
-													}}
-													className={`px-2 py-1 text-left text-[13px] rounded transition-colors ${
-														selectedSection === tab
-															? 'bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]'
-															: 'text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)]'
-													}`}
-												>
-													{label}
-												</button>
-											))}
-										</div>
-									</div>
-								);
-							})}
+						<nav className='flex flex-col gap-0.5'>
+							{navItems.map(({ tab, label }) => (
+								<button
+									key={tab}
+									onClick={() => {
+										setSelectedSection(tab);
+										if (tab !== 'all') {
+											const mainEl = document.querySelector('.settings-main-content');
+											if (mainEl) mainEl.scrollTop = 0;
+										}
+									}}
+									className={`flex items-center gap-2 px-2 py-1.5 text-left text-[13px] rounded transition-colors ${
+										selectedSection === tab
+											? 'bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]'
+											: 'text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)]'
+									}`}
+								>
+									{label}
+								</button>
+							))}
 						</nav>
 					</div>
 				</aside>
@@ -1399,7 +1388,7 @@ export const Settings = () => {
 								<SettingsSection title="About" description="About Loophole">
 									<SettingsCard>
 										<SettingsRow title="Version" description="Loophole IDE version">
-											<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Latest</span>
+											<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>2.2.4</span>
 										</SettingsRow>
 										<SettingsRow title="Redo Onboarding" description="Restart the onboarding flow">
 											<RedoOnboardingButton />
