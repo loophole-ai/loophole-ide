@@ -712,6 +712,149 @@ const MCPServersList = () => {
 	return <div className="mt-3">{content}</div>
 };
 
+const ProviderSetting = ({ providerName, settingName, subTextMd }: { providerName: ProviderName, settingName: SettingName, subTextMd: React.ReactNode }) => {
+
+	const { title: settingTitle, placeholder, isPasswordField } = displayInfoOfSettingName(providerName, settingName)
+
+	const accessor = useAccessor()
+	const voidSettingsService = accessor.get('IVoidSettingsService')
+	const settingsState = useSettingsState()
+
+	const settingValue = settingsState.settingsOfProvider[providerName][settingName] as string // this should always be a string in this component
+	if (typeof settingValue !== 'string') {
+		console.log('Error: Provider setting had a non-string value.')
+		return
+	}
+
+	// Create a stable callback reference using useCallback with proper dependencies
+	const handleChangeValue = useCallback((newVal: string) => {
+		voidSettingsService.setSettingOfProvider(providerName, settingName, newVal)
+	}, [voidSettingsService, providerName, settingName]);
+
+	return <ErrorBoundary>
+		<div className='my-1'>
+			<VoidSimpleInputBox
+				value={settingValue}
+				onChangeValue={handleChangeValue}
+				placeholder={`${settingTitle} (${placeholder})`}
+				passwordBlur={isPasswordField}
+				compact={true}
+			/>
+			{!subTextMd ? null : <div className='py-1 px-3 opacity-50 text-sm'>
+				{subTextMd}
+			</div>}
+		</div>
+	</ErrorBoundary>
+}
+
+// const OldSettingsForProvider = ({ providerName, showProviderTitle }: { providerName: ProviderName, showProviderTitle: boolean }) => {
+// 	const voidSettingsState = useSettingsState()
+
+// 	const needsModel = isProviderNameDisabled(providerName, voidSettingsState) === 'addModel'
+
+// 	// const accessor = useAccessor()
+// 	// const voidSettingsService = accessor.get('IVoidSettingsService')
+
+// 	// const { enabled } = voidSettingsState.settingsOfProvider[providerName]
+// 	const settingNames = customSettingNamesOfProvider(providerName)
+
+// 	const { title: providerTitle } = displayInfoOfProviderName(providerName)
+
+// 	return <div className='my-4'>
+
+// 		<div className='flex items-center w-full gap-4'>
+// 			{showProviderTitle && <h3 className='text-xl truncate'>{providerTitle}</h3>}
+
+// 			{/* enable provider switch */}
+// 			{/* <VoidSwitch
+// 				value={!!enabled}
+// 				onChange={
+// 					useCallback(() => {
+// 						const enabledRef = voidSettingsService.state.settingsOfProvider[providerName].enabled
+// 						voidSettingsService.setSettingOfProvider(providerName, 'enabled', !enabledRef)
+// 					}, [voidSettingsService, providerName])}
+// 				size='sm+'
+// 			/> */}
+// 		</div>
+
+// 		<div className='px-0'>
+// 			{/* settings besides models (e.g. api key) */}
+// 			{settingNames.map((settingName, i) => {
+// 				return <ProviderSetting key={settingName} providerName={providerName} settingName={settingName} />
+// 			})}
+
+// 			{needsModel ?
+// 				providerName === 'ollama' ?
+// 					<WarningBox text={`Please install an Ollama model. We'll auto-detect it.`} />
+// 					: <WarningBox text={`Please add a model for ${providerTitle} (Models section).`} />
+// 				: null}
+// 		</div>
+// 	</div >
+// }
+
+
+export const SettingsForProvider = ({ providerName, showProviderTitle, showProviderSuggestions }: { providerName: ProviderName, showProviderTitle: boolean, showProviderSuggestions: boolean }) => {
+	const voidSettingsState = useSettingsState()
+
+	const needsModel = isProviderNameDisabled(providerName, voidSettingsState) === 'addModel'
+
+	// const accessor = useAccessor()
+	// const voidSettingsService = accessor.get('IVoidSettingsService')
+
+	// const { enabled } = voidSettingsState.settingsOfProvider[providerName]
+	const settingNames = customSettingNamesOfProvider(providerName)
+
+	const { title: providerTitle } = displayInfoOfProviderName(providerName)
+
+	return <div>
+
+		<div className='flex items-center w-full gap-4'>
+			{showProviderTitle && <h3 className='text-xl truncate'>{providerTitle}</h3>}
+
+			{/* enable provider switch */}
+			{/* <VoidSwitch
+				value={!!enabled}
+				onChange={
+					useCallback(() => {
+						const enabledRef = voidSettingsService.state.settingsOfProvider[providerName].enabled
+						voidSettingsService.setSettingOfProvider(providerName, 'enabled', !enabledRef)
+					}, [voidSettingsService, providerName])}
+				size='sm+'
+			/> */}
+		</div>
+
+		<div className='px-0'>
+			{/* settings besides models (e.g. api key) */}
+			{settingNames.map((settingName, i) => {
+
+				return <ProviderSetting
+					key={settingName}
+					providerName={providerName}
+					settingName={settingName}
+					subTextMd={i !== settingNames.length - 1 ? null
+						: <ChatMarkdownRender string={subTextMdOfProviderName(providerName)} chatMessageLocation={undefined} />}
+				/>
+			})}
+
+			{showProviderSuggestions && needsModel ?
+				providerName === 'ollama' ?
+					<WarningBox className="pl-2 mb-4" text={`Please install an Ollama model. We'll auto-detect it.`} />
+					: (providerName === 'mlx' || providerName === 'appleFoundationModels' || providerName === 'lmStudio' || providerName === 'vLLM') ?
+						<WarningBox className="pl-2 mb-4" text={`Start your local server — Loophole will auto-detect models at the endpoint.`} />
+						: <WarningBox className="pl-2 mb-4" text={`Please add a model for ${providerTitle} (Models section).`} />
+				: null}
+		</div>
+	</div >
+}
+
+export const VoidProviderSettings = ({ providerNames }: { providerNames: readonly ProviderName[] }) => {
+	return <>
+		{providerNames.map(providerName =>
+			<SettingsForProvider key={providerName} providerName={providerName} showProviderTitle={true} showProviderSuggestions={true} />
+		)}
+	</>
+}
+
 export const Settings = () => {
 	const isDark = useIsDark()
 	const [selectedSection, setSelectedSection] = useState<Tab>('models');
