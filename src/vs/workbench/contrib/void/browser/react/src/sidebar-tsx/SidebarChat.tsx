@@ -302,38 +302,24 @@ const ContextWindowIndicator = ({ featureName }: { featureName: FeatureName }) =
 	const estimatedUsage = useMemo(() => {
 		if (!currentThread || !modelCapabilities) return 0
 
-		// PRIMARY: use real inputTokens from the last API response —
-		// this is exact and already includes system prompt + tool definitions + full history.
+		// PRIMARY: the engine reports the exact request size (input + cache read/write)
+		// on every `session.step.ended`. That is the real context-window usage.
 		const cumulativeCount = currentThread.state.cumulativeTokenCount || 0
 		if (cumulativeCount > 0) return cumulativeCount
 
-		// FALLBACK (before first response): estimate locally.
-		// Rules from OpenAI tiktoken docs and Anthropic token counting:
-		//   - Every message: +4 tokens for role/content wrapper overhead
-		//   - Every reply primed by assistant turn: +3 tokens
-		//   - System prompt: counted as a message with same overhead
-		//   - Tool definitions: ~1500-2000 tokens per tool in agent mode
-		//   - Base conversation overhead: ~3 tokens
-		const chatMode = settingsState.globalSettings.chatMode
-		const numTools = chatMode === 'build' ? 10 : 0 // approximate
-		const toolOverhead = numTools * 150 // ~150 tokens per tool definition (conservative)
-
-		let totalTokens = 3 // base overhead
-		totalTokens += 800 // system prompt estimate (loophole system prompt is ~600-1000 tokens)
-		totalTokens += toolOverhead
-
+		// FALLBACK (before the first engine response): count the visible transcript with
+		// the local BPE tokenizer. This is a lower bound — system prompt and tool
+		// definitions are not visible here — but it avoids inventing fixed overheads.
+		let totalTokens = 0
 		for (const message of currentThread.messages) {
-			totalTokens += 4 // per-message role/content wrapper overhead
 			if (message.role === 'user' && 'content' in message) {
 				totalTokens += estimateTokens(message.content)
-				// count selection/file context
 				if ('selections' in message && message.selections) {
 					for (const sel of message.selections) {
 						if ('content' in sel) totalTokens += estimateTokens((sel as any).content ?? '')
 					}
 				}
 			} else if (message.role === 'assistant' && 'displayContent' in message) {
-				totalTokens += 3 // assistant reply primer
 				totalTokens += estimateTokens(message.displayContent)
 				if ('reasoning' in message && message.reasoning) {
 					totalTokens += estimateTokens(message.reasoning)
@@ -344,7 +330,7 @@ const ContextWindowIndicator = ({ featureName }: { featureName: FeatureName }) =
 		}
 
 		return totalTokens
-	}, [currentThread, modelCapabilities, settingsState.globalSettings.chatMode])
+	}, [currentThread, modelCapabilities])
 
 	const contextWindow = modelCapabilities?.contextWindow || 128000
 	const usagePercentage = Math.min((estimatedUsage / contextWindow) * 100, 100)
@@ -1576,6 +1562,11 @@ const titleOfBuiltinToolName = {
 	'read_project_memory': { done: 'Read project memory', proposed: 'Read project memory', running: loadingTitleWrapper('Reading project memory') },
 	'write_project_memory': { done: 'Saved project memory', proposed: 'Save project memory', running: loadingTitleWrapper('Saving project memory') },
 	'todo_write': { done: 'Updated todos', proposed: 'Update todos', running: loadingTitleWrapper('Updating todos') },
+	// --- engine tools ---
+	'glob': { done: 'Found files', proposed: 'Find files', running: loadingTitleWrapper('Finding files') },
+	'grep': { done: 'Searched contents', proposed: 'Search contents', running: loadingTitleWrapper('Searching contents') },
+	'websearch': { done: 'Searched web', proposed: 'Search web', running: loadingTitleWrapper('Searching web') },
+	'subagent': { done: 'Ran subagent', proposed: 'Run subagent', running: loadingTitleWrapper('Running subagent') },
 } as const satisfies Record<BuiltinToolName, { done: any, proposed: any, running: any }>
 
 
@@ -1728,6 +1719,22 @@ const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinToolCallP
 			const total = toolParams.todos?.length ?? 0
 			const done = toolParams.todos?.filter(t => t.status === 'completed').length ?? 0
 			return { desc1: `${done}/${total} done` }
+		},
+		'glob': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['glob']
+			return { desc1: toolParams?.pattern ?? '' }
+		},
+		'grep': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['grep']
+			return { desc1: toolParams?.pattern ?? '' }
+		},
+		'websearch': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['websearch']
+			return { desc1: toolParams?.query ?? '' }
+		},
+		'subagent': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['subagent']
+			return { desc1: toolParams?.prompt?.slice(0, 80) ?? '' }
 		},
 	}
 
@@ -2669,6 +2676,172 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			if (toolMessage.type === 'success') {
 				const { result } = toolMessage
 				componentParams.info = `${result.tokenCount} tokens`
+			}
+			else if (toolMessage.type === 'tool_error') {
+				const { result } = toolMessage
+				componentParams.bottomChildren = <BottomChildren title='Error'>
+					<CodeChildren>
+						{result}
+					</CodeChildren>
+				</BottomChildren>
+			}
+
+			return <ToolHeaderWrapper {...componentParams} />
+		},
+	},
+
+	'glob': {
+		resultWrapper: ({ toolMessage }) => {
+			const accessor = useAccessor()
+			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
+			const title = getTitle(toolMessage)
+			const icon = null
+
+			if (toolMessage.type === 'tool_request') return null
+			if (toolMessage.type === 'running_now') return null
+
+			const isError = false
+			const isRejected = toolMessage.type === 'rejected'
+			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+
+			if (toolMessage.type === 'success') {
+				const { result } = toolMessage
+				const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+				componentParams.children = <ToolChildrenWrapper>
+					<SmallProseWrapper>
+						<ChatMarkdownRender
+							string={`\`\`\`\n${resultStr}\n\`\`\``}
+							chatMessageLocation={undefined}
+							isApplyEnabled={false}
+							isLinkDetectionEnabled={true}
+						/>
+					</SmallProseWrapper>
+				</ToolChildrenWrapper>
+			}
+			else if (toolMessage.type === 'tool_error') {
+				const { result } = toolMessage
+				componentParams.bottomChildren = <BottomChildren title='Error'>
+					<CodeChildren>
+						{result}
+					</CodeChildren>
+				</BottomChildren>
+			}
+
+			return <ToolHeaderWrapper {...componentParams} />
+		},
+	},
+
+	'grep': {
+		resultWrapper: ({ toolMessage }) => {
+			const accessor = useAccessor()
+			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
+			const title = getTitle(toolMessage)
+			const icon = null
+
+			if (toolMessage.type === 'tool_request') return null
+			if (toolMessage.type === 'running_now') return null
+
+			const isError = false
+			const isRejected = toolMessage.type === 'rejected'
+			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+
+			if (toolMessage.type === 'success') {
+				const { result } = toolMessage
+				const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+				componentParams.children = <ToolChildrenWrapper>
+					<SmallProseWrapper>
+						<ChatMarkdownRender
+							string={`\`\`\`\n${resultStr}\n\`\`\``}
+							chatMessageLocation={undefined}
+							isApplyEnabled={false}
+							isLinkDetectionEnabled={true}
+						/>
+					</SmallProseWrapper>
+				</ToolChildrenWrapper>
+			}
+			else if (toolMessage.type === 'tool_error') {
+				const { result } = toolMessage
+				componentParams.bottomChildren = <BottomChildren title='Error'>
+					<CodeChildren>
+						{result}
+					</CodeChildren>
+				</BottomChildren>
+			}
+
+			return <ToolHeaderWrapper {...componentParams} />
+		},
+	},
+
+	'websearch': {
+		resultWrapper: ({ toolMessage }) => {
+			const accessor = useAccessor()
+			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
+			const title = getTitle(toolMessage)
+			const icon = null
+
+			if (toolMessage.type === 'tool_request') return null
+			if (toolMessage.type === 'running_now') return null
+
+			const isError = false
+			const isRejected = toolMessage.type === 'rejected'
+			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+
+			if (toolMessage.type === 'success') {
+				const { result } = toolMessage
+				const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+				componentParams.children = <ToolChildrenWrapper>
+					<SmallProseWrapper>
+						<ChatMarkdownRender
+							string={`\`\`\`\n${resultStr}\n\`\`\``}
+							chatMessageLocation={undefined}
+							isApplyEnabled={false}
+							isLinkDetectionEnabled={true}
+						/>
+					</SmallProseWrapper>
+				</ToolChildrenWrapper>
+			}
+			else if (toolMessage.type === 'tool_error') {
+				const { result } = toolMessage
+				componentParams.bottomChildren = <BottomChildren title='Error'>
+					<CodeChildren>
+						{result}
+					</CodeChildren>
+				</BottomChildren>
+			}
+
+			return <ToolHeaderWrapper {...componentParams} />
+		},
+	},
+
+	'subagent': {
+		resultWrapper: ({ toolMessage }) => {
+			const accessor = useAccessor()
+			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
+			const title = getTitle(toolMessage)
+			const icon = null
+
+			if (toolMessage.type === 'tool_request') return null
+			if (toolMessage.type === 'running_now') return null
+
+			const isError = false
+			const isRejected = toolMessage.type === 'rejected'
+			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+
+			if (toolMessage.type === 'success') {
+				const { result } = toolMessage
+				const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+				// Strip the <subagent ...> wrapper tags if present
+				const inner = resultStr.replace(/^<subagent[^>]*>\n?/, '').replace(/\n?<\/subagent>$/, '')
+				componentParams.children = <ToolChildrenWrapper>
+					<SmallProseWrapper>
+						<ChatMarkdownRender
+							string={inner}
+							chatMessageLocation={undefined}
+							isApplyEnabled={false}
+							isLinkDetectionEnabled={true}
+						/>
+					</SmallProseWrapper>
+				</ToolChildrenWrapper>
 			}
 			else if (toolMessage.type === 'tool_error') {
 				const { result } = toolMessage

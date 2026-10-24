@@ -15,6 +15,8 @@ export const sendLLMMessage = async ({
 	onText: onText_,
 	onFinalMessage: onFinalMessage_,
 	onError: onError_,
+	onFileChanged,
+	onTokenUsage,
 	abortRef: abortRef_,
 	logging: { loggingName, loggingExtras },
 	settingsOfProvider,
@@ -114,7 +116,7 @@ export const sendLLMMessage = async ({
 		const { sendFIM, sendChat } = implementation
 		if (messagesType === 'chatMessages') {
 			const engineExtras = loggingExtras as { threadId?: string; workspaceDir?: string } | undefined
-			await sendChat({ messages: messages_, onText, onFinalMessage, onError, settingsOfProvider, modelSelectionOptions, overridesOfModel, modelName, _setAborter, providerName, separateSystemMessage, chatMode, mcpTools, threadId: engineExtras?.threadId, workspaceDir: engineExtras?.workspaceDir })
+			await sendChat({ messages: messages_, onText, onFinalMessage, onError, onFileChanged, onTokenUsage, settingsOfProvider, modelSelectionOptions, overridesOfModel, modelName, _setAborter, providerName, separateSystemMessage, chatMode, mcpTools, threadId: engineExtras?.threadId, workspaceDir: engineExtras?.workspaceDir })
 			return
 		}
 		if (messagesType === 'FIMMessage') {

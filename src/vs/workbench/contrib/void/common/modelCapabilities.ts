@@ -225,6 +225,7 @@ export const setLoopholeModelCapabilities = (models: ReadonlyArray<LoopholeModel
 		const reservedOutputTokenSpace = Math.min(Math.max(model.outputTokens ?? 16_384, 1), contextWindow)
 		loopholeModelOptions[model.modelName] = {
 			...defaultModelOptions,
+			supportsFIM: true,
 			contextWindow,
 			reservedOutputTokenSpace,
 			cost: model.cost ?? { input: 0, output: 0 },

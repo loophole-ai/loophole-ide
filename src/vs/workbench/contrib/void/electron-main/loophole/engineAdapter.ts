@@ -632,6 +632,35 @@ export async function generateText(
 	return data.text;
 }
 
+export async function generateFim(
+	credentials: EngineCredentials,
+	input: {
+		prefix: string;
+		suffix: string;
+		model?: EngineModelRef;
+		maxTokens?: number;
+		temperature?: number;
+		stop?: string[];
+	},
+	signal?: AbortSignal,
+): Promise<string> {
+	const body: Record<string, unknown> = { prefix: input.prefix, suffix: input.suffix };
+	if (input.model) body.model = input.model;
+	if (typeof input.maxTokens === 'number') body.maxTokens = input.maxTokens;
+	if (typeof input.temperature === 'number') body.temperature = input.temperature;
+	if (input.stop) body.stop = input.stop;
+	const raw = unwrap(await requestJson(credentials, '/api/experimental/fim', {
+		method: 'POST',
+		body: JSON.stringify(body),
+		signal,
+	}));
+	const data = recordField(raw);
+	if (!data || typeof data.text !== 'string') {
+		throw new Error('The Loophole engine did not return a FIM completion.');
+	}
+	return data.text;
+}
+
 /** Resolve a model picker name, falling back to the engine's default model. */
 export async function resolveModelRef(
 	credentials: EngineCredentials,

@@ -1285,6 +1285,8 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 	matchInputWidth = false,
 	gapPx = 0,
 	offsetPx = -6,
+	searchable = false,
+	searchPlaceholder = 'Search models...',
 }: {
 	options: T[];
 	selectedOption: T | undefined;
@@ -1298,9 +1300,13 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 	matchInputWidth?: boolean;
 	gapPx?: number;
 	offsetPx?: number;
+	searchable?: boolean;
+	searchPlaceholder?: string;
 }) => {
 	const [isOpen, setIsOpen] = useState(false);
+	const [searchQuery, setSearchQuery] = useState('');
 	const measureRef = useRef<HTMLDivElement>(null);
+	const searchInputRef = useRef<HTMLInputElement>(null);
 
 	// Replace manual positioning with floating-ui
 	const {
@@ -1348,6 +1354,16 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 		strategy: 'fixed',
 	});
 
+	const visibleOptions = useMemo(() => {
+		const query = searchQuery.trim().toLowerCase();
+		if (!searchable || !query) return options;
+		return options.filter((option) => {
+			const name = getOptionDropdownName(option).toLowerCase();
+			const detail = (getOptionDropdownDetail?.(option) ?? '').toLowerCase();
+			return name.includes(query) || detail.includes(query);
+		});
+	}, [options, searchable, searchQuery, getOptionDropdownName, getOptionDropdownDetail]);
+
 	// if the selected option is null, set the selection to the 0th option
 	useEffect(() => {
 		if (options.length === 0) return
@@ -1359,12 +1375,16 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 	useEffect(() => {
 		if (!isOpen) return;
 
+		setSearchQuery('');
+		setTimeout(() => {
+			searchInputRef.current?.focus();
+		}, 0);
+
 		const handleClickOutside = (event: MouseEvent) => {
 			const target = event.target as Node;
 			const floating = refs.floating.current;
 			const reference = refs.reference.current;
 
-			// Check if reference is an HTML element before using contains
 			const isReferenceHTMLElement = reference && 'contains' in reference;
 
 			if (
@@ -1450,16 +1470,36 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 							))
 					}}
 					onWheel={(e) => e.stopPropagation()}
-				><div className='overflow-auto max-h-80'>
+				>
+					{searchable && (
+						<div className='sticky top-0 z-10 p-1 border-b border-loophole-border-3 bg-loophole-bg-1'>
+							<input
+								ref={searchInputRef}
+								value={searchQuery}
+								onChange={(e) => setSearchQuery(e.target.value)}
+								onKeyDown={(e) => {
+									e.stopPropagation();
+									if (e.key === 'Escape') setIsOpen(false);
+								}}
+								placeholder={searchPlaceholder}
+								className='w-full bg-loophole-bg-2 text-loophole-fg-1 placeholder:text-loophole-fg-3 border border-loophole-border-3 focus:border-loophole-border-1 rounded px-2 py-1 text-xs outline-none'
+							/>
+						</div>
+					)}
+					<div className='overflow-auto max-h-80'>
 
-						{options.map((option) => {
+						{visibleOptions.length === 0 && (
+							<div className='px-3 py-2 text-loophole-fg-3 text-xs'>No models found</div>
+						)}
+
+						{visibleOptions.map((option, optionIdx) => {
 							const thisOptionIsSelected = getOptionsEqual(option, selectedOption);
 							const optionName = getOptionDropdownName(option);
 							const optionDetail = getOptionDropdownDetail?.(option) || '';
 
 							return (
 								<div
-									key={optionName}
+									key={`${optionName}-${optionIdx}`}
 									className={`flex items-center px-2 py-1 pr-4 cursor-pointer whitespace-nowrap
 									transition-all duration-100
 									${thisOptionIsSelected ? 'bg-blue-500 text-white/80' : 'hover:bg-blue-500 hover:text-white/80'}

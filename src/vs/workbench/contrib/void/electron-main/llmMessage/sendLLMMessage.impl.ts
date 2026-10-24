@@ -1164,10 +1164,10 @@ export const sendLLMMessageToProviderImplementation = {
 		sendFIM: null,
 		list: null,
 	},
-	// The Loophole engine: sessions, tools and agents live there, so this only streams text.
+	// The Loophole engine: sessions, tools and agents live there.
 	loophole: {
 		sendChat: sendLLMMessageToLoopholeImplementation.sendChat,
-		sendFIM: null,
+		sendFIM: sendLLMMessageToLoopholeImplementation.sendFIM,
 		list: null,
 	},
 

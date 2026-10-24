@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'; // Added useRef import just in case it was missed, though likely already present
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { ProviderName, SettingName, displayInfoOfSettingName, providerNames, VoidStatefulModelInfo, customSettingNamesOfProvider, RefreshableProviderName, refreshableProviderNames, displayInfoOfProviderName, nonlocalProviderNames, localProviderNames, ollamaProviderNames, mlxProviderNames, appleProviderNames, otherLocalProviderNames, GlobalSettingName, featureNames, displayInfoOfFeatureName, isProviderNameDisabled, FeatureName, hasDownloadButtonsOnModelsProviderNames, subTextMdOfProviderName } from '../../../../common/voidSettingsTypes.js'
 import { os } from '../../../../common/helpers/systemInfo.js'
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
@@ -35,30 +35,63 @@ type Tab =
 	| 'localOther'
 	| 'providers'
 	| 'featureOptions'
+	| 'autocomplete'
+	| 'display'
+	| 'notifications'
+	| 'context'
+	| 'checkpoints'
+	| 'agentBehavior'
+	| 'autoApprove'
 	| 'mcp'
 	| 'general'
+	| 'language'
+	| 'experimental'
+	| 'about'
 	| 'all';
 
+const SettingsSection = ({ title, description, children }: { title: string, description?: string, children: React.ReactNode }) => (
+	<div className='mb-8'>
+		<div className='mb-4'>
+			<h2 className='text-[15px] font-semibold text-[var(--vscode-foreground)] mb-1'>{title}</h2>
+			{description && <p className='text-[13px] text-[var(--vscode-descriptionForeground)] leading-relaxed'>{description}</p>}
+		</div>
+		<div className='flex flex-col gap-3'>
+			{children}
+		</div>
+	</div>
+);
+
+const SettingsCard = ({ children }: { children: React.ReactNode }) => (
+	<div className='bg-[var(--vscode-sideBar-background)] border border-[var(--vscode-panel-border)] rounded-lg overflow-hidden'>
+		{children}
+	</div>
+);
+
+const SettingsRow = ({ title, description, children }: { title: string, description?: string, children: React.ReactNode }) => (
+	<div className='flex items-start justify-between gap-4 px-4 py-3 border-b border-[var(--vscode-panel-border)] last:border-b-0'>
+		<div className='flex-1 min-w-0'>
+			<div className='text-[13px] text-[var(--vscode-foreground)] font-medium mb-0.5'>{title}</div>
+			{description && <div className='text-[12px] text-[var(--vscode-descriptionForeground)] leading-relaxed'>{description}</div>}
+		</div>
+		<div className='flex-shrink-0 flex items-center'>
+			{children}
+		</div>
+	</div>
+);
 
 const ButtonLeftTextRightOption = ({ text, leftButton }: { text: string, leftButton?: React.ReactNode }) => {
-
-	return <div className='flex items-center text-loophole-fg-3 px-3 py-0.5 rounded-sm overflow-hidden gap-2'>
+	return <div className='flex items-center gap-2 text-[12px] text-[var(--vscode-descriptionForeground)]'>
 		{leftButton ? leftButton : null}
-		<span>
-			{text}
-		</span>
+		<span>{text}</span>
 	</div>
 }
 
 // models
 const RefreshModelButton = ({ providerName }: { providerName: RefreshableProviderName }) => {
-
 	const refreshModelState = useRefreshModelState()
-
 	const accessor = useAccessor()
 	const refreshModelService = accessor.get('IRefreshModelService')
 	const metricsService = accessor.get('IMetricsService')
-
 	const [justFinished, setJustFinished] = useState<null | 'finished' | 'error'>(null)
 
 	useRefreshModelListener(
@@ -66,7 +99,6 @@ const RefreshModelButton = ({ providerName }: { providerName: RefreshableProvide
 			if (providerName2 !== providerName) return
 			const { state } = refreshModelState[providerName]
 			if (!(state === 'finished' || state === 'error')) return
-			// now we know we just entered 'finished' state for this providerName
 			setJustFinished(state)
 			const tid = setTimeout(() => { setJustFinished(null) }, 2000)
 			return () => clearTimeout(tid)
@@ -74,30 +106,27 @@ const RefreshModelButton = ({ providerName }: { providerName: RefreshableProvide
 	)
 
 	const { state } = refreshModelState[providerName]
-
 	const { title: providerTitle } = displayInfoOfProviderName(providerName)
 
 	return <ButtonLeftTextRightOption
-
 		leftButton={
 			<button
-				className='flex items-center'
+				className='flex items-center p-1 hover:bg-[var(--vscode-toolbar-hoverBackground)] rounded transition-colors'
 				disabled={state === 'refreshing' || justFinished !== null}
 				onClick={() => {
 					refreshModelService.startRefreshingModels(providerName, { enableProviderOnSuccess: false, doNotFire: false })
 					metricsService.capture('Click', { providerName, action: 'Refresh Models' })
 				}}
 			>
-				{justFinished === 'finished' ? <Check className='stroke-green-500 size-3' />
-					: justFinished === 'error' ? <X className='stroke-red-500 size-3' />
-						: state === 'refreshing' ? <Loader2 className='size-3 animate-spin' />
-							: <RefreshCw className='size-3' />}
+				{justFinished === 'finished' ? <Check className='stroke-[var(--vscode-testing-iconPassed)] size-3' />
+					: justFinished === 'error' ? <X className='stroke-[var(--vscode-errorForeground)] size-3' />
+						: state === 'refreshing' ? <Loader2 className='size-3 animate-spin text-[var(--vscode-descriptionForeground)]' />
+							: <RefreshCw className='size-3 text-[var(--vscode-descriptionForeground)]' />}
 			</button>
 		}
-
-		text={justFinished === 'finished' ? `${providerTitle} Models are up-to-date!`
-			: justFinished === 'error' ? `${providerTitle} not found!`
-				: `Manually refresh ${providerTitle} models.`}
+		text={justFinished === 'finished' ? `${providerTitle} models up to date`
+			: justFinished === 'error' ? `${providerTitle} not found`
+				: `Refresh ${providerTitle} models`}
 	/>
 }
 
@@ -110,28 +139,21 @@ const RefreshableModels = ({ providerNamesFilter }: { providerNamesFilter?: read
 		return <RefreshModelButton key={providerName} providerName={providerName} />
 	})
 
-	return <>
-		{buttons}
-	</>
-
+	return <div className='flex flex-col gap-2'>{buttons}</div>
 }
-
-
 
 export const AnimatedCheckmarkButton = ({ text, className }: { text?: string, className?: string }) => {
 	const [dashOffset, setDashOffset] = useState(40);
 
 	useEffect(() => {
 		const startTime = performance.now();
-		const duration = 500; // 500ms animation
+		const duration = 500;
 
 		const animate = (currentTime: number) => {
 			const elapsed = currentTime - startTime;
 			const progress = Math.min(elapsed / duration, 1);
 			const newOffset = 40 - (progress * 40);
-
 			setDashOffset(newOffset);
-
 			if (progress < 1) {
 				requestAnimationFrame(animate);
 			}
@@ -142,9 +164,7 @@ export const AnimatedCheckmarkButton = ({ text, className }: { text?: string, cl
 	}, []);
 
 	return <div
-		className={`flex items-center gap-1.5 w-fit
-			${className ? className : `px-2 py-0.5 text-xs text-zinc-900 bg-zinc-100 rounded-sm`}
-		`}
+		className={`flex items-center gap-1.5 w-fit ${className ? className : `px-2 py-1 text-[12px] text-[var(--vscode-button-foreground)] bg-[var(--vscode-button-background)] rounded`}`}
 	>
 		<svg className="size-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 			<path
@@ -163,18 +183,14 @@ export const AnimatedCheckmarkButton = ({ text, className }: { text?: string, cl
 	</div>
 }
 
-
 const AddButton = ({ disabled, text = 'Add', ...props }: { disabled?: boolean, text?: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) => {
-
 	return <button
 		disabled={disabled}
-		className={`bg-[#0e70c0] px-3 py-1 text-white rounded-sm ${!disabled ? 'hover:bg-[#1177cb] cursor-pointer' : 'opacity-50 cursor-not-allowed bg-opacity-70'}`}
+		className={`px-3 py-1 text-[12px] rounded transition-colors ${!disabled ? 'bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)] hover:bg-[var(--vscode-button-hoverBackground)]' : 'opacity-50 cursor-not-allowed bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)]'}`}
 		{...props}
 	>{text}</button>
-
 }
 
-// ConfirmButton prompts for a second click to confirm an action, cancels if clicking outside
 const ConfirmButton = ({ children, onConfirm, className }: { children: React.ReactNode, onConfirm: () => void, className?: string }) => {
 	const [confirm, setConfirm] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
@@ -190,16 +206,20 @@ const ConfirmButton = ({ children, onConfirm, className }: { children: React.Rea
 	}, [confirm]);
 	return (
 		<div ref={ref} className={`inline-block`}>
-			<VoidButtonBgDarken className={className} onClick={() => {
-				if (!confirm) {
-					setConfirm(true);
-				} else {
-					onConfirm();
-					setConfirm(false);
-				}
-			}}>
-				{confirm ? `Confirm Reset` : children}
-			</VoidButtonBgDarken>
+			<button
+				className={className || 'px-3 py-1 text-[12px] rounded bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)] transition-colors'}
+				onClick={(e) => {
+					e.stopPropagation();
+					if (!confirm) {
+						setConfirm(true);
+					} else {
+						onConfirm();
+						setConfirm(false);
+					}
+				}}
+			>
+				{confirm ? 'Confirm' : children}
+			</button>
 		</div>
 	);
 };
@@ -209,31 +229,36 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 	const settingsStateService = accessor.get('IVoidSettingsService')
 	const settingsState = useSettingsState()
 
-	// States for add model functionality
 	const [isAddModelOpen, setIsAddModelOpen] = useState(false);
 	const [showCheckmark, setShowCheckmark] = useState(false);
 	const [userChosenProviderName, setUserChosenProviderName] = useState<ProviderName | null>(null);
 	const [modelName, setModelName] = useState<string>('');
 	const [errorString, setErrorString] = useState('');
+	const [searchQuery, setSearchQuery] = useState('');
 
-	// a dump of all the enabled providers' models
 	const modelDump: (VoidStatefulModelInfo & { providerName: ProviderName, providerEnabled: boolean })[] = []
-
-	// Use either filtered providers or all providers
 	const providersToShow = filteredProviders || providerNames;
 
 	for (let providerName of providersToShow) {
 		const providerSettings = settingsState.settingsOfProvider[providerName]
-		// if (!providerSettings.enabled) continue
 		modelDump.push(...providerSettings.models.map(model => ({ ...model, providerName, providerEnabled: !!providerSettings._didFillInProviderSettings })))
 	}
 
-	// sort by hidden
 	modelDump.sort((a, b) => {
 		return Number(b.providerEnabled) - Number(a.providerEnabled)
 	})
 
-	// Add model handler
+	const modelDumpFiltered = (() => {
+		const query = searchQuery.trim().toLowerCase()
+		if (!query) return modelDump
+		return modelDump.filter((m) => {
+			const providerTitle = displayInfoOfProviderName(m.providerName).title.toLowerCase()
+			return m.modelName.toLowerCase().includes(query)
+				|| m.providerName.toLowerCase().includes(query)
+				|| providerTitle.includes(query)
+		})
+	})()
+
 	const handleAddModel = () => {
 		if (!userChosenProviderName) {
 			setErrorString('Please select a provider.');
@@ -244,9 +269,8 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 			return;
 		}
 
-		// Check if model already exists
 		if (settingsState.settingsOfProvider[userChosenProviderName].models.find(m => m.modelName === modelName)) {
-			setErrorString(`This model already exists.`);
+			setErrorString('This model already exists.');
 			return;
 		}
 
@@ -261,110 +285,95 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 		setErrorString('');
 	};
 
-	return <div className=''>
-		{modelDump.map((m, i) => {
-			const { isHidden, type, modelName, providerName, providerEnabled } = m
+	return <div>
+		<div className='mb-3'>
+			<VoidSimpleInputBox
+				value={searchQuery}
+				compact={true}
+				onChangeValue={setSearchQuery}
+				placeholder='Search models...'
+			/>
+		</div>
+		<SettingsCard>
+			{modelDumpFiltered.map((m, i) => {
+				const { isHidden, type, modelName, providerName, providerEnabled } = m
+				const isNewProviderName = (i > 0 ? modelDumpFiltered[i - 1] : undefined)?.providerName !== providerName
+				const providerTitle = displayInfoOfProviderName(providerName).title
+				const disabled = !providerEnabled
+				const value = disabled ? false : !isHidden
 
-			const isNewProviderName = (i > 0 ? modelDump[i - 1] : undefined)?.providerName !== providerName
+				const tooltipName = (
+					disabled ? `Add ${providerTitle} to enable`
+						: value === true ? 'Show in dropdown'
+							: 'Hide from dropdown'
+				)
 
-			const providerTitle = displayInfoOfProviderName(providerName).title
+				const detailAboutModel = type === 'autodetected' ?
+					<Asterisk size={12} className="text-[var(--vscode-charts-blue)]" data-tooltip-id='loophole-tooltip' data-tooltip-place='right' data-tooltip-content='Detected locally' />
+					: type === 'custom' ?
+						<Asterisk size={12} className="text-[var(--vscode-charts-blue)]" data-tooltip-id='loophole-tooltip' data-tooltip-place='right' data-tooltip-content='Custom model' />
+						: undefined
 
-			const disabled = !providerEnabled
-			const value = disabled ? false : !isHidden
-
-			const tooltipName = (
-				disabled ? `Add ${providerTitle} to enable`
-					: value === true ? 'Show in Dropdown'
-						: 'Hide from Dropdown'
-			)
-
-
-			const detailAboutModel = type === 'autodetected' ?
-				<Asterisk size={14} className="inline-block align-text-top brightness-115 stroke-[2] text-[#0e70c0]" data-tooltip-id='loophole-tooltip' data-tooltip-place='right' data-tooltip-content='Detected locally' />
-				: type === 'custom' ?
-					<Asterisk size={14} className="inline-block align-text-top brightness-115 stroke-[2] text-[#0e70c0]" data-tooltip-id='loophole-tooltip' data-tooltip-place='right' data-tooltip-content='Custom model' />
-					: undefined
-
-			return <div key={`${modelName}${providerName}`}
-				className={`flex items-center justify-between gap-4 hover:bg-black/10 dark:hover:bg-gray-300/10 py-1 px-3 rounded-sm overflow-hidden cursor-default truncate group
-				`}
-			>
-				{/* left part is width:full */}
-				<div className={`flex flex-grow items-center gap-4`}>
-					<span className='w-full max-w-32'>{isNewProviderName ? providerTitle : ''}</span>
-					<span className='w-fit max-w-[400px] truncate'>{modelName}</span>
-				</div>
-
-				{/* right part is anything that fits */}
-				<div className="flex items-center gap-2 w-fit">
-
-					{/* Blue star */}
-					{detailAboutModel}
-
-
-					{/* Switch */}
-					<VoidSwitch
-						value={value}
-						onChange={() => { settingsStateService.toggleModelHidden(providerName, modelName); }}
-						disabled={disabled}
-						size='sm'
-
-						data-tooltip-id='loophole-tooltip'
-						data-tooltip-place='right'
-						data-tooltip-content={tooltipName}
-					/>
-
-					{/* X button */}
-					<div className={`w-5 flex items-center justify-center`}>
-						{type === 'default' || type === 'autodetected' ? null : <button
-							onClick={() => { settingsStateService.deleteModel(providerName, modelName); }}
+				return <div key={`${modelName}${providerName}`}
+					className='flex items-center justify-between gap-3 px-4 py-2 border-b border-[var(--vscode-panel-border)] last:border-b-0 hover:bg-[var(--vscode-list-hoverBackground)] transition-colors'
+				>
+					<div className='flex items-center gap-3 flex-1 min-w-0'>
+						<span className='text-[12px] text-[var(--vscode-descriptionForeground)] w-24 truncate'>{isNewProviderName ? providerTitle : ''}</span>
+						<span className='text-[13px] text-[var(--vscode-foreground)] truncate flex-1'>{modelName}</span>
+					</div>
+					<div className='flex items-center gap-2'>
+						{detailAboutModel}
+						<VoidSwitch
+							value={value}
+							onChange={() => { settingsStateService.toggleModelHidden(providerName, modelName); }}
+							disabled={disabled}
+							size='sm'
 							data-tooltip-id='loophole-tooltip'
 							data-tooltip-place='right'
-							data-tooltip-content='Delete'
-							className={`opacity-0 group-hover:opacity-100 transition-opacity`}
-						>
-							<X size={12} className="text-loophole-fg-3 opacity-50" />
-						</button>}
+							data-tooltip-content={tooltipName}
+						/>
+						{type === 'default' || type === 'autodetected' ? <div className='w-4' /> : 
+							<button
+								onClick={() => { settingsStateService.deleteModel(providerName, modelName); }}
+								data-tooltip-id='loophole-tooltip'
+								data-tooltip-place='right'
+								data-tooltip-content='Delete'
+								className='p-1 hover:bg-[var(--vscode-toolbar-hoverBackground)] rounded opacity-0 group-hover:opacity-100 transition-opacity'
+							>
+								<X size={12} className="text-[var(--vscode-descriptionForeground)]" />
+							</button>
+						}
 					</div>
 				</div>
-			</div>
-		})}
+			})}
+		</SettingsCard>
 
-		{/* Add Model Section */}
-		{showCheckmark ? (
-			<div className="mt-4">
-				<AnimatedCheckmarkButton text='Added' className="bg-[#0e70c0] text-white px-3 py-1 rounded-sm" />
-			</div>
-		) : isAddModelOpen ? (
-			<div className="mt-4">
-				<form className="flex items-center gap-2">
-
-					{/* Provider dropdown */}
+		<div className='mt-3'>
+			{showCheckmark ? (
+				<AnimatedCheckmarkButton text='Added' />
+			) : isAddModelOpen ? (
+				<div className='flex items-center gap-2 flex-wrap'>
 					<ErrorBoundary>
 						<VoidCustomDropdownBox
 							options={providersToShow}
 							selectedOption={userChosenProviderName}
 							onChangeOption={(pn) => setUserChosenProviderName(pn)}
-							getOptionDisplayName={(pn) => pn ? displayInfoOfProviderName(pn).title : 'Provider Name'}
-							getOptionDropdownName={(pn) => pn ? displayInfoOfProviderName(pn).title : 'Provider Name'}
+							getOptionDisplayName={(pn) => pn ? displayInfoOfProviderName(pn).title : 'Provider'}
+							getOptionDropdownName={(pn) => pn ? displayInfoOfProviderName(pn).title : 'Provider'}
 							getOptionsEqual={(a, b) => a === b}
-							className="max-w-32 mx-2 w-full resize-none bg-loophole-bg-1 text-loophole-fg-1 placeholder:text-loophole-fg-3 border border-loophole-border-2 focus:border-loophole-border-1 py-1 px-2 rounded"
+							className='w-32 text-[12px]'
 							arrowTouchesText={false}
 						/>
 					</ErrorBoundary>
-
-					{/* Model name input */}
 					<ErrorBoundary>
 						<VoidSimpleInputBox
 							value={modelName}
 							compact={true}
 							onChangeValue={setModelName}
-							placeholder='Model Name'
-							className='max-w-32'
+							placeholder='Model name'
+							className='w-40'
 						/>
 					</ErrorBoundary>
-
-					{/* Add button */}
 					<ErrorBoundary>
 						<AddButton
 							type='button'
@@ -372,189 +381,31 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 							onClick={handleAddModel}
 						/>
 					</ErrorBoundary>
-
-					{/* X button to cancel */}
 					<button
 						type="button"
 						onClick={() => {
 							setIsAddModelOpen(false);
 							setErrorString('');
-							setModelName('');
 							setUserChosenProviderName(null);
+							setModelName('');
 						}}
-						className='text-loophole-fg-4'
+						className='px-2 py-1 text-[12px] text-[var(--vscode-descriptionForeground)] hover:text-[var(--vscode-foreground)]'
 					>
-						<X className='size-4' />
+						Cancel
 					</button>
-				</form>
-
-				{errorString && (
-					<div className='text-red-500 truncate whitespace-nowrap mt-1'>
-						{errorString}
-					</div>
-				)}
-			</div>
-		) : (
-			<div
-				className="text-loophole-fg-4 flex flex-nowrap text-nowrap items-center hover:brightness-110 cursor-pointer mt-4"
-				onClick={() => setIsAddModelOpen(true)}
-			>
-				<div className="flex items-center gap-1">
-					<Plus size={16} />
-					<span>Add a model</span>
+					{errorString && <span className='text-[11px] text-[var(--vscode-errorForeground)]'>{errorString}</span>}
 				</div>
-			</div>
-		)}
+			) : (
+				<button
+					onClick={() => setIsAddModelOpen(true)}
+					className='flex items-center gap-1.5 px-2 py-1 text-[12px] text-[var(--vscode-textLink-foreground)] hover:underline'
+				>
+					<Plus size={12} /> Add custom model
+				</button>
+			)}
+		</div>
 	</div>
-}
-
-
-
-// providers
-
-const ProviderSetting = ({ providerName, settingName, subTextMd }: { providerName: ProviderName, settingName: SettingName, subTextMd: React.ReactNode }) => {
-
-	const { title: settingTitle, placeholder, isPasswordField } = displayInfoOfSettingName(providerName, settingName)
-
-	const accessor = useAccessor()
-	const voidSettingsService = accessor.get('IVoidSettingsService')
-	const settingsState = useSettingsState()
-
-	const settingValue = settingsState.settingsOfProvider[providerName][settingName] as string // this should always be a string in this component
-	if (typeof settingValue !== 'string') {
-		console.log('Error: Provider setting had a non-string value.')
-		return
-	}
-
-	// Create a stable callback reference using useCallback with proper dependencies
-	const handleChangeValue = useCallback((newVal: string) => {
-		voidSettingsService.setSettingOfProvider(providerName, settingName, newVal)
-	}, [voidSettingsService, providerName, settingName]);
-
-	return <ErrorBoundary>
-		<div className='my-1'>
-			<VoidSimpleInputBox
-				value={settingValue}
-				onChangeValue={handleChangeValue}
-				placeholder={`${settingTitle} (${placeholder})`}
-				passwordBlur={isPasswordField}
-				compact={true}
-			/>
-			{!subTextMd ? null : <div className='py-1 px-3 opacity-50 text-sm'>
-				{subTextMd}
-			</div>}
-		</div>
-	</ErrorBoundary>
-}
-
-// const OldSettingsForProvider = ({ providerName, showProviderTitle }: { providerName: ProviderName, showProviderTitle: boolean }) => {
-// 	const voidSettingsState = useSettingsState()
-
-// 	const needsModel = isProviderNameDisabled(providerName, voidSettingsState) === 'addModel'
-
-// 	// const accessor = useAccessor()
-// 	// const voidSettingsService = accessor.get('IVoidSettingsService')
-
-// 	// const { enabled } = voidSettingsState.settingsOfProvider[providerName]
-// 	const settingNames = customSettingNamesOfProvider(providerName)
-
-// 	const { title: providerTitle } = displayInfoOfProviderName(providerName)
-
-// 	return <div className='my-4'>
-
-// 		<div className='flex items-center w-full gap-4'>
-// 			{showProviderTitle && <h3 className='text-xl truncate'>{providerTitle}</h3>}
-
-// 			{/* enable provider switch */}
-// 			{/* <VoidSwitch
-// 				value={!!enabled}
-// 				onChange={
-// 					useCallback(() => {
-// 						const enabledRef = voidSettingsService.state.settingsOfProvider[providerName].enabled
-// 						voidSettingsService.setSettingOfProvider(providerName, 'enabled', !enabledRef)
-// 					}, [voidSettingsService, providerName])}
-// 				size='sm+'
-// 			/> */}
-// 		</div>
-
-// 		<div className='px-0'>
-// 			{/* settings besides models (e.g. api key) */}
-// 			{settingNames.map((settingName, i) => {
-// 				return <ProviderSetting key={settingName} providerName={providerName} settingName={settingName} />
-// 			})}
-
-// 			{needsModel ?
-// 				providerName === 'ollama' ?
-// 					<WarningBox text={`Please install an Ollama model. We'll auto-detect it.`} />
-// 					: <WarningBox text={`Please add a model for ${providerTitle} (Models section).`} />
-// 				: null}
-// 		</div>
-// 	</div >
-// }
-
-
-export const SettingsForProvider = ({ providerName, showProviderTitle, showProviderSuggestions }: { providerName: ProviderName, showProviderTitle: boolean, showProviderSuggestions: boolean }) => {
-	const voidSettingsState = useSettingsState()
-
-	const needsModel = isProviderNameDisabled(providerName, voidSettingsState) === 'addModel'
-
-	// const accessor = useAccessor()
-	// const voidSettingsService = accessor.get('IVoidSettingsService')
-
-	// const { enabled } = voidSettingsState.settingsOfProvider[providerName]
-	const settingNames = customSettingNamesOfProvider(providerName)
-
-	const { title: providerTitle } = displayInfoOfProviderName(providerName)
-
-	return <div>
-
-		<div className='flex items-center w-full gap-4'>
-			{showProviderTitle && <h3 className='text-xl truncate'>{providerTitle}</h3>}
-
-			{/* enable provider switch */}
-			{/* <VoidSwitch
-				value={!!enabled}
-				onChange={
-					useCallback(() => {
-						const enabledRef = voidSettingsService.state.settingsOfProvider[providerName].enabled
-						voidSettingsService.setSettingOfProvider(providerName, 'enabled', !enabledRef)
-					}, [voidSettingsService, providerName])}
-				size='sm+'
-			/> */}
-		</div>
-
-		<div className='px-0'>
-			{/* settings besides models (e.g. api key) */}
-			{settingNames.map((settingName, i) => {
-
-				return <ProviderSetting
-					key={settingName}
-					providerName={providerName}
-					settingName={settingName}
-					subTextMd={i !== settingNames.length - 1 ? null
-						: <ChatMarkdownRender string={subTextMdOfProviderName(providerName)} chatMessageLocation={undefined} />}
-				/>
-			})}
-
-			{showProviderSuggestions && needsModel ?
-				providerName === 'ollama' ?
-					<WarningBox className="pl-2 mb-4" text={`Please install an Ollama model. We'll auto-detect it.`} />
-					: (providerName === 'mlx' || providerName === 'appleFoundationModels' || providerName === 'lmStudio' || providerName === 'vLLM') ?
-						<WarningBox className="pl-2 mb-4" text={`Start your local server — Loophole will auto-detect models at the endpoint.`} />
-						: <WarningBox className="pl-2 mb-4" text={`Please add a model for ${providerTitle} (Models section).`} />
-				: null}
-		</div>
-	</div >
-}
-
-
-export const VoidProviderSettings = ({ providerNames }: { providerNames: readonly ProviderName[] }) => {
-	return <>
-		{providerNames.map(providerName =>
-			<SettingsForProvider key={providerName} providerName={providerName} showProviderTitle={true} showProviderSuggestions={true} />
-		)}
-	</>
-}
+};
 
 const LocalProviderSection = ({ title, description, instructions, providerNames, refreshable, autoSetup, modelFilter }: {
 	title: string
@@ -565,50 +416,44 @@ const LocalProviderSection = ({ title, description, instructions, providerNames,
 	autoSetup?: React.ReactNode
 	modelFilter?: readonly ProviderName[]
 }) => (
-	<div className='flex flex-col gap-4 mb-12'>
-		<h2 className='text-3xl mb-1'>{title}</h2>
-		{description && <h3 className='text-loophole-fg-3 mb-2'>{description}</h3>}
-		{instructions && <div className='opacity-80 mb-2'>{instructions}</div>}
+	<SettingsSection title={title} description={description}>
+		{instructions && <div className='text-[12px] text-[var(--vscode-descriptionForeground)] leading-relaxed'>{instructions}</div>}
 		{autoSetup}
 		{refreshable && <RefreshableModels providerNamesFilter={providerNames} />}
 		<VoidProviderSettings providerNames={providerNames} />
 		{modelFilter && (
 			<>
-				<div className='w-full h-[1px] my-2' />
-				<h3 className='text-lg text-loophole-fg-3 mb-2'>Models for {title}</h3>
+				<div className='mt-4 mb-2'>
+					<div className='text-[13px] font-medium text-[var(--vscode-foreground)] mb-1'>Models</div>
+					<div className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Manage models for {title}</div>
+				</div>
 				<ModelDump filteredProviders={[...modelFilter]} />
 			</>
 		)}
-	</div>
+	</SettingsSection>
 )
 
-
-type TabName = 'models' | 'general'
 export const AutoDetectLocalModelsToggle = () => {
 	const settingName: GlobalSettingName = 'autoRefreshModels'
-
 	const accessor = useAccessor()
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const metricsService = accessor.get('IMetricsService')
-
 	const voidSettingsState = useSettingsState()
-
-	// right now this is just `enabled_autoRefreshModels`
 	const enabled = voidSettingsState.globalSettings[settingName]
 
-	return <ButtonLeftTextRightOption
-		leftButton={<VoidSwitch
-			size='xxs'
+	return <SettingsRow 
+		title="Auto-detect local models" 
+		description={`Automatically detect local providers and models (${refreshableProviderNames.map(providerName => displayInfoOfProviderName(providerName).title).join(', ')}).`}
+	>
+		<VoidSwitch
+			size='xs'
 			value={enabled}
 			onChange={(newVal) => {
 				voidSettingsService.setGlobalSetting(settingName, newVal)
 				metricsService.capture('Click', { action: 'Autorefresh Toggle', settingName, enabled: newVal })
 			}}
-		/>}
-		text={`Automatically detect local providers and models (${refreshableProviderNames.map(providerName => displayInfoOfProviderName(providerName).title).join(', ')}).`}
-	/>
-
-
+		/>
+	</SettingsRow>
 }
 
 export const AutoSetupMlxToggle = () => {
@@ -623,17 +468,19 @@ export const AutoSetupMlxToggle = () => {
 	const voidSettingsState = useSettingsState()
 	const enabled = voidSettingsState.globalSettings[settingName]
 
-	return <ButtonLeftTextRightOption
-		leftButton={<VoidSwitch
-			size='xxs'
+	return <SettingsRow 
+		title="Auto-setup MLX" 
+		description="Install mlx-lm if needed, start mlx_lm.server, and autodetect models."
+	>
+		<VoidSwitch
+			size='xs'
 			value={enabled}
 			onChange={(newVal) => {
 				voidSettingsService.setGlobalSetting(settingName, newVal)
 				metricsService.capture('Click', { action: 'MLX Auto-Setup Toggle', settingName, enabled: newVal })
 			}}
-		/>}
-		text='On macOS: install mlx-lm (pip) if needed, start mlx_lm.server, and autodetect the loaded model.'
-	/>
+		/>
+	</SettingsRow>
 }
 
 export const AutoSetupAppleFoundationModelsToggle = () => {
@@ -648,17 +495,19 @@ export const AutoSetupAppleFoundationModelsToggle = () => {
 	const voidSettingsState = useSettingsState()
 	const enabled = voidSettingsState.globalSettings[settingName]
 
-	return <ButtonLeftTextRightOption
-		leftButton={<VoidSwitch
-			size='xxs'
+	return <SettingsRow 
+		title="Auto-setup Apple Foundation Models" 
+		description="Install and start maclocal-api (afm) server on port 9999."
+	>
+		<VoidSwitch
+			size='xs'
 			value={enabled}
 			onChange={(newVal) => {
 				voidSettingsService.setGlobalSetting(settingName, newVal)
 				metricsService.capture('Click', { action: 'Apple FM Auto-Setup Toggle', settingName, enabled: newVal })
 			}}
-		/>}
-		text='On macOS: install maclocal-api (afm) via Homebrew or pip, start the server on port 9999, and enable model foundation.'
-	/>
+		/>
+	</SettingsRow>
 }
 
 export const AIInstructionsBox = () => {
@@ -666,9 +515,9 @@ export const AIInstructionsBox = () => {
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const voidSettingsState = useSettingsState()
 	return <VoidInputBox2
-		className='min-h-[81px] p-3 rounded-sm'
+		className='min-h-[100px] p-3 rounded border border-[var(--vscode-input-border)] bg-[var(--vscode-input-background)] text-[var(--vscode-input-foreground)]'
 		initValue={voidSettingsState.globalSettings.aiInstructions}
-		placeholder={`Do not change my indentation or delete my comments. When writing TS or JS, do not add ;'s. Write new code using Rust if possible. `}
+		placeholder={`System instructions to include with all AI requests...`}
 		multiline
 		onChangeText={(newText) => {
 			voidSettingsService.setGlobalSetting('aiInstructions', newText)
@@ -679,81 +528,68 @@ export const AIInstructionsBox = () => {
 const FastApplyMethodDropdown = () => {
 	const accessor = useAccessor()
 	const voidSettingsService = accessor.get('IVoidSettingsService')
-
 	const options = useMemo(() => [true, false], [])
-
 	const onChangeOption = useCallback((newVal: boolean) => {
 		voidSettingsService.setGlobalSetting('enableFastApply', newVal)
 	}, [voidSettingsService])
 
 	return <VoidCustomDropdownBox
-		className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1'
+		className='text-[12px]'
 		options={options}
 		selectedOption={voidSettingsService.state.globalSettings.enableFastApply}
 		onChangeOption={onChangeOption}
 		getOptionDisplayName={(val) => val ? 'Fast Apply' : 'Slow Apply'}
 		getOptionDropdownName={(val) => val ? 'Fast Apply' : 'Slow Apply'}
-		getOptionDropdownDetail={(val) => val ? 'Output Search/Replace blocks' : 'Rewrite whole files'}
+		getOptionDropdownDetail={(val) => val ? 'Search/Replace blocks' : 'Rewrite whole files'}
 		getOptionsEqual={(a, b) => a === b}
 	/>
-
 }
 
-
 export const OllamaSetupInstructions = ({ sayWeAutoDetect }: { sayWeAutoDetect?: boolean }) => {
-	return <div className='prose-p:my-0 prose-ol:list-decimal prose-p:py-0 prose-ol:my-0 prose-ol:py-0 prose-span:my-0 prose-span:py-0 text-loophole-fg-3 text-sm list-decimal select-text'>
-		<div className=''><ChatMarkdownRender string={`Ollama Setup Instructions`} chatMessageLocation={undefined} /></div>
-		<div className=' pl-6'><ChatMarkdownRender string={`1. Download [Ollama](https://ollama.com/download).`} chatMessageLocation={undefined} /></div>
-		<div className=' pl-6'><ChatMarkdownRender string={`2. Open your terminal.`} chatMessageLocation={undefined} /></div>
-		<div
-			className='pl-6 flex items-center w-fit'
-			data-tooltip-id='loophole-tooltip-ollama-settings'
-		>
-			<ChatMarkdownRender string={`3. Run \`ollama pull your_model\` to install a model.`} chatMessageLocation={undefined} />
-		</div>
-		{sayWeAutoDetect && <div className=' pl-6'><ChatMarkdownRender string={`Loophole automatically detects locally running models and enables them.`} chatMessageLocation={undefined} /></div>}
+	return <div className='text-[12px] text-[var(--vscode-descriptionForeground)] space-y-1'>
+		<div className='font-medium text-[var(--vscode-foreground)]'>Ollama Setup</div>
+		<ol className='list-decimal list-inside space-y-1 ml-1'>
+			<li>Download <a href='https://ollama.com/download' className='text-[var(--vscode-textLink-foreground)] hover:underline'>Ollama</a></li>
+			<li>Open your terminal</li>
+			<li>Run <code className='px-1 py-0.5 bg-[var(--vscode-textCodeBlock-background)] rounded'>ollama pull &lt;model&gt;</code> to install a model</li>
+		</ol>
+		{sayWeAutoDetect && <div>Loophole automatically detects locally running models.</div>}
 	</div>
 }
 
 export const MlxSetupInstructions = () => {
-	return <div className='prose-p:my-0 prose-ol:list-decimal prose-p:py-0 prose-ol:my-0 prose-ol:py-0 text-loophole-fg-3 text-sm list-decimal select-text mb-4'>
-		<div><ChatMarkdownRender string={`MLX (one model at a time)`} chatMessageLocation={undefined} /></div>
-		<div className='pl-6'><ChatMarkdownRender string={`1. Loophole can run \`pip install mlx-lm\` and start \`mlx_lm.server\` for you (toggle in Settings → Models). Default model: \`mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit\` on port 8080.`} chatMessageLocation={undefined} /></div>
-		<div className='pl-6'><ChatMarkdownRender string={`2. Loophole shows only **one** autodetected entry: the model currently loaded by the server.`} chatMessageLocation={undefined} /></div>
-		<div className='pl-6'><ChatMarkdownRender string={`3. **Switch models**: stop the server, run \`mlx_lm.server --model <other-hf-repo>\`, then click **Refresh** next to MLX in Settings → Models.`} chatMessageLocation={undefined} /></div>
-		<div className='pl-6'><ChatMarkdownRender string={`4. **Second model in parallel**: run another server on a different port (e.g. \`mlx_lm.server --model … --port 8081\`), then at the bottom of the model list use **Add Model** → **OpenAI-Compatible** with \`http://127.0.0.1:8081/v1\`, or add the model id manually under MLX if the endpoint exposes multiple ids.`} chatMessageLocation={undefined} /></div>
+	return <div className='text-[12px] text-[var(--vscode-descriptionForeground)] space-y-1'>
+		<div className='font-medium text-[var(--vscode-foreground)]'>MLX (one model at a time)</div>
+		<ol className='list-decimal list-inside space-y-1 ml-1'>
+			<li>Enable auto-setup or manually install <code className='px-1 py-0.5 bg-[var(--vscode-textCodeBlock-background)] rounded'>mlx-lm</code> and start <code className='px-1 py-0.5 bg-[var(--vscode-textCodeBlock-background)] rounded'>mlx_lm.server</code></li>
+			<li>Only the currently loaded model is autodetected</li>
+			<li>To switch models, restart the server with a different model</li>
+		</ol>
 	</div>
 }
 
 export const AppleFoundationModelsSetupInstructions = () => {
 	if (os !== 'mac') return null
-	return <div className='prose-p:my-0 prose-ol:list-decimal prose-p:py-0 prose-ol:my-0 prose-ol:py-0 text-loophole-fg-3 text-sm list-decimal select-text mb-4'>
-		<div><ChatMarkdownRender string={`Apple — [maclocal-api](https://github.com/scouzi1966/maclocal-api) (\`afm\`)`} chatMessageLocation={undefined} /></div>
-		<div className='pl-6'><ChatMarkdownRender string={`1. Requires macOS 26+, Apple Silicon, and Apple Intelligence. Loophole auto-installs \`afm\` (Homebrew: \`brew tap scouzi1966/afm && brew install scouzi1966/afm/afm\`, or pip: \`pip install macafm\`).`} chatMessageLocation={undefined} /></div>
-		<div className='pl-6'><ChatMarkdownRender string={`2. Default server: \`afm -p 9999\` → endpoint \`http://127.0.0.1:9999/v1\`, model id \`foundation\`.`} chatMessageLocation={undefined} /></div>
-		<div className='pl-6'><ChatMarkdownRender string={`3. **LoRA adapter**: \`afm -a ./my-adapter.fmadapter -p 9998\`, then set Loophole’s endpoint to \`http://127.0.0.1:9998\` and refresh.`} chatMessageLocation={undefined} /></div>
-		<div className='pl-6'><ChatMarkdownRender string={`4. **Other local models**: use **MLX** (\`mlx_lm.server\`) or \`afm mlx -m <hf-repo>\` from maclocal-api — this provider is only Apple’s on-device Foundation model.`} chatMessageLocation={undefined} /></div>
+	return <div className='text-[12px] text-[var(--vscode-descriptionForeground)] space-y-1'>
+		<div className='font-medium text-[var(--vscode-foreground)]'>Apple Foundation Models</div>
+		<ol className='list-decimal list-inside space-y-1 ml-1'>
+			<li>Requires macOS 26+, Apple Silicon, and Apple Intelligence</li>
+			<li>Use <a href='https://github.com/scouzi1966/maclocal-api' className='text-[var(--vscode-textLink-foreground)] hover:underline'>maclocal-api</a> (<code className='px-1 py-0.5 bg-[var(--vscode-textCodeBlock-background)] rounded'>afm</code>)</li>
+			<li>Default: <code className='px-1 py-0.5 bg-[var(--vscode-textCodeBlock-background)] rounded'>afm -p 9999</code> at <code className='px-1 py-0.5 bg-[var(--vscode-textCodeBlock-background)] rounded'>http://127.0.0.1:9999/v1</code></li>
+		</ol>
 	</div>
 }
-
 
 const RedoOnboardingButton = ({ className }: { className?: string }) => {
 	const accessor = useAccessor()
 	const voidSettingsService = accessor.get('IVoidSettingsService')
-	return <div
-		className={`text-loophole-fg-4 flex flex-nowrap text-nowrap items-center hover:brightness-110 cursor-pointer ${className}`}
+	return <button
+		className={`text-[12px] text-[var(--vscode-textLink-foreground)] hover:underline ${className || ''}`}
 		onClick={() => { voidSettingsService.setGlobalSetting('isOnboardingComplete', false) }}
 	>
-		See onboarding screen?
-	</div>
-
+		Redo onboarding
+	</button>
 }
-
-
-
-
-
-
 
 export const ToolApprovalTypeSwitch = ({ approvalType, size, desc }: { approvalType: ToolApprovalType, size: "xxs" | "xs" | "sm" | "sm+" | "md", desc: string }) => {
 	const accessor = useAccessor()
@@ -769,88 +605,68 @@ export const ToolApprovalTypeSwitch = ({ approvalType, size, desc }: { approvalT
 		metricsService.capture('Tool Auto-Accept Toggle', { enabled: newValue })
 	}, [voidSettingsService, metricsService])
 
-	return <>
+	return <SettingsRow title={desc}>
 		<VoidSwitch
 			size={size}
 			value={voidSettingsState.globalSettings.autoApprove[approvalType] ?? false}
 			onChange={(newVal) => onToggleAutoApprove(approvalType, newVal)}
 		/>
-		<span className="text-loophole-fg-3 text-xs">{desc}</span>
-	</>
+	</SettingsRow>
 }
-
-
 
 export const OneClickSwitchButton = ({ fromEditor = 'VS Code', className = '' }: { fromEditor?: TransferEditorType, className?: string }) => {
 	const accessor = useAccessor()
 	const extensionTransferService = accessor.get('IExtensionTransferService')
-
-	const [transferState, setTransferState] = useState<{ type: 'done', error?: string } | { type: | 'loading' | 'justfinished' }>({ type: 'done' })
-
-
+	const [transferState, setTransferState] = useState<{ type: 'done', error?: string } | { type: 'loading' | 'justfinished' }>({ type: 'done' })
 
 	const onClick = async () => {
 		if (transferState.type !== 'done') return
-
 		setTransferState({ type: 'loading' })
-
 		const errAcc = await extensionTransferService.transferExtensions(os, fromEditor)
-
-		// Even if some files were missing, consider it a success if no actual errors occurred
 		const hadError = !!errAcc
 		if (hadError) {
 			setTransferState({ type: 'done', error: errAcc })
 		}
 		else {
 			setTransferState({ type: 'justfinished' })
-			setTimeout(() => { setTransferState({ type: 'done' }); }, 3000)
+			setTimeout(() => { setTransferState({ type: 'done' }); }, 2000)
 		}
 	}
 
 	return <>
-		<VoidButtonBgDarken className={`max-w-48 p-4 ${className}`} disabled={transferState.type !== 'done'} onClick={onClick}>
-			{transferState.type === 'done' ? `Transfer from ${fromEditor}`
-				: transferState.type === 'loading' ? <span className='text-nowrap flex flex-nowrap'>Transferring<IconLoading /></span>
-					: transferState.type === 'justfinished' ? <AnimatedCheckmarkButton text='Settings Transferred' className='bg-none' />
-						: null
+		<button
+			className={`px-4 py-2 text-[13px] rounded bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)] hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${className}`}
+			disabled={transferState.type !== 'done'} 
+			onClick={onClick}
+		>
+			{transferState.type === 'done' ? `Import from ${fromEditor}`
+				: transferState.type === 'loading' ? <span className='flex items-center gap-2'>Importing<IconLoading /></span>
+					: transferState.type === 'justfinished' ? 'Done' : null
 			}
-		</VoidButtonBgDarken>
-		{transferState.type === 'done' && transferState.error ? <WarningBox text={transferState.error} /> : null}
+		</button>
+		{transferState.type === 'done' && transferState.error ? <div className='text-[11px] text-[var(--vscode-errorForeground)] mt-1'>{transferState.error}</div> : null}
 	</>
 }
 
-
-// full settings
-
-// MCP Server component
 const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer }) => {
 	const accessor = useAccessor();
 	const mcpService = accessor.get('IMCPService');
-
 	const voidSettings = useSettingsState()
 	const isOn = voidSettings.mcpUserStateOfName[name]?.isOn
-
 	const removeUniquePrefix = (name: string) => name.split('_').slice(1).join('_')
 
 	return (
-		<div className="border border-loophole-border-2 bg-loophole-bg-1 py-3 px-4 rounded-sm my-2">
+		<div className="border border-[var(--vscode-panel-border)] bg-[var(--vscode-editor-background)] px-4 py-3 rounded-lg mb-2">
 			<div className="flex items-center justify-between">
-				{/* Left side - status and name */}
 				<div className="flex items-center gap-2">
-					{/* Status indicator */}
-					<div className={`w-2 h-2 rounded-full
-						${server.status === 'success' ? 'bg-green-500'
-							: server.status === 'error' ? 'bg-red-500'
-								: server.status === 'loading' ? 'bg-yellow-500'
-									: server.status === 'offline' ? 'bg-loophole-fg-3'
-										: ''}
+					<div className={`w-2 h-2 rounded-full ${
+						server.status === 'success' ? 'bg-[var(--vscode-testing-iconPassed)]'
+							: server.status === 'error' ? 'bg-[var(--vscode-errorForeground)]'
+								: server.status === 'loading' ? 'bg-[var(--vscode-charts-yellow)]'
+									: 'bg-[var(--vscode-descriptionForeground)]'
 					`}></div>
-
-					{/* Server name */}
-					<div className="text-sm font-medium text-loophole-fg-1">{name}</div>
+					<div className="text-[13px] font-medium text-[var(--vscode-foreground)]">{name}</div>
 				</div>
-
-				{/* Right side - power toggle switch */}
 				<VoidSwitch
 					value={isOn ?? false}
 					size='xs'
@@ -858,67 +674,34 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 					onChange={() => mcpService.toggleServerIsOn(name, !isOn)}
 				/>
 			</div>
-
-			{/* Tools section */}
-			{isOn && (
-				<div className="mt-3">
-					<div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-						{(server.tools ?? []).length > 0 ? (
-							(server.tools ?? []).map((tool: { name: string; description?: string }) => (
-								<span
-									key={tool.name}
-									className="px-2 py-0.5 bg-loophole-bg-2 text-loophole-fg-3 rounded-sm text-xs"
-
-									data-tooltip-id='loophole-tooltip'
-									data-tooltip-content={tool.description || ''}
-									data-tooltip-class-name='loophole-max-w-[300px]'
-								>
-									{removeUniquePrefix(tool.name)}
-								</span>
-							))
-						) : (
-							<span className="text-xs text-loophole-fg-3">No tools available</span>
-						)}
-					</div>
-				</div>
-			)}
-
-			{/* Command badge */}
-			{isOn && server.command && (
-				<div className="mt-3">
-					<div className="text-xs text-loophole-fg-3 mb-1">Command:</div>
-					<div className="px-2 py-1 bg-loophole-bg-2 text-xs font-mono overflow-x-auto whitespace-nowrap text-loophole-fg-2 rounded-sm">
-						{server.command}
-					</div>
-				</div>
-			)}
-
-			{/* Error message if present */}
-			{server.error && (
-				<div className="mt-3">
-					<WarningBox text={server.error} />
+			{isOn && (server.tools ?? []).length > 0 && (
+				<div className="mt-2 flex flex-wrap gap-1.5">
+					{(server.tools ?? []).map((tool: { name: string; description?: string }) => (
+						<span
+							key={tool.name}
+							className="px-1.5 py-0.5 bg-[var(--vscode-badge-background)] text-[var(--vscode-badge-foreground)] rounded text-[11px]"
+							data-tooltip-id='loophole-tooltip'
+							data-tooltip-content={tool.description || ''}
+						>
+							{removeUniquePrefix(tool.name)}
+						</span>
+					))}
 				</div>
 			)}
 		</div>
-	);
-};
+	)
+}
 
-// Main component that renders the list of servers
 const MCPServersList = () => {
 	const mcpServiceState = useMCPServiceState()
-
 	let content: React.ReactNode
 	if (mcpServiceState.error) {
-		content = <div className="text-loophole-fg-3 text-sm mt-2">
-			{mcpServiceState.error}
-		</div>
+		content = <div className="text-[12px] text-[var(--vscode-errorForeground)] mt-2">{mcpServiceState.error}</div>
 	}
 	else {
 		const entries = Object.entries(mcpServiceState.mcpServerOfName)
 		if (entries.length === 0) {
-			content = <div className="text-loophole-fg-3 text-sm mt-2">
-				No servers found
-			</div>
+			content = <div className="text-[12px] text-[var(--vscode-descriptionForeground)] mt-2">No MCP servers configured</div>
 		}
 		else {
 			content = entries.map(([name, server]) => (
@@ -926,33 +709,43 @@ const MCPServersList = () => {
 			))
 		}
 	}
-
-	return <div className="my-2">{content}</div>
+	return <div className="mt-3">{content}</div>
 };
 
 export const Settings = () => {
 	const isDark = useIsDark()
-	// ─── sidebar nav ──────────────────────────
-	const [selectedSection, setSelectedSection] =
-		useState<Tab>('models');
+	const [selectedSection, setSelectedSection] = useState<Tab>('models');
 
-	const navItems: { tab: Tab; label: string }[] = [
-		{ tab: 'models', label: 'Models' },
-		{ tab: 'engineProviders', label: 'Providers' },
-		{ tab: 'voice', label: 'Microphone' },
-		{ tab: 'ollama', label: 'Ollama' },
+	const navItems: { tab: Tab; label: string; group?: string }[] = [
+		{ tab: 'models', label: 'Models', group: 'General' },
+		{ tab: 'providers', label: 'Providers', group: 'Providers' },
+		{ tab: 'engineProviders', label: 'Engine Providers', group: 'Providers' },
+		{ tab: 'agentBehavior', label: 'Agent Behavior', group: 'Agent' },
+		{ tab: 'autoApprove', label: 'Auto Approve', group: 'Agent' },
+		{ tab: 'mcp', label: 'MCP Servers', group: 'Agent' },
+		{ tab: 'ollama', label: 'Ollama', group: 'Local' },
 		...(os === 'mac' ? ([
-			{ tab: 'mlx' as const, label: 'MLX' },
-			{ tab: 'apple' as const, label: 'Apple' },
+			{ tab: 'mlx' as const, label: 'MLX', group: 'Local' },
+			{ tab: 'apple' as const, label: 'Apple Intelligence', group: 'Local' },
 		]) : []),
-		{ tab: 'localOther', label: 'Local (other)' },
-		{ tab: 'providers', label: 'Main Providers' },
-		{ tab: 'featureOptions', label: 'Feature Options' },
-		{ tab: 'general', label: 'General' },
-		{ tab: 'mcp', label: 'MCP' },
-		{ tab: 'all', label: 'All Settings' },
+		{ tab: 'localOther', label: 'Other Local', group: 'Local' },
+		{ tab: 'autocomplete', label: 'Autocomplete', group: 'Features' },
+		{ tab: 'display', label: 'Display', group: 'Features' },
+		{ tab: 'notifications', label: 'Notifications', group: 'Features' },
+		{ tab: 'context', label: 'Context', group: 'Features' },
+		{ tab: 'checkpoints', label: 'Checkpoints', group: 'Features' },
+		{ tab: 'voice', label: 'Voice', group: 'Features' },
+		{ tab: 'featureOptions', label: 'Tools & Features', group: 'Features' },
+		{ tab: 'general', label: 'General', group: 'Preferences' },
+		{ tab: 'language', label: 'Language', group: 'Preferences' },
+		{ tab: 'experimental', label: 'Experimental', group: 'Advanced' },
+		{ tab: 'about', label: 'About', group: 'Advanced' },
+		{ tab: 'all', label: 'All Settings', group: 'Advanced' },
 	];
+	
+	const groups = ['General', 'Providers', 'Agent', 'Local', 'Features', 'Preferences', 'Advanced'];
 	const shouldShowTab = (tab: Tab) => selectedSection === 'all' || selectedSection === tab;
+	
 	const accessor = useAccessor()
 	const commandService = accessor.get('ICommandService')
 	const environmentService = accessor.get('IEnvironmentService')
@@ -971,14 +764,12 @@ export const Settings = () => {
 		let dataStr: string
 		let downloadName: string
 		if (t === 'Chats') {
-			// Export chat threads
 			dataStr = JSON.stringify(chatThreadsService.state, null, 2)
-			downloadName = 'void-chats.json'
+			downloadName = 'loophole-chats.json'
 		}
 		else if (t === 'Settings') {
-			// Export user settings
 			dataStr = JSON.stringify(voidSettingsService.state, null, 2)
-			downloadName = 'void-settings.json'
+			downloadName = 'loophole-settings.json'
 		}
 		else {
 			dataStr = ''
@@ -994,13 +785,9 @@ export const Settings = () => {
 		URL.revokeObjectURL(url)
 	}
 
-
-	// Add file input refs
 	const fileInputSettingsRef = useRef<HTMLInputElement>(null)
 	const fileInputChatsRef = useRef<HTMLInputElement>(null)
-
 	const [s, ss] = useState(0)
-
 	const workspaceName = workspaceContextService.getWorkspace().folders[0]?.name
 	const [projectMemory, setProjectMemory] = useState(() => storageService.get(PROJECT_MEMORY_STORAGE_KEY, StorageScope.WORKSPACE) ?? '')
 
@@ -1014,99 +801,102 @@ export const Settings = () => {
 		reader.onload = () => {
 			try {
 				const json = JSON.parse(reader.result as string);
-
 				if (t === 'Chats') {
 					chatThreadsService.dangerousSetState(json as any)
 				}
 				else if (t === 'Settings') {
 					voidSettingsService.dangerousSetState(json as any)
 				}
-
-				notificationService.info(`${t} imported successfully!`)
+				notificationService.info(`${t} imported successfully`)
 			} catch (err) {
 				notificationService.notify({ message: `Failed to import ${t}`, source: err + '', severity: Severity.Error, })
 			}
 		};
 		reader.readAsText(file);
 		e.target.value = '';
-
 		ss(s => s + 1)
 	}
 
-
 	return (
-		<div className={`@@loophole-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%', overflow: 'auto' }}>
-			<div className="flex flex-col md:flex-row w-full gap-6 max-w-[900px] mx-auto mb-32" style={{ minHeight: '80vh' }}>
-				{/* ──────────────  SIDEBAR  ────────────── */}
-
-				<aside className="md:w-1/4 w-full p-6 shrink-0">
-					{/* vertical tab list */}
-					<div className="flex flex-col gap-2 mt-12">
-						{navItems.map(({ tab, label }) => (
-							<button
-								key={tab}
-								onClick={() => {
-									if (tab === 'all') {
-										setSelectedSection('all');
-										window.scrollTo({ top: 0, behavior: 'smooth' });
-									} else {
-										setSelectedSection(tab);
-									}
-								}}
-								className={`
-          py-2 px-4 rounded-md text-left transition-all duration-200
-          ${selectedSection === tab
-										? 'bg-[#0e70c0]/80 text-white font-medium shadow-sm'
-										: 'bg-loophole-bg-2 hover:bg-loophole-bg-2/80 text-loophole-fg-1'}
-        `}
-							>
-								{label}
-							</button>
-						))}
+		<div className={`@@loophole-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%', overflow: 'auto', backgroundColor: 'var(--vscode-editor-background)' }}>
+			<div className="flex w-full h-full">
+				<aside className="w-56 flex-shrink-0 border-r border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)] overflow-y-auto">
+					<div className="p-4">
+						<h1 className='text-[16px] font-semibold text-[var(--vscode-foreground)] mb-4'>Settings</h1>
+						<nav className='flex flex-col gap-4'>
+							{groups.map(group => {
+								const items = navItems.filter(item => item.group === group);
+								if (items.length === 0) return null;
+								return (
+									<div key={group}>
+										<div className='text-[11px] font-medium text-[var(--vscode-descriptionForeground)] uppercase tracking-wide mb-1.5 px-2'>{group}</div>
+										<div className='flex flex-col gap-0.5'>
+											{items.map(({ tab, label }) => (
+												<button
+													key={tab}
+													onClick={() => {
+														setSelectedSection(tab);
+														if (tab !== 'all') {
+															const mainEl = document.querySelector('.settings-main-content');
+															if (mainEl) mainEl.scrollTop = 0;
+														}
+													}}
+													className={`px-2 py-1 text-left text-[13px] rounded transition-colors ${
+														selectedSection === tab
+															? 'bg-[var(--vscode-list-activeSelectionBackground)] text-[var(--vscode-list-activeSelectionForeground)]'
+															: 'text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)]'
+													}`}
+												>
+													{label}
+												</button>
+											))}
+										</div>
+									</div>
+								);
+							})}
+						</nav>
 					</div>
 				</aside>
 
-				{/* ───────────── MAIN PANE ───────────── */}
-				<main className="flex-1 p-6 select-none">
+				<main className="flex-1 overflow-y-auto settings-main-content">
+					<div className='max-w-3xl mx-auto px-8 py-6'>
+						<div className='mb-6'>
+							<h1 className='text-[24px] font-semibold text-[var(--vscode-foreground)] mb-1'>Loophole Settings</h1>
+							<p className='text-[13px] text-[var(--vscode-descriptionForeground)]'>Configure your AI coding assistant</p>
+						</div>
 
-
-
-					<div className='max-w-3xl'>
-
-						<h1 className='text-2xl w-full'>{`Loophole's Settings`}</h1>
-
-						<div className='w-full h-[1px] my-2' />
-
-						{/* Models section (formerly FeaturesTab) */}
 						<ErrorBoundary>
-							<RedoOnboardingButton />
+							<div className='mb-6'>
+								<RedoOnboardingButton />
+							</div>
 						</ErrorBoundary>
 
-						<div className='w-full h-[1px] my-4' />
-
-						{/* All sections in flex container with gap-12 */}
-						<div className='flex flex-col gap-12'>
-							{/* Models section (formerly FeaturesTab) */}
+						<div className='flex flex-col'>
 							<div className={shouldShowTab('models') ? `` : 'hidden'}>
 								<ErrorBoundary>
-									<h2 className={`text-3xl mb-2`}>Models</h2>
-									<ModelDump />
-									<div className='w-full h-[1px] my-4' />
-									<AutoDetectLocalModelsToggle />
-									<div className='w-full h-[1px] my-4' />
-									<p className='text-loophole-fg-3 text-sm mb-4'>Per-provider setup and refresh are under <strong>Ollama</strong>, <strong>MLX</strong>, and <strong>Apple</strong> in the sidebar.</p>
+									<SettingsSection title="Models" description="Manage models and their visibility across all providers">
+										<ModelDump />
+										<SettingsCard>
+											<AutoDetectLocalModelsToggle />
+										</SettingsCard>
+										<p className='text-[11px] text-[var(--vscode-descriptionForeground)]'>Configure local providers like Ollama, MLX, and Apple in their respective sections.</p>
+									</SettingsSection>
 								</ErrorBoundary>
 							</div>
 
 							<div className={shouldShowTab('voice') ? `` : 'hidden'}>
 								<ErrorBoundary>
-									<LocalVoiceModelSettings />
+									<SettingsSection title="Voice" description="Voice and speech settings">
+										<LocalVoiceModelSettings />
+									</SettingsSection>
 								</ErrorBoundary>
 							</div>
 
 							<div className={shouldShowTab('engineProviders') ? `` : 'hidden'}>
 								<ErrorBoundary>
-									<EngineProvidersSection />
+									<SettingsSection title="Engine Providers" description="Configure Loophole engine providers">
+										<EngineProvidersSection />
+									</SettingsSection>
 								</ErrorBoundary>
 							</div>
 
@@ -1114,7 +904,7 @@ export const Settings = () => {
 								<ErrorBoundary>
 									<LocalProviderSection
 										title='Ollama'
-										description='Pull models with `ollama pull` — Loophole autodetects them at your endpoint.'
+										description='Local LLM inference with Ollama'
 										instructions={<OllamaSetupInstructions sayWeAutoDetect={true} />}
 										providerNames={ollamaProviderNames}
 										refreshable
@@ -1128,11 +918,11 @@ export const Settings = () => {
 									<ErrorBoundary>
 										<LocalProviderSection
 											title='MLX'
-											description='One loaded model at a time via mlx_lm.server (port 8080 by default).'
+											description='Apple Silicon optimized inference with MLX'
 											instructions={<MlxSetupInstructions />}
 											providerNames={mlxProviderNames}
 											refreshable
-											autoSetup={<AutoSetupMlxToggle />}
+											autoSetup={<SettingsCard><AutoSetupMlxToggle /></SettingsCard>}
 											modelFilter={mlxProviderNames}
 										/>
 									</ErrorBoundary>
@@ -1143,12 +933,12 @@ export const Settings = () => {
 								<div className={shouldShowTab('apple') ? `` : 'hidden'}>
 									<ErrorBoundary>
 										<LocalProviderSection
-											title='Apple'
-											description='On-device Foundation model via maclocal-api (`afm`, port 9999).'
+											title='Apple Intelligence'
+											description='On-device Apple Foundation Models'
 											instructions={<AppleFoundationModelsSetupInstructions />}
 											providerNames={appleProviderNames}
 											refreshable
-											autoSetup={<AutoSetupAppleFoundationModelsToggle />}
+											autoSetup={<SettingsCard><AutoSetupAppleFoundationModelsToggle /></SettingsCard>}
 											modelFilter={appleProviderNames}
 										/>
 									</ErrorBoundary>
@@ -1158,352 +948,204 @@ export const Settings = () => {
 							<div className={shouldShowTab('localOther') ? `` : 'hidden'}>
 								<ErrorBoundary>
 									<LocalProviderSection
-										title='Local (other)'
-										description='vLLM and LM Studio — OpenAI-compatible local servers.'
+										title='Other Local Providers'
+										description='OpenAI-compatible local servers'
 										providerNames={otherLocalProviderNames}
-										refreshable
-										modelFilter={otherLocalProviderNames}
 									/>
 								</ErrorBoundary>
 							</div>
 
-							{/* Main Providers section */}
 							<div className={shouldShowTab('providers') ? `` : 'hidden'}>
 								<ErrorBoundary>
-									<h2 className={`text-3xl mb-2`}>Main Providers</h2>
-									<h3 className={`text-loophole-fg-3 mb-2`}>{`Loophole can access models from Anthropic, OpenAI, OpenRouter, and more.`}</h3>
-
-									<VoidProviderSettings providerNames={nonlocalProviderNames} />
+									<SettingsSection title="API Providers" description="Configure cloud AI providers like Anthropic, OpenAI, OpenRouter, and more">
+										{nonlocalProviderNames.map((providerName) => (
+											<SettingsForProvider key={providerName} providerName={providerName} showProviderTitle={true} showProviderSuggestions={true} />
+										))}
+									</SettingsSection>
 								</ErrorBoundary>
 							</div>
 
-							{/* Feature Options section */}
 							<div className={shouldShowTab('featureOptions') ? `` : 'hidden'}>
 								<ErrorBoundary>
-									<h2 className={`text-3xl mb-2`}>Feature Options</h2>
-
-									<div className='flex flex-col gap-y-8 my-4'>
-										<ErrorBoundary>
-											{/* FIM */}
-											<div>
-												<h4 className={`text-base`}>{displayInfoOfFeatureName('Autocomplete')}</h4>
-												<div className='text-sm text-loophole-fg-3 mt-1'>
-													<span>
-														Experimental.{' '}
+									<SettingsSection title="Features" description="Configure AI features and their behavior">
+										<SettingsCard>
+											<SettingsRow title="Autocomplete" description="Inline code completions">
+												<div className='flex items-center gap-3'>
+													<VoidSwitch
+														size='xs'
+														value={settingsState.globalSettings.enableAutocomplete}
+														onChange={(newVal) => voidSettingsService.setGlobalSetting('enableAutocomplete', newVal)}
+													/>
+													<div className={`${!settingsState.globalSettings.enableAutocomplete ? 'opacity-50 pointer-events-none' : ''}`}>
+														<ModelDropdown featureName={'Autocomplete'} className='text-[12px]' />
+													</div>
+												</div>
+											</SettingsRow>
+											<SettingsRow title="Apply" description="Apply AI-generated code changes">
+												<div className='flex items-center gap-3'>
+													<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>
+														{settingsState.globalSettings.syncApplyToChat ? 'Same as Chat' : 'Custom'}
 													</span>
-													<span
-														className='hover:brightness-110'
-														data-tooltip-id='loophole-tooltip'
-														data-tooltip-content='We recommend using the largest qwen2.5-coder model you can with Ollama (try qwen2.5-coder:3b).'
-														data-tooltip-class-name='loophole-max-w-[20px]'
-													>
-														Only works with FIM models.*
+													<VoidSwitch
+														size='xs'
+														value={settingsState.globalSettings.syncApplyToChat}
+														onChange={(newVal) => voidSettingsService.setGlobalSetting('syncApplyToChat', newVal)}
+													/>
+													<div className={`${settingsState.globalSettings.syncApplyToChat ? 'opacity-50 pointer-events-none' : ''}`}>
+														<ModelDropdown featureName={'Apply'} className='text-[12px]' />
+													</div>
+													<FastApplyMethodDropdown />
+												</div>
+											</SettingsRow>
+											<SettingsRow title="Commit Messages" description="AI-generated commit messages">
+												<div className='flex items-center gap-3'>
+													<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>
+														{settingsState.globalSettings.syncSCMToChat ? 'Same as Chat' : 'Custom'}
 													</span>
-												</div>
-
-												<div className='my-2'>
-													{/* Enable Switch */}
-													<ErrorBoundary>
-														<div className='flex items-center gap-x-2 my-2'>
-															<VoidSwitch
-																size='xs'
-																value={settingsState.globalSettings.enableAutocomplete}
-																onChange={(newVal) => voidSettingsService.setGlobalSetting('enableAutocomplete', newVal)}
-															/>
-															<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.enableAutocomplete ? 'Enabled' : 'Disabled'}</span>
-														</div>
-													</ErrorBoundary>
-
-													{/* Model Dropdown */}
-													<ErrorBoundary>
-														<div className={`my-2 ${!settingsState.globalSettings.enableAutocomplete ? 'hidden' : ''}`}>
-															<ModelDropdown featureName={'Autocomplete'} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1' />
-														</div>
-													</ErrorBoundary>
-
-												</div>
-
-											</div>
-										</ErrorBoundary>
-
-										{/* Apply */}
-										<ErrorBoundary>
-
-											<div className='w-full'>
-												<h4 className={`text-base`}>{displayInfoOfFeatureName('Apply')}</h4>
-												<div className='text-sm text-loophole-fg-3 mt-1'>Settings that control the behavior of the Apply button.</div>
-
-												<div className='my-2'>
-													{/* Sync to Chat Switch */}
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.syncApplyToChat}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('syncApplyToChat', newVal)}
-														/>
-														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.syncApplyToChat ? 'Same as Chat model' : 'Different model'}</span>
-													</div>
-
-													{/* Model Dropdown */}
-													<div className={`my-2 ${settingsState.globalSettings.syncApplyToChat ? 'hidden' : ''}`}>
-														<ModelDropdown featureName={'Apply'} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1' />
+													<VoidSwitch
+														size='xs'
+														value={settingsState.globalSettings.syncSCMToChat}
+														onChange={(newVal) => voidSettingsService.setGlobalSetting('syncSCMToChat', newVal)}
+													/>
+													<div className={`${settingsState.globalSettings.syncSCMToChat ? 'opacity-50 pointer-events-none' : ''}`}>
+														<ModelDropdown featureName={'SCM'} className='text-[12px]' />
 													</div>
 												</div>
+											</SettingsRow>
+											<SettingsRow title="Inline Suggestions" description="Show AI suggestions in the editor">
+												<VoidSwitch
+													size='xs'
+													value={settingsState.globalSettings.showInlineSuggestions}
+													onChange={(newVal) => voidSettingsService.setGlobalSetting('showInlineSuggestions', newVal)}
+												/>
+											</SettingsRow>
+										</SettingsCard>
 
-
-												<div className='my-2'>
-													{/* Fast Apply Method Dropdown */}
-													<div className='flex items-center gap-x-2 my-2'>
-														<FastApplyMethodDropdown />
-													</div>
-												</div>
-
-											</div>
-										</ErrorBoundary>
-
-
-
-
-										{/* Tools Section */}
-										<div>
-											<h4 className={`text-base`}>Tools</h4>
-											<div className='text-sm text-loophole-fg-3 mt-1'>{`Tools are functions that LLMs can call. Some tools require user approval.`}</div>
-
-											<div className='my-2'>
-												{/* Auto Accept Switch */}
-												<ErrorBoundary>
-													{[...toolApprovalTypes].map((approvalType) => {
-														return <div key={approvalType} className="flex items-center gap-x-2 my-2">
-															<ToolApprovalTypeSwitch size='xs' approvalType={approvalType} desc={`Auto-approve ${approvalType}`} />
-														</div>
-													})}
-
-												</ErrorBoundary>
-
-												{/* Tool Lint Errors Switch */}
-												<ErrorBoundary>
-
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.includeToolLintErrors}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('includeToolLintErrors', newVal)}
-														/>
-														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.includeToolLintErrors ? 'Fix lint errors' : `Fix lint errors`}</span>
-													</div>
-												</ErrorBoundary>
-
-												{/* Auto Accept LLM Changes Switch */}
-												<ErrorBoundary>
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.autoAcceptLLMChanges}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('autoAcceptLLMChanges', newVal)}
-														/>
-														<span className='text-loophole-fg-3 text-xs pointer-events-none'>Auto-accept LLM changes</span>
-													</div>
-												</ErrorBoundary>
-											</div>
+										<div className='mt-6'>
+											<div className='text-[13px] font-medium text-[var(--vscode-foreground)] mb-2'>Tool Permissions</div>
+											<div className='text-[12px] text-[var(--vscode-descriptionForeground)] mb-3'>Auto-approve tools without asking for confirmation</div>
+											<SettingsCard>
+												{[...toolApprovalTypes].map((approvalType) => (
+													<ToolApprovalTypeSwitch key={approvalType} approvalType={approvalType} size='xs' desc={`Auto-approve ${approvalType}`} />
+												))}
+											</SettingsCard>
 										</div>
 
-
-
-										<div className='w-full'>
-											<h4 className={`text-base`}>Editor</h4>
-											<div className='text-sm text-loophole-fg-3 mt-1'>{`Settings that control the visibility of Loophole suggestions in the code editor.`}</div>
-
-											<div className='my-2'>
-												{/* Auto Accept Switch */}
-												<ErrorBoundary>
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.showInlineSuggestions}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('showInlineSuggestions', newVal)}
-														/>
-														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.showInlineSuggestions ? 'Show suggestions on select' : 'Show suggestions on select'}</span>
-													</div>
-												</ErrorBoundary>
-											</div>
+										<div className='mt-6'>
+											<div className='text-[13px] font-medium text-[var(--vscode-foreground)] mb-2'>Advanced</div>
+											<SettingsCard>
+												<SettingsRow title="Fix lint errors" description="Include lint errors in tool context">
+													<VoidSwitch
+														size='xs'
+														value={settingsState.globalSettings.includeToolLintErrors}
+														onChange={(newVal) => voidSettingsService.setGlobalSetting('includeToolLintErrors', newVal)}
+													/>
+												</SettingsRow>
+												<SettingsRow title="Auto-accept LLM changes" description="Automatically accept file changes">
+													<VoidSwitch
+														size='xs'
+														value={settingsState.globalSettings.autoAcceptLLMChanges}
+														onChange={(newVal) => voidSettingsService.setGlobalSetting('autoAcceptLLMChanges', newVal)}
+													/>
+												</SettingsRow>
+											</SettingsCard>
 										</div>
-
-										{/* SCM */}
-										<ErrorBoundary>
-
-											<div className='w-full'>
-												<h4 className={`text-base`}>{displayInfoOfFeatureName('SCM')}</h4>
-												<div className='text-sm text-loophole-fg-3 mt-1'>Settings that control the behavior of the commit message generator.</div>
-
-												<div className='my-2'>
-													{/* Sync to Chat Switch */}
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.syncSCMToChat}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('syncSCMToChat', newVal)}
-														/>
-														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.syncSCMToChat ? 'Same as Chat model' : 'Different model'}</span>
-													</div>
-
-													{/* Model Dropdown */}
-													<div className={`my-2 ${settingsState.globalSettings.syncSCMToChat ? 'hidden' : ''}`}>
-														<ModelDropdown featureName={'SCM'} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1' />
-													</div>
-												</div>
-
-											</div>
-										</ErrorBoundary>
-									</div>
+									</SettingsSection>
 								</ErrorBoundary>
 							</div>
 
-							{/* General section */}
-							<div className={`${shouldShowTab('general') ? `` : 'hidden'} flex flex-col gap-12`}>
-								{/* One-Click Switch section */}
-								<div>
-									<ErrorBoundary>
-										<h2 className='text-3xl mb-2'>One-Click Switch</h2>
-										<h4 className='text-loophole-fg-3 mb-4'>{`Transfer your editor settings into Loophole.`}</h4>
-
-										<div className='flex flex-col gap-2'>
-											<OneClickSwitchButton className='w-48' fromEditor="VS Code" />
-											<OneClickSwitchButton className='w-48' fromEditor="Cursor" />
-											<OneClickSwitchButton className='w-48' fromEditor="Windsurf" />
-										</div>
-									</ErrorBoundary>
-								</div>
-
-								{/* Import/Export section */}
-								<div>
-									<h2 className='text-3xl mb-2'>Import/Export</h2>
-									<h4 className='text-loophole-fg-3 mb-4'>{`Transfer Loophole's settings and chats in and out of Loophole.`}</h4>
-									<div className='flex flex-col gap-8'>
-										{/* Settings Subcategory */}
-										<div className='flex flex-col gap-2 max-w-48 w-full'>
-											<input key={2 * s} ref={fileInputSettingsRef} type='file' accept='.json' className='hidden' onChange={handleUpload('Settings')} />
-											<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => { fileInputSettingsRef.current?.click() }}>
-												Import Settings
-											</VoidButtonBgDarken>
-											<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => onDownload('Settings')}>
-												Export Settings
-											</VoidButtonBgDarken>
-											<ConfirmButton className='px-4 py-1 w-full' onConfirm={() => { voidSettingsService.resetState(); }}>
-												Reset Settings
-											</ConfirmButton>
-										</div>
-
-										{/* Chats Subcategory */}
-										<div className='flex flex-col gap-2 max-w-48 w-full'>
-											<input key={2 * s + 1} ref={fileInputChatsRef} type='file' accept='.json' className='hidden' onChange={handleUpload('Chats')} />
-											<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => { fileInputChatsRef.current?.click() }}>
-												Import Chats
-											</VoidButtonBgDarken>
-											<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => onDownload('Chats')}>
-												Export Chats
-											</VoidButtonBgDarken>
-											<ConfirmButton className='px-4 py-1 w-full' onConfirm={() => { chatThreadsService.resetState(); }}>
-												Reset Chats
-											</ConfirmButton>
+							<div className={shouldShowTab('general') ? `` : 'hidden'}>
+								<SettingsSection title="General" description="General preferences and data management">
+									<div className='mb-6'>
+										<div className='text-[13px] font-medium text-[var(--vscode-foreground)] mb-2'>Import Settings</div>
+										<div className='text-[12px] text-[var(--vscode-descriptionForeground)] mb-3'>Transfer settings from other editors</div>
+										<div className='flex gap-2 flex-wrap'>
+											<OneClickSwitchButton fromEditor="VS Code" />
+											<OneClickSwitchButton fromEditor="Cursor" />
+											<OneClickSwitchButton fromEditor="Windsurf" />
 										</div>
 									</div>
-								</div>
 
-
-
-								{/* Built-in Settings section */}
-								<div>
-									<h2 className={`text-3xl mb-2`}>Built-in Settings</h2>
-									<h4 className={`text-loophole-fg-3 mb-4`}>{`IDE settings, keyboard settings, and theme customization.`}</h4>
-
-									<ErrorBoundary>
-										<div className='flex flex-col gap-2 justify-center max-w-48 w-full'>
-											<VoidButtonBgDarken className='px-4 py-1' onClick={() => { commandService.executeCommand('workbench.action.openSettings') }}>
-												General Settings
-											</VoidButtonBgDarken>
-											<VoidButtonBgDarken className='px-4 py-1' onClick={() => { commandService.executeCommand('workbench.action.openGlobalKeybindings') }}>
-												Keyboard Settings
-											</VoidButtonBgDarken>
-											<VoidButtonBgDarken className='px-4 py-1' onClick={() => { commandService.executeCommand('workbench.action.selectTheme') }}>
-												Theme Settings
-											</VoidButtonBgDarken>
-											<VoidButtonBgDarken className='px-4 py-1' onClick={() => { nativeHostService.showItemInFolder(environmentService.logsHome.fsPath) }}>
-												Open Logs
-											</VoidButtonBgDarken>
-										</div>
-									</ErrorBoundary>
-								</div>
-
-
-								{/* Metrics section */}
-								<div className='max-w-[600px]'>
-									<h2 className={`text-3xl mb-2`}>Metrics</h2>
-									<h4 className={`text-loophole-fg-3 mb-4`}>Very basic anonymous usage tracking helps us keep Loophole running smoothly. You may opt out below. Regardless of this setting, Loophole never sees your code, messages, or API keys.</h4>
-
-									<div className='my-2'>
-										{/* Disable All Metrics Switch */}
-										<ErrorBoundary>
-											<div className='flex items-center gap-x-2 my-2'>
-												<VoidSwitch
-													size='xs'
-													value={isOptedOut}
-													onChange={(newVal) => {
-														metricsService.setOptOut(newVal)
-													}}
-												/>
-												<span className='text-loophole-fg-3 text-xs pointer-events-none'>{'Opt-out of basic usage metrics'}</span>
-											</div>
-										</ErrorBoundary>
+									<div className='mb-6'>
+										<div className='text-[13px] font-medium text-[var(--vscode-foreground)] mb-2'>Data Management</div>
+										<div className='text-[12px] text-[var(--vscode-descriptionForeground)] mb-3'>Import, export, or reset your settings and chats</div>
+										<SettingsCard>
+											<SettingsRow title="Settings" description="Import or export Loophole settings">
+												<div className='flex gap-2'>
+													<input key={2 * s} ref={fileInputSettingsRef} type='file' accept='.json' className='hidden' onChange={handleUpload('Settings')} />
+													<button className='px-2 py-1 text-[12px] bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)] rounded' onClick={() => { fileInputSettingsRef.current?.click() }}>Import</button>
+													<button className='px-2 py-1 text-[12px] bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)] rounded' onClick={() => onDownload('Settings')}>Export</button>
+													<ConfirmButton onConfirm={() => { voidSettingsService.resetState(); }}>Reset</ConfirmButton>
+												</div>
+											</SettingsRow>
+											<SettingsRow title="Chats" description="Import or export chat history">
+												<div className='flex gap-2'>
+													<input key={2 * s + 1} ref={fileInputChatsRef} type='file' accept='.json' className='hidden' onChange={handleUpload('Chats')} />
+													<button className='px-2 py-1 text-[12px] bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)] rounded' onClick={() => { fileInputChatsRef.current?.click() }}>Import</button>
+													<button className='px-2 py-1 text-[12px] bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)] rounded' onClick={() => onDownload('Chats')}>Export</button>
+													<ConfirmButton onConfirm={() => { chatThreadsService.resetState(); }}>Reset</ConfirmButton>
+												</div>
+											</SettingsRow>
+										</SettingsCard>
 									</div>
-								</div>
 
-								{/* AI Instructions section */}
-								<div className='max-w-[600px]'>
-									<h2 className={`text-3xl mb-2`}>AI Instructions</h2>
-									<h4 className={`text-loophole-fg-3 mb-4`}>
-										<ChatMarkdownRender inPTag={true} string={`
-System instructions to include with all AI requests.
-Alternatively, place a \`.loopholerules\` file in the root of your workspace.
-								`} chatMessageLocation={undefined} />
-									</h4>
-									<ErrorBoundary>
+									<div className='mb-6'>
+										<div className='text-[13px] font-medium text-[var(--vscode-foreground)] mb-2'>IDE</div>
+										<SettingsCard>
+											<SettingsRow title="General Settings" description="Open VS Code settings">
+												<button className='px-2 py-1 text-[12px] bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)] rounded' onClick={() => { commandService.executeCommand('workbench.action.openSettings') }}>Open</button>
+											</SettingsRow>
+											<SettingsRow title="Keyboard Shortcuts" description="Configure keybindings">
+												<button className='px-2 py-1 text-[12px] bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)] rounded' onClick={() => { commandService.executeCommand('workbench.action.openGlobalKeybindings') }}>Open</button>
+											</SettingsRow>
+											<SettingsRow title="Theme" description="Change color theme">
+												<button className='px-2 py-1 text-[12px] bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)] rounded' onClick={() => { commandService.executeCommand('workbench.action.selectTheme') }}>Open</button>
+											</SettingsRow>
+											<SettingsRow title="Logs" description="Open logs folder">
+												<button className='px-2 py-1 text-[12px] bg-[var(--vscode-button-secondaryBackground)] text-[var(--vscode-button-secondaryForeground)] hover:bg-[var(--vscode-button-secondaryHoverBackground)] rounded' onClick={() => { nativeHostService.showItemInFolder(environmentService.logsHome.fsPath) }}>Open</button>
+											</SettingsRow>
+										</SettingsCard>
+									</div>
+
+									<div className='mb-6'>
+										<div className='text-[13px] font-medium text-[var(--vscode-foreground)] mb-2'>Telemetry</div>
+										<SettingsCard>
+											<SettingsRow title="Usage Analytics" description="Help improve Loophole with anonymous usage data">
+												<div className='flex items-center gap-2'>
+													<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>{isOptedOut ? 'Opted out' : 'Enabled'}</span>
+													<VoidSwitch
+														size='xs'
+														value={!isOptedOut}
+														onChange={(newVal) => { metricsService.setOptOut(!newVal) }}
+													/>
+												</div>
+											</SettingsRow>
+										</SettingsCard>
+									</div>
+
+									<div className='mb-6'>
+										<div className='text-[13px] font-medium text-[var(--vscode-foreground)] mb-2'>AI Instructions</div>
+										<div className='text-[12px] text-[var(--vscode-descriptionForeground)] mb-3'>System instructions for all AI requests. You can also use a <code className='px-1 py-0.5 bg-[var(--vscode-textCodeBlock-background)] rounded'>.loopholerules</code> file.</div>
 										<AIInstructionsBox />
-									</ErrorBoundary>
-									{/* --- Disable System Message Toggle --- */}
-									<div className='my-4'>
-										<ErrorBoundary>
-											<div className='flex items-center gap-x-2'>
+										<SettingsCard className='mt-3'>
+											<SettingsRow title="Disable System Message" description="Only use custom instructions above">
 												<VoidSwitch
 													size='xs'
 													value={!!settingsState.globalSettings.disableSystemMessage}
-													onChange={(newValue) => {
-														voidSettingsService.setGlobalSetting('disableSystemMessage', newValue);
-													}}
+													onChange={(newValue) => { voidSettingsService.setGlobalSetting('disableSystemMessage', newValue); }}
 												/>
-												<span className='text-loophole-fg-3 text-xs pointer-events-none'>
-													{'Disable system message'}
-												</span>
-											</div>
-										</ErrorBoundary>
-										<div className='text-loophole-fg-3 text-xs mt-1'>
-											{`When disabled, Loophole will not include anything in the system message except for content you specified above.`}
-										</div>
+											</SettingsRow>
+										</SettingsCard>
 									</div>
-								</div>
 
-								{/* Project Memory section */}
-								<div className='max-w-[600px]'>
-									<h2 className='text-3xl mb-2'>Project Memory</h2>
-									<h4 className='text-loophole-fg-3 mb-4'>
-										{`Durable notes the agent has saved across sessions (via write_project_memory), stored locally on this machine.`}
-									</h4>
-									<div className='text-loophole-fg-3 text-xs mb-4'>
-										{`Showing memory for the currently open project only: ${workspaceName ? `"${workspaceName}"` : 'this workspace'}. Each project keeps its own separate memory — open a different project to view or manage its memory instead.`}
-									</div>
-									<ErrorBoundary>
+									<div className='mb-6'>
+										<div className='text-[13px] font-medium text-[var(--vscode-foreground)] mb-2'>Project Memory</div>
+										<div className='text-[12px] text-[var(--vscode-descriptionForeground)] mb-3'>
+											Durable notes for {workspaceName ? `"${workspaceName}"`} stored locally
+										</div>
 										<VoidInputBox2
 											key={`project-memory-${s}`}
-											className='min-h-[81px] p-3 rounded-sm'
+											className='min-h-[80px] p-3 rounded border border-[var(--vscode-input-border)] bg-[var(--vscode-input-background)] text-[var(--vscode-input-foreground)]'
 											initValue={projectMemory}
 											placeholder='No project memory stored yet.'
 											multiline
@@ -1512,52 +1154,138 @@ Alternatively, place a \`.loopholerules\` file in the root of your workspace.
 												storageService.store(PROJECT_MEMORY_STORAGE_KEY, newText, StorageScope.WORKSPACE, StorageTarget.MACHINE)
 											}}
 										/>
-									</ErrorBoundary>
-									<div className='mt-2'>
-										<ConfirmButton
-											className='px-4 py-1'
-											onConfirm={() => {
+										<div className='mt-2'>
+											<ConfirmButton onConfirm={() => {
 												storageService.remove(PROJECT_MEMORY_STORAGE_KEY, StorageScope.WORKSPACE)
 												setProjectMemory('')
 												ss(s => s + 1)
-											}}
-										>
-											Delete Project Memory
-										</ConfirmButton>
+											}}>Delete Project Memory</ConfirmButton>
+										</div>
 									</div>
-								</div>
-
+								</SettingsSection>
 							</div>
 
-
-
-							{/* MCP section */}
 							<div className={shouldShowTab('mcp') ? `` : 'hidden'}>
-								<ErrorBoundary>
-									<h2 className='text-3xl mb-2'>MCP</h2>
-									<h4 className={`text-loophole-fg-3 mb-4`}>
-										<ChatMarkdownRender inPTag={true} string={`
-Use Model Context Protocol to provide Agent mode with more tools.
-							`} chatMessageLocation={undefined} />
-									</h4>
-									<div className='my-2'>
-										<VoidButtonBgDarken className='px-4 py-1 w-full max-w-48' onClick={async () => { await mcpService.revealMCPConfigFile() }}>
-											Add MCP Server
-										</VoidButtonBgDarken>
-									</div>
-
-									<ErrorBoundary>
-										<MCPServersList />
-									</ErrorBoundary>
-								</ErrorBoundary>
+								<SettingsSection title="MCP Servers" description="Model Context Protocol servers for extended capabilities">
+									<button 
+										className='px-3 py-1.5 text-[12px] bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)] hover:bg-[var(--vscode-button-hoverBackground)] rounded w-fit'
+										onClick={async () => { await mcpService.revealMCPConfigFile() }}
+									>
+										Configure MCP Servers
+									</button>
+									<MCPServersList />
+								</SettingsSection>
 							</div>
 
+							<div className={shouldShowTab('agentBehavior') ? `` : 'hidden'}>
+								<SettingsSection title=\"Agent Behavior\" description=\"Configure how the AI agent behaves in your workspace\">
+									<SettingsCard>
+										<SettingsRow title=\"Agent Mode\" description=\"Default mode for agent interactions\"><span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Auto</span></SettingsRow>
+										<SettingsRow title=\"Max Tool Calls\" description=\"Maximum number of tool calls per request\"><span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Unlimited</span></SettingsRow>
+									</SettingsCard>
+								</SettingsSection>
+							</div>
 
+							<div className={shouldShowTab('autoApprove') ? `` : 'hidden'}>
+								<SettingsSection title=\"Auto Approve\" description=\"Auto-approve tools without asking for confirmation\">
+									<SettingsCard>
+										{[...toolApprovalTypes].map((approvalType) => (
+											<ToolApprovalTypeSwitch key={approvalType} approvalType={approvalType} size='xs' desc={approvalType} />
+										))}
+									</SettingsCard>
+								</SettingsSection>
+							</div>
 
+							<div className={shouldShowTab('autocomplete') ? `` : 'hidden'}>
+								<SettingsSection title=\"Autocomplete\" description=\"Inline code completions\">
+									<SettingsCard>
+										<SettingsRow title=\"Enable Autocomplete\" description=\"Show AI suggestions as you type\">
+											<VoidSwitch size='xs' value={settingsState.globalSettings.enableAutocomplete} onChange={(newVal) => voidSettingsService.setGlobalSetting('enableAutocomplete', newVal)} />
+										</SettingsRow>
+										<SettingsRow title=\"Model\" description=\"Model used for autocomplete\">
+											<ModelDropdown featureName={'Autocomplete'} className='text-[12px]' />
+										</SettingsRow>
+									</SettingsCard>
+								</SettingsSection>
+							</div>
 
+							<div className={shouldShowTab('display') ? `` : 'hidden'}>
+								<SettingsSection title=\"Display\" description=\"Visual preferences\">
+									<SettingsCard>
+										<SettingsRow title=\"Show Inline Suggestions\" description=\"Display AI suggestions inline in the editor\">
+											<VoidSwitch size='xs' value={settingsState.globalSettings.showInlineSuggestions} onChange={(newVal) => voidSettingsService.setGlobalSetting('showInlineSuggestions', newVal)} />
+										</SettingsRow>
+									</SettingsCard>
+								</SettingsSection>
+							</div>
+
+							<div className={shouldShowTab('notifications') ? `` : 'hidden'}>
+								<SettingsSection title=\"Notifications\" description=\"Notification preferences\">
+									<SettingsCard>
+										<SettingsRow title=\"Enable Notifications\" description=\"Show notifications for AI actions\">
+											<VoidSwitch size='xs' value={true} onChange={() => {}} />
+										</SettingsRow>
+									</SettingsCard>
+								</SettingsSection>
+							</div>
+
+							<div className={shouldShowTab('context') ? `` : 'hidden'}>
+								<SettingsSection title=\"Context\" description=\"Context and memory management\">
+									<SettingsCard>
+										<SettingsRow title=\"Include Tool Lint Errors\" description=\"Include lint errors in tool context\">
+											<VoidSwitch size='xs' value={settingsState.globalSettings.includeToolLintErrors} onChange={(newVal) => voidSettingsService.setGlobalSetting('includeToolLintErrors', newVal)} />
+										</SettingsRow>
+										<SettingsRow title=\"Auto-accept LLM Changes\" description=\"Automatically accept file changes\">
+											<VoidSwitch size='xs' value={settingsState.globalSettings.autoAcceptLLMChanges} onChange={(newVal) => voidSettingsService.setGlobalSetting('autoAcceptLLMChanges', newVal)} />
+										</SettingsRow>
+									</SettingsCard>
+								</SettingsSection>
+							</div>
+
+							<div className={shouldShowTab('checkpoints') ? `` : 'hidden'}>
+								<SettingsSection title=\"Checkpoints\" description=\"Checkpoint and history management\">
+									<SettingsCard>
+										<SettingsRow title=\"Enable Checkpoints\" description=\"Create checkpoints before AI changes\">
+											<VoidSwitch size='xs' value={true} onChange={() => {}} />
+										</SettingsRow>
+									</SettingsCard>
+								</SettingsSection>
+							</div>
+
+							<div className={shouldShowTab('language') ? `` : 'hidden'}>
+								<SettingsSection title=\"Language\" description=\"Language preferences\">
+									<SettingsCard>
+										<SettingsRow title=\"Display Language\" description=\"Language for the UI\">
+											<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>English</span>
+										</SettingsRow>
+									</SettingsCard>
+								</SettingsSection>
+							</div>
+
+							<div className={shouldShowTab('experimental') ? `` : 'hidden'}>
+								<SettingsSection title=\"Experimental\" description=\"Experimental features\">
+									<SettingsCard>
+										<SettingsRow title=\"Fast Apply\" description=\"Use fast apply for code changes\">
+											<FastApplyMethodDropdown />
+										</SettingsRow>
+									</SettingsCard>
+								</SettingsSection>
+							</div>
+
+							<div className={shouldShowTab('about') ? `` : 'hidden'}>
+								<SettingsSection title=\"About\" description=\"About Loophole\">
+									<SettingsCard>
+										<SettingsRow title=\"Version\" description=\"Loophole IDE version\">
+											<span className='text-[12px] text-[var(--vscode-descriptionForeground)]'>Latest</span>
+										</SettingsRow>
+										<SettingsRow title=\"Redo Onboarding\" description=\"Restart the onboarding flow\">
+											<RedoOnboardingButton />
+										</SettingsRow>
+									</SettingsCard>
+								</SettingsSection>
+							</div>
 
 						</div>
-
 					</div>
 				</main>
 			</div>

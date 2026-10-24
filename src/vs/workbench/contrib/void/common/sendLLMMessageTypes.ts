@@ -95,6 +95,10 @@ export type TokenUsageInfo = {
 	inputTokens: number;
 	outputTokens: number;
 	totalTokens: number;
+	/** Exact cost reported by the engine for this turn. Omitted for providers without pricing. */
+	costUSD?: number;
+	/** Context size of the most recent request (input + cache read/write). Drives the context-window gauge. */
+	contextTokens?: number;
 	providerName?: string;
 	modelName?: string;
 }
@@ -103,6 +107,9 @@ export type OnText = (p: { fullText: string; fullReasoning: string; toolCall?: R
 export type OnFinalMessage = (p: { fullText: string; fullReasoning: string; toolCall?: RawToolCallObj; anthropicReasoning: AnthropicReasoning[] | null; tokenUsage?: TokenUsageInfo }) => void // id is tool_use_id
 export type OnError = (p: { message: string; fullError: Error | null }) => void
 export type OnAbort = () => void
+export type OnFileChanged = (p: { uri: string; afterContent: string }) => void
+/** Fires after every engine step with the real request size, so gauges update mid-turn. */
+export type OnTokenUsage = (p: { contextTokens: number }) => void
 export type AbortRef = { current: (() => void) | null }
 
 
@@ -127,6 +134,8 @@ export type ServiceSendLLMMessageParams = {
 	modelSelectionOptions: ModelSelectionOptions | undefined;
 	overridesOfModel: OverridesOfModel | undefined;
 	onAbort: OnAbort;
+	onFileChanged?: OnFileChanged;
+	onTokenUsage?: OnTokenUsage;
 } & SendLLMType;
 
 // params to the true sendLLMMessage function
@@ -143,12 +152,14 @@ export type SendLLMMessageParams = {
 
 	settingsOfProvider: SettingsOfProvider;
 	mcpTools: InternalToolInfo[] | undefined;
+	onFileChanged?: OnFileChanged;
+	onTokenUsage?: OnTokenUsage;
 } & SendLLMType
 
 
 
 // can't send functions across a proxy, use listeners instead
-export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'abortRef'
+export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'abortRef' | 'onFileChanged' | 'onTokenUsage'
 export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams> & { requestId: string } & SendLLMType
 
 export type MainLLMMessageAbortParams = { requestId: string }
@@ -156,6 +167,8 @@ export type MainLLMMessageAbortParams = { requestId: string }
 export type EventLLMMessageOnTextParams = Parameters<OnText>[0] & { requestId: string }
 export type EventLLMMessageOnFinalMessageParams = Parameters<OnFinalMessage>[0] & { requestId: string }
 export type EventLLMMessageOnErrorParams = Parameters<OnError>[0] & { requestId: string }
+export type EventLLMMessageOnFileChangedParams = Parameters<OnFileChanged>[0] & { requestId: string }
+export type EventLLMMessageOnTokenUsageParams = Parameters<OnTokenUsage>[0] & { requestId: string }
 
 // service -> main -> internal -> event (back to main)
 // (browser)

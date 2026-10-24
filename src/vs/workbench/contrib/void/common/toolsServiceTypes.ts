@@ -72,6 +72,11 @@ export type BuiltinToolCallParams = {
 	'kill_persistent_terminal': { persistentTerminalId: string },
 	// --- todos ---
 	'todo_write': { todos: TodoItem[] },
+	// --- engine tools (rendered in UI, executed by engine) ---
+	'glob': { pattern: string, path: string | null, hidden: boolean, limit: number },
+	'grep': { pattern: string, path: string | null, include: string | null, literal: boolean, caseSensitive: boolean, limit: number },
+	'websearch': { query: string },
+	'subagent': { agent: string, prompt: string },
 }
 
 // RESULT OF TOOL CALL
@@ -97,6 +102,11 @@ export type BuiltinToolResultType = {
 	'kill_persistent_terminal': {},
 	// --- todos ---
 	'todo_write': { todos: TodoItem[] },
+	// --- engine tools (rendered in UI, executed by engine) ---
+	'glob': { result: string },
+	'grep': { result: string },
+	'websearch': { result: string },
+	'subagent': { result: string },
 }
 
 

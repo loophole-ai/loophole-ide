@@ -237,7 +237,7 @@ const UsageChart = ({ data, allModels }: ChartProps) => {
                         {/* Cost row if non-zero */}
                         {tooltip.entry.cost > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-                                <span style={{ color: 'var(--loophole-fg-3)' }}>Est. cost</span>
+                                <span style={{ color: 'var(--loophole-fg-3)' }}>Cost</span>
                                 <span style={{ color: 'var(--loophole-fg-2)', fontWeight: 600 }}>
                                     {formatDollarCount(tooltip.entry.cost)}
                                 </span>
@@ -357,7 +357,7 @@ export const TokenUsageDialog = ({ isOpen: isOpenProp, _ts }: Props) => {
 
                         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                             <Pill label='Total tokens' value={formatTokenCount(totalTokens)} />
-                            {totalCost > 0 && <Pill label='Est. cost' value={formatDollarCount(totalCost)} />}
+                            {totalCost > 0 && <Pill label='Cost' value={formatDollarCount(totalCost)} />}
                             <button
                                 onClick={close}
                                 style={{

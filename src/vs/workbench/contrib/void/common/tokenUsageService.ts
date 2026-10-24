@@ -20,6 +20,8 @@ export type TokenUsageInfo = {
 	inputTokens: number;
 	outputTokens: number;
 	totalTokens: number;
+	/** Exact cost reported by the engine for this turn, when available. */
+	costUSD?: number;
 	providerName?: string;
 	modelName?: string;
 };
@@ -39,6 +41,8 @@ export type DailyTokenEntry = {
 const FREE_PROVIDERS = new Set<string>(['ollama', 'vLLM', 'lmStudio']);
 
 export function estimateCost(tokens: TokenUsageInfo): number {
+	// The engine reports an exact per-step cost; only fall back to the catalog when it does not.
+	if (typeof tokens.costUSD === 'number') return tokens.costUSD;
 	if (!tokens.providerName || FREE_PROVIDERS.has(tokens.providerName)) return 0;
 	if (!tokens.modelName) return 0;
 
@@ -47,7 +51,7 @@ export function estimateCost(tokens: TokenUsageInfo): number {
 		const { input, output } = caps.cost;
 		return (tokens.inputTokens / 1_000_000) * input + (tokens.outputTokens / 1_000_000) * output;
 	} catch {
-		return (tokens.inputTokens / 1_000_000) * 1.0 + (tokens.outputTokens / 1_000_000) * 3.0;
+		return 0;
 	}
 }
 

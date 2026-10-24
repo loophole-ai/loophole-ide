@@ -378,6 +378,39 @@ Skip when:
 		}
 	},
 
+	// --- engine tools (rendered in UI, executed by engine) ---
+	glob: {
+		name: 'glob',
+		description: 'Search file paths using a glob pattern.',
+		params: {
+			pattern: { description: 'Glob pattern to match files against' },
+			path: { description: 'Directory to search. Defaults to the current working directory.' },
+		}
+	},
+	grep: {
+		name: 'grep',
+		description: 'Search file contents using a regular expression or literal text.',
+		params: {
+			pattern: { description: 'Regular expression or literal text to match' },
+			path: { description: 'File or directory to search. Defaults to the current working directory.' },
+			include: { description: 'Glob pattern to filter files' },
+		}
+	},
+	websearch: {
+		name: 'websearch',
+		description: 'Search the web for current information.',
+		params: {
+			query: { description: 'Search query' },
+		}
+	},
+	subagent: {
+		name: 'subagent',
+		description: 'Run a subagent to perform a task in the background.',
+		params: {
+			prompt: { description: 'The task for the subagent to perform' },
+		}
+	},
+
 	open_persistent_terminal: {
 		name: 'open_persistent_terminal',
 		description: `Use this tool when you want to run a terminal command indefinitely, like a dev server (eg \`npm run dev\`), a background listener, etc. Opens a new terminal in the user's environment which will not awaited for or killed.`,

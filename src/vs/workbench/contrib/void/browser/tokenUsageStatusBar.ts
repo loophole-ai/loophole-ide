@@ -38,7 +38,7 @@ export class TokenUsageStatusBarService extends Disposable implements ITokenUsag
 			{
 				name: localize('tokenUsage', 'Token Usage & Cost'),
 				text: this.getTokenText(),
-				ariaLabel: localize('tokenUsageAria', 'Total tokens used: {0}, Estimated cost: {1}', formatTokenCount(this.tokenUsageService.getTotalTokensUsed()), formatDollarCount(this.tokenUsageService.getEstimatedCost())),
+				ariaLabel: localize('tokenUsageAria', 'Total tokens used: {0}, Cost: {1}', formatTokenCount(this.tokenUsageService.getTotalTokensUsed()), formatDollarCount(this.tokenUsageService.getEstimatedCost())),
 				tooltip: localize('tokenUsageTooltip', 'Click to view token usage graph'),
 				command: OPEN_TOKEN_USAGE_DIALOG_COMMAND_ID,
 			},
@@ -53,7 +53,7 @@ export class TokenUsageStatusBarService extends Disposable implements ITokenUsag
 				accessor.update({
 					name: localize('tokenUsage', 'Token Usage & Cost'),
 					text: this.getTokenText(),
-					ariaLabel: localize('tokenUsageAria', 'Total tokens used: {0}, Estimated cost: {1}', formatTokenCount(this.tokenUsageService.getTotalTokensUsed()), formatDollarCount(this.tokenUsageService.getEstimatedCost())),
+					ariaLabel: localize('tokenUsageAria', 'Total tokens used: {0}, Cost: {1}', formatTokenCount(this.tokenUsageService.getTotalTokensUsed()), formatDollarCount(this.tokenUsageService.getEstimatedCost())),
 					tooltip: localize('tokenUsageTooltip', 'Click to view token usage graph'),
 					command: OPEN_TOKEN_USAGE_DIALOG_COMMAND_ID,
 				});

@@ -38,6 +38,7 @@ import { deepClone } from '../../../../base/common/objects.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IDirectoryStrService } from '../common/directoryStrService.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
+import { VSBuffer } from '../../../../base/common/buffer.js';
 import { IMCPService } from '../common/mcpService.js';
 import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
 import { ITokenUsageService } from '../common/tokenUsageService.js';
@@ -824,13 +825,35 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						// Track token usage if available
 						if (tokenUsage) {
 							this._tokenUsageService.addTokens({ ...tokenUsage, providerName: modelSelection?.providerName, modelName: modelSelection?.modelName })
-							// Update context window indicator — inputTokens IS the current context size
+							// The context window is the size of the most recent request, not the
+							// sum of every step in the turn.
 							const thread = this.state.allThreads[threadId]
 							if (thread) {
-								this._setThreadState(threadId, { cumulativeTokenCount: tokenUsage.inputTokens })
+								this._setThreadState(threadId, { cumulativeTokenCount: tokenUsage.contextTokens ?? tokenUsage.inputTokens })
 							}
 						}
 						resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText, fullReasoning, anthropicReasoning } }) // resolve with tool calls
+					},
+					onTokenUsage: ({ contextTokens }) => {
+						// Update the context-window gauge mid-turn, right after each step settles.
+						const thread = this.state.allThreads[threadId]
+						if (thread) {
+							this._setThreadState(threadId, { cumulativeTokenCount: contextTokens })
+						}
+					},
+					onFileChanged: ({ uri, afterContent }) => {
+						const fileUri = URI.file(uri)
+						this._voidModelService.initializeModel(fileUri).then(() => {
+							const { model } = this._voidModelService.getModel(fileUri)
+							if (!model) {
+								// File not open in editor — keep the change applied, no diff UI
+								// Re-apply the after-state since main process reverted it
+								this._fileService.writeFile(fileUri, VSBuffer.fromString(afterContent)).catch(() => undefined)
+								return
+							}
+							this._editCodeService.instantlyRewriteFile({ uri: fileUri, newContent: afterContent })
+							this._addToolEditCheckpoint({ threadId, uri: fileUri })
+						}).catch(() => undefined)
 					},
 					onError: async (error) => {
 						resMessageIsDonePromise({ type: 'llmError', error: error })

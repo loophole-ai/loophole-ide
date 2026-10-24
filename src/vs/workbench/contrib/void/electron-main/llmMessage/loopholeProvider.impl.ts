@@ -15,6 +15,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import { LLMChatMessage, OnError, OnFinalMessage, OnText, TokenUsageInfo } from '../../common/sendLLMMessageTypes.js';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { ChatMode, ModelSelectionOptions, OverridesOfModel, ProviderName, SettingsOfProvider } from '../../common/voidSettingsTypes.js';
 import { InternalToolInfo } from '../../common/prompt/prompts.js';
 import { estimateTokens } from '../../common/tokenizer.js';
@@ -27,6 +28,7 @@ import {
 	EngineModelRef,
 	EngineRequestError,
 	formatModelRef,
+	generateFim,
 	generateText,
 	interrupt,
 	prompt as enginePrompt,
@@ -45,6 +47,8 @@ type SendChatParams = {
 	onText: OnText;
 	onFinalMessage: OnFinalMessage;
 	onError: OnError;
+	onFileChanged?: (p: { uri: string; afterContent: string }) => void;
+	onTokenUsage?: (p: { contextTokens: number }) => void;
 	settingsOfProvider: SettingsOfProvider;
 	modelSelectionOptions: ModelSelectionOptions | undefined;
 	overridesOfModel: OverridesOfModel | undefined;
@@ -264,7 +268,9 @@ async function runSessionPrompt(
 	let fullText = '';
 	let fullReasoning = '';
 	let lastInputTokens = 0;
+	let totalInputTokens = 0;
 	let totalOutputTokens = 0;
+	let totalCostUSD = 0;
 	const textParts = new Map<string, string>();
 	const reasoningParts = new Map<string, string>();
 	// Stream fragments are best-effort, so a late delta must not be appended after the
@@ -272,6 +278,7 @@ async function runSessionPrompt(
 	// reasoning parts share ordinals, so they need separate ended sets.
 	const endedTextParts = new Set<string>();
 	const endedReasoningParts = new Set<string>();
+	const fileEditBeforeStates = new Map<string, { path: string; before: string }[]>();
 
 	const rebuild = () => {
 		fullText = [...textParts.values()].filter(Boolean).join('\n\n');
@@ -296,11 +303,13 @@ async function runSessionPrompt(
 		settled = true;
 		dispose?.();
 		if (kind === 'final') {
-			const tokenUsage: TokenUsageInfo | undefined = (lastInputTokens || totalOutputTokens)
+			const tokenUsage: TokenUsageInfo | undefined = (totalInputTokens || totalOutputTokens)
 				? {
-					inputTokens: lastInputTokens,
+					inputTokens: totalInputTokens,
 					outputTokens: totalOutputTokens,
-					totalTokens: lastInputTokens + totalOutputTokens,
+					totalTokens: totalInputTokens + totalOutputTokens,
+					costUSD: totalCostUSD,
+					contextTokens: lastInputTokens,
 					providerName: providerNameLoophole,
 					modelName: state.modelName,
 				}
@@ -419,18 +428,65 @@ async function runSessionPrompt(
 				const tokens = record(data.tokens);
 				const cache = record(tokens?.cache);
 				if (tokens) {
-					lastInputTokens = numberValue(tokens.input) + numberValue(cache?.read) + numberValue(cache?.write);
+					const stepInput = numberValue(tokens.input) + numberValue(cache?.read) + numberValue(cache?.write);
+					lastInputTokens = stepInput;
+					totalInputTokens += stepInput;
 					totalOutputTokens += numberValue(tokens.output) + numberValue(tokens.reasoning);
+					// Push the exact request size as soon as each step settles so the
+					// context-window gauge tracks long agentic turns instead of freezing.
+					params.onTokenUsage?.({ contextTokens: lastInputTokens });
 				}
+				totalCostUSD += numberValue(data.cost);
 				return;
 			}
 			case 'permission.asked': {
 				const requestID = typeof data.id === 'string' ? data.id : undefined;
+				const action = typeof data.action === 'string' ? data.action : undefined;
+				const resources = Array.isArray(data.resources) ? data.resources.filter((r) => typeof r === 'string') : [];
+				const source = (data.source && typeof data.source === 'object') ? data.source as { messageID?: string; id?: string } : undefined;
 				if (requestID) {
-					// The engine owns the tool loop; without a reply it blocks forever.
-					// Its own deny rules have already run, so only actual 'ask' prompts land here.
+					if (action === 'edit' && resources.length > 0) {
+						const beforeStates: { path: string; before: string }[] = [];
+						for (const resource of resources) {
+							try {
+								const before = existsSync(resource) ? readFileSync(resource, 'utf-8') : '';
+								beforeStates.push({ path: resource, before });
+							} catch {
+								beforeStates.push({ path: resource, before: '' });
+							}
+						}
+						const key = source?.messageID && source?.id ? `${source.messageID}:${source.id}` : requestID;
+						fileEditBeforeStates.set(key, beforeStates);
+					}
 					void replyPermission(credentials, sessionID ?? state.sessionID, requestID, 'once').catch(() => undefined);
 				}
+				return;
+			}
+			case 'session.tool.success': {
+				const assistantMessageID = typeof data.assistantMessageID === 'string' ? data.assistantMessageID : undefined;
+				const toolID = typeof data.id === 'string' ? data.id : undefined;
+				const key = assistantMessageID && toolID ? `${assistantMessageID}:${toolID}` : undefined;
+				const beforeStates = key ? fileEditBeforeStates.get(key) : undefined;
+				if (beforeStates && params.onFileChanged) {
+					fileEditBeforeStates.delete(key!);
+					for (const { path: filePath, before } of beforeStates) {
+						try {
+							const after = existsSync(filePath) ? readFileSync(filePath, 'utf-8') : '';
+							// Revert to before-state so the IDE can show a diff
+							writeFileSync(filePath, before);
+							params.onFileChanged({ uri: filePath, afterContent: after });
+						} catch {
+							// Skip files that can't be read/written
+						}
+					}
+				}
+				return;
+			}
+			case 'session.tool.failed': {
+				const assistantMessageID = typeof data.assistantMessageID === 'string' ? data.assistantMessageID : undefined;
+				const toolID = typeof data.id === 'string' ? data.id : undefined;
+				const key = assistantMessageID && toolID ? `${assistantMessageID}:${toolID}` : undefined;
+				if (key) fileEditBeforeStates.delete(key);
 				return;
 			}
 			case 'form.created': {
@@ -636,7 +692,6 @@ const sendChat = async (params: SendChatParams): Promise<void> => {
 		const staleSession = error instanceof StaleSessionError
 			|| (error instanceof EngineRequestError && error.status === 404);
 		if (staleSession && params.threadId) {
-			// The engine restarted (or the session was removed). Recreate it and replay.
 			threadsByThread.delete(params.threadId);
 			try {
 				await sendViaSession(params, true);
@@ -655,11 +710,54 @@ const sendChat = async (params: SendChatParams): Promise<void> => {
 	}
 };
 
+type SendFIMParams = {
+	messages: { prefix: string; suffix: string };
+	onText: OnText;
+	onFinalMessage: OnFinalMessage;
+	onError: OnError;
+	settingsOfProvider: SettingsOfProvider;
+	modelSelectionOptions: ModelSelectionOptions | undefined;
+	overridesOfModel: OverridesOfModel | undefined;
+	modelName: string;
+	_setAborter: (aborter: () => void) => void;
+	providerName: ProviderName;
+};
+
+const sendFIM = async (params: SendFIMParams): Promise<void> => {
+	const credentials = await connect();
+	const model = await resolveModelRef(credentials, params.modelName);
+	const controller = new AbortController();
+	params._setAborter(() => controller.abort());
+	try {
+		const text = await generateFim(credentials, {
+			prefix: params.messages.prefix,
+			suffix: params.messages.suffix,
+			model,
+		}, controller.signal);
+		if (controller.signal.aborted) {
+			return;
+		}
+		params.onText({ fullText: text, fullReasoning: '' });
+		params.onFinalMessage({
+			fullText: text,
+			fullReasoning: '',
+			anthropicReasoning: null,
+			tokenUsage: undefined,
+		});
+	} catch (error) {
+		if (isAbortError(error) || controller.signal.aborted) {
+			return;
+		}
+		params.onError({
+			message: error instanceof Error ? error.message : String(error),
+			fullError: error instanceof Error ? error : null,
+		});
+	}
+};
+
 export const sendLLMMessageToLoopholeImplementation = {
 	sendChat,
-	// No FIM: the engine has no fill-in-middle model, so autocomplete stays on the IDE's
-	// own providers. Returning undefined makes the dispatcher report that clearly.
-	sendFIM: undefined,
+	sendFIM,
 };
 
 export const displayInfoLoophole = {

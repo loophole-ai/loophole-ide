@@ -544,6 +544,13 @@ const RenderToken = ({ token, inPTag, codeURI, chatMessageLocation, tokenIdx, ..
 
 
 export const ChatMarkdownRender = ({ string, inPTag = false, chatMessageLocation, ...options }: { string: string, inPTag?: boolean, codeURI?: URI, chatMessageLocation: ChatMessageLocation | undefined } & RenderTokenOptions) => {
+	// Some models wrap their entire response in a single code fence (```...```).
+	// Unwrap it so the content renders as normal markdown instead of a code block.
+	const trimmed = string.trim()
+	const fenceMatch = trimmed.match(/^```[a-zA-Z0-9_+-]*\n([\s\S]*?)\n```$/)
+	if (fenceMatch) {
+		string = fenceMatch[1]
+	}
 	string = string.replaceAll('\n•', '\n\n•')
 	const tokens = marked.lexer(string); // https://marked.js.org/using_pro#renderer
 	return (

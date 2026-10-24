@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMessageOnFinalMessageParams, ServiceSendLLMMessageParams, MainSendLLMMessageParams, MainLLMMessageAbortParams, ServiceModelListParams, EventModelListOnSuccessParams, EventModelListOnErrorParams, MainModelListParams, OllamaModelResponse, OpenaiCompatibleModelResponse, } from './sendLLMMessageTypes.js';
+import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMessageOnFinalMessageParams, EventLLMMessageOnFileChangedParams, EventLLMMessageOnTokenUsageParams, ServiceSendLLMMessageParams, MainSendLLMMessageParams, MainLLMMessageAbortParams, ServiceModelListParams, EventModelListOnSuccessParams, EventModelListOnErrorParams, MainModelListParams, OllamaModelResponse, OpenaiCompatibleModelResponse, } from './sendLLMMessageTypes.js';
 import { ModelSelection } from './voidSettingsTypes.js';
 
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
@@ -39,6 +39,8 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		onText: {} as { [eventId: string]: ((params: EventLLMMessageOnTextParams) => void) },
 		onFinalMessage: {} as { [eventId: string]: ((params: EventLLMMessageOnFinalMessageParams) => void) },
 		onError: {} as { [eventId: string]: ((params: EventLLMMessageOnErrorParams) => void) },
+		onFileChanged: {} as { [eventId: string]: ((params: EventLLMMessageOnFileChangedParams) => void) },
+		onTokenUsage: {} as { [eventId: string]: ((params: EventLLMMessageOnTokenUsageParams) => void) },
 		onAbort: {} as { [eventId: string]: (() => void) }, // NOT sent over the channel, result is instant when we call .abort()
 	}
 
@@ -91,6 +93,12 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 			this.llmMessageHooks.onError[e.requestId]?.(e);
 			this._clearChannelHooks(e.requestId);
 		}))
+		this._register((this.channel.listen('onFileChanged_sendLLMMessage') satisfies Event<EventLLMMessageOnFileChangedParams>)(e => {
+			this.llmMessageHooks.onFileChanged[e.requestId]?.(e);
+		}))
+		this._register((this.channel.listen('onTokenUsage_sendLLMMessage') satisfies Event<EventLLMMessageOnTokenUsageParams>)(e => {
+			this.llmMessageHooks.onTokenUsage[e.requestId]?.(e);
+		}))
 		// .list()
 		this._register((this.channel.listen('onSuccess_list_ollama') satisfies Event<EventModelListOnSuccessParams<OllamaModelResponse>>)(e => {
 			this.listHooks.ollama.success[e.requestId]?.(e)
@@ -108,7 +116,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 	}
 
 	sendLLMMessage(params: ServiceSendLLMMessageParams) {
-		const { onText, onFinalMessage, onError, onAbort, modelSelection, ...proxyParams } = params;
+		const { onText, onFinalMessage, onError, onAbort, onFileChanged, onTokenUsage, modelSelection, ...proxyParams } = params;
 
 		// throw an error if no model/provider selected (this should usually never be reached, the UI should check this first, but might happen in cases like Apply where we haven't built much UI/checks yet, good practice to have check logic on backend)
 		if (modelSelection === null) {
@@ -132,6 +140,8 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		this.llmMessageHooks.onText[requestId] = onText
 		this.llmMessageHooks.onFinalMessage[requestId] = onFinalMessage
 		this.llmMessageHooks.onError[requestId] = onError
+		if (onFileChanged) this.llmMessageHooks.onFileChanged[requestId] = onFileChanged
+		if (onTokenUsage) this.llmMessageHooks.onTokenUsage[requestId] = onTokenUsage
 		this.llmMessageHooks.onAbort[requestId] = onAbort // used internally only
 		this.requestModelSelection[requestId] = modelSelection
 
@@ -194,6 +204,9 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		delete this.llmMessageHooks.onText[requestId]
 		delete this.llmMessageHooks.onFinalMessage[requestId]
 		delete this.llmMessageHooks.onError[requestId]
+		delete this.llmMessageHooks.onFileChanged[requestId]
+		delete this.llmMessageHooks.onTokenUsage[requestId]
+		delete this.llmMessageHooks.onAbort[requestId]
 		delete this.requestModelSelection[requestId]
 
 		delete this.listHooks.ollama.success[requestId]
