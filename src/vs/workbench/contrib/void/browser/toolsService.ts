@@ -314,6 +314,10 @@ export class ToolsService implements IToolsService {
 				}));
 				return { todos };
 			},
+			glob: (params: RawToolParamsObj) => ({ result: '' } as any),
+			grep: (params: RawToolParamsObj) => ({ result: '' } as any),
+			websearch: (params: RawToolParamsObj) => ({ result: '' } as any),
+			subagent: (params: RawToolParamsObj) => ({ result: '' } as any),
 
 		}
 
@@ -503,6 +507,10 @@ export class ToolsService implements IToolsService {
 				this.storageService.store(TODO_STORAGE_KEY, JSON.stringify(todos), StorageScope.WORKSPACE, StorageTarget.MACHINE)
 				return { result: { todos } }
 			},
+			glob: async () => ({ result: { result: '' } } as any),
+			grep: async () => ({ result: { result: '' } } as any),
+			websearch: async () => ({ result: { result: '' } } as any),
+			subagent: async () => ({ result: { result: '' } } as any),
 		}
 
 
@@ -616,6 +624,10 @@ export class ToolsService implements IToolsService {
 				const summary = result.todos.map((t, i) => `${i + 1}. [${t.status}] (${t.priority}) ${t.content}`).join('\n');
 				return `Todos updated:\n${summary}`;
 			},
+			glob: () => '',
+			grep: () => '',
+			websearch: () => '',
+			subagent: () => '',
 		}
 
 
