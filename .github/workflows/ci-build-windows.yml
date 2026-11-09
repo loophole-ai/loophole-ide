@@ -216,7 +216,7 @@ jobs:
           }
 
       - name: Upload — User Installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: LoopholeUserSetup-x64-${{ env.VERSION }}
           path: dist/LoopholeUserSetup-x64-${{ env.VERSION }}.exe
@@ -224,7 +224,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload — System Installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: LoopholeSetup-x64-${{ env.VERSION }}
           path: dist/LoopholeSetup-x64-${{ env.VERSION }}.exe
@@ -423,7 +423,7 @@ jobs:
           }
 
       - name: Upload — User Installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: LoopholeUserSetup-arm64-${{ env.VERSION }}
           path: dist/LoopholeUserSetup-arm64-${{ env.VERSION }}.exe
@@ -431,7 +431,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload — System Installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: LoopholeSetup-arm64-${{ env.VERSION }}
           path: dist/LoopholeSetup-arm64-${{ env.VERSION }}.exe
