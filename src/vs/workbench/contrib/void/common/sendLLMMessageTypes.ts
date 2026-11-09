@@ -199,7 +199,7 @@ export type SendLLMMessageParams = {
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
 	abortRef: AbortRef;
 
-	modelSelection: ModelSelection;
+	modelSelection: ModelSelection | null;
 	modelSelectionOptions: ModelSelectionOptions | undefined;
 	overridesOfModel: OverridesOfModel | undefined;
 
