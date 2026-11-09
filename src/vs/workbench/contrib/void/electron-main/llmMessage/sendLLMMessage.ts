@@ -7,6 +7,7 @@ import { SendLLMMessageParams, OnText, OnFinalMessage, OnError } from '../../com
 import { IMetricsService } from '../../common/metricsService.js';
 import { displayInfoOfProviderName } from '../../common/voidSettingsTypes.js';
 import { sendLLMMessageToProviderImplementation } from './sendLLMMessage.impl.js';
+import { sendLoopholeServeChat } from './loopholeServeChat.js';
 
 
 export const sendLLMMessage = async ({
@@ -24,12 +25,30 @@ export const sendLLMMessage = async ({
 	chatMode,
 	separateSystemMessage,
 	mcpTools,
-}: SendLLMMessageParams,
+	serve,
+}: SendLLMMessageParams & Partial<{ serve: { enabled: boolean; model?: { providerID: string; modelID: string } | null } }>,
 
 	metricsService: IMetricsService
 ) => {
 
-
+	// Phase 2: Loophole Serve transport (behind `loophole.serve.enabled`).
+	// modelSelection may be null here because serve models come from the server (Phase 1).
+	if (serve?.enabled && messagesType === 'chatMessages') {
+		await sendLoopholeServeChat({
+			messages: messages_,
+			separateSystemMessage,
+			modelRef: serve.model ?? null,
+			onText: onText_,
+			onFinalMessage: onFinalMessage_,
+			onError: onError_,
+			_setAborter: (fn: () => void) => { abortRef_.current = fn; },
+		});
+		return;
+	}
+	if (!modelSelection) {
+		onError_({ message: 'Please add a provider in Loophole\'s Settings.', fullError: null });
+		return;
+	}
 	const { providerName, modelName } = modelSelection
 
 	// only captures number of messages and message "shape", no actual code, instructions, prompts, etc

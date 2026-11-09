@@ -15,6 +15,7 @@ import { Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IVoidSettingsService } from './voidSettingsService.js';
 import { IMCPService } from './mcpService.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 
 // calls channel to implement features
 export const ILLMMessageService = createDecorator<ILLMMessageService>('llmMessageService');
@@ -67,6 +68,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		// @INotificationService private readonly notificationService: INotificationService,
 		@IMCPService private readonly mcpService: IMCPService,
+		@IConfigurationService private readonly configService: IConfigurationService,
 	) {
 		super()
 
@@ -110,8 +112,17 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 	sendLLMMessage(params: ServiceSendLLMMessageParams) {
 		const { onText, onFinalMessage, onError, onAbort, modelSelection, ...proxyParams } = params;
 
+		// Phase 2: Loophole Serve (server owns providers/models) — modelSelection may be null.
+		const serveEnabled = this.configService.getValue<boolean>('loophole.serve.enabled') === true;
+		const serveModelParam = this.configService.getValue<string>('loophole.serve.model') ?? '';
+		const serveModelSlash = serveModelParam.indexOf('/');
+		const serve = serveEnabled ? {
+			enabled: true,
+			model: serveModelSlash > 0 ? { providerID: serveModelParam.slice(0, serveModelSlash), modelID: serveModelParam.slice(serveModelSlash + 1) } : null,
+		} : undefined;
+
 		// throw an error if no model/provider selected (this should usually never be reached, the UI should check this first, but might happen in cases like Apply where we haven't built much UI/checks yet, good practice to have check logic on backend)
-		if (modelSelection === null) {
+		if (modelSelection === null && !serveEnabled) {
 			const message = `Please add a provider in Loophole's Settings.`
 			onError({ message, fullError: null })
 			return null
@@ -133,7 +144,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		this.llmMessageHooks.onFinalMessage[requestId] = onFinalMessage
 		this.llmMessageHooks.onError[requestId] = onError
 		this.llmMessageHooks.onAbort[requestId] = onAbort // used internally only
-		this.requestModelSelection[requestId] = modelSelection
+		if (modelSelection) this.requestModelSelection[requestId] = modelSelection
 
 		// params will be stripped of all its functions over the IPC channel
 		this.channel.call('sendLLMMessage', {
@@ -142,6 +153,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 			settingsOfProvider,
 			modelSelection,
 			mcpTools,
+			...(serve ? { serve } : {}),
 		} satisfies MainSendLLMMessageParams);
 
 		return requestId

@@ -18,6 +18,11 @@ import './quickEditActions.js'
 // register Autocomplete
 import './autocompleteService.js'
 
+// Loophole FIM autocomplete + status bar (Phases 3) + configuration registry
+import './loopholeConfiguration.js'
+import './loopholeFimProvider.js'
+import './loopholeAutocompleteStatusBar.js'
+
 // register Context services
 // import './contextGatheringService.js'
 // import './contextUserChangesService.js'

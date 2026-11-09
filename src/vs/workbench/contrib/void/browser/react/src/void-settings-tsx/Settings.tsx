@@ -33,6 +33,7 @@ type Tab =
 	| 'apple'
 	| 'localOther'
 	| 'providers'
+	| 'serve'
 	| 'featureOptions'
 	| 'mcp'
 	| 'general'
@@ -1023,6 +1024,211 @@ export const OneClickSwitchButton = ({ fromEditor = 'VS Code', className = '' }:
 }
 
 
+// Loophole Serve (Phase 1, additive + gated behind `loophole.serve.enabled`).
+// Direct provider settings elsewhere are untouched and remain the default.
+const LoopholeServeSettings = () => {
+	const accessor = useAccessor()
+	const configService = accessor.get('IConfigurationService')
+	const serveService = accessor.get('ILoopholeServeService')
+
+	const [serveEnabled, setServeEnabled] = useState<boolean>(() => configService.getValue<boolean>('loophole.serve.enabled') === true)
+	const [serveModel, setServeModel] = useState<string>(() => configService.getValue<string>('loophole.serve.model') ?? '')
+	const [status, setStatus] = useState<string>('unknown')
+	const [providers, setProviders] = useState<{ id: string; name: string; integrationID?: string }[]>([])
+	const [models, setModels] = useState<{ id: string; modelID: string; providerID: string; name?: string }[]>([])
+	const [loading, setLoading] = useState(false)
+	const [serveError, setServeError] = useState<string | null>(null)
+	const [keyProviderId, setKeyProviderId] = useState<string | null>(null)
+	const [apiKey, setApiKey] = useState('')
+	const [keyMessage, setKeyMessage] = useState<string | null>(null)
+	const [busy, setBusy] = useState(false)
+
+	// FIM (Phase 3) settings
+	const [fimEnabled, setFimEnabled] = useState<boolean>(() => configService.getValue<boolean>('loophole.fim.enabled') !== false)
+	const [fimApiKey, setFimApiKey] = useState<string>(() => configService.getValue<string>('loophole.fim.apiKey') ?? '')
+	const [fimModel, setFimModel] = useState<string>(() => configService.getValue<string>('loophole.fim.model') ?? 'mercury-edit-2')
+	const [fimMessage, setFimMessage] = useState<string | null>(null)
+
+	useEffect(() => {
+		const refresh = () => {
+			setServeEnabled(configService.getValue<boolean>('loophole.serve.enabled') === true)
+			setServeModel(configService.getValue<string>('loophole.serve.model') ?? '')
+			setFimEnabled(configService.getValue<boolean>('loophole.fim.enabled') !== false)
+			setFimApiKey(configService.getValue<string>('loophole.fim.apiKey') ?? '')
+			setFimModel(configService.getValue<string>('loophole.fim.model') ?? 'mercury-edit-2')
+		}
+		const d = configService.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration('loophole.serve.enabled') || e.affectsConfiguration('loophole.serve.model') || e.affectsConfiguration('loophole.fim.enabled') || e.affectsConfiguration('loophole.fim.apiKey') || e.affectsConfiguration('loophole.fim.model')) refresh()
+		})
+		return () => { try { (d as { dispose?: () => void })?.dispose?.() } catch { /* best effort */ } }
+	}, [configService])
+
+	const loadServerInfo = useCallback(async () => {
+		setLoading(true)
+		setServeError(null)
+		try {
+			const st = await serveService.status()
+			setStatus(st.status + (st.error ? ` (${st.error})` : ''))
+			if (st.status === 'connected') {
+				const [pv, mv] = await Promise.all([
+					serveService.providers().catch(() => [] as { id: string; name: string; integrationID?: string }[]),
+					serveService.models().catch(() => [] as { id: string; modelID: string; providerID: string; name?: string }[]),
+				])
+				setProviders(pv)
+				setModels(mv)
+			}
+		} catch (e) {
+			setServeError(e instanceof Error ? e.message : String(e))
+		} finally {
+			setLoading(false)
+		}
+	}, [serveService])
+
+	useEffect(() => { if (serveEnabled) { loadServerInfo() } }, [serveEnabled, loadServerInfo])
+
+	const onConnect = async () => {
+		setBusy(true)
+		setServeError(null)
+		try {
+			const st = await serveService.connect()
+			setStatus(st.status + (st.error ? ` (${st.error})` : ''))
+			await loadServerInfo()
+		} catch (e) {
+			setServeError(e instanceof Error ? e.message : String(e))
+		} finally {
+			setBusy(false)
+		}
+	}
+
+	const onDisconnect = async () => {
+		setBusy(true)
+		try {
+			await serveService.disconnect()
+			setStatus('disconnected')
+			setProviders([])
+			setModels([])
+		} finally {
+			setBusy(false)
+		}
+	}
+
+	const modelOptions = models.map(m => `${m.providerID}/${m.modelID}`)
+	const keyableProviders = providers.filter(p => !!p.integrationID)
+
+	const onSaveKey = async () => {
+		const provider = providers.find(p => p.id === keyProviderId)
+		if (!provider?.integrationID) {
+			setKeyMessage('Select a provider with an integration.')
+			return
+		}
+		if (!apiKey) {
+			setKeyMessage('Enter an API key first.')
+			return
+		}
+		setKeyMessage('Saving...')
+		try {
+			await serveService.connectKey({ integrationID: provider.integrationID, key: apiKey })
+			setKeyMessage(`API key saved for ${provider.name} on the server.`)
+			setApiKey('')
+		} catch (e) {
+			setKeyMessage(`Failed to save key: ${e instanceof Error ? e.message : String(e)}`)
+		}
+	}
+
+	return <div>
+		<div className='flex items-center gap-x-2 my-2'>
+			<VoidSwitch
+				size='xs'
+				value={serveEnabled}
+				onChange={(newVal) => { configService.updateValue('loophole.serve.enabled', newVal); setServeEnabled(newVal) }}
+			/>
+			<span className='text-loophole-fg-3 text-xs pointer-events-none'>{serveEnabled ? 'Enabled (server owns providers/models)' : 'Disabled (direct providers, default)'}</span>
+		</div>
+
+		{serveEnabled && <ErrorBoundary>
+			<div className='flex items-center gap-x-2 my-2'>
+				<span className='text-loophole-fg-3 text-xs'>Server status:</span>
+				<span className='text-xs'>{loading ? 'Loading...' : status}</span>
+				{loading ? <Loader2 className='size-3 animate-spin' /> : null}
+			</div>
+			{serveError && <div className='text-red-500 text-xs my-1'>{serveError}</div>}
+			<div className='flex items-center gap-2 my-2'>
+				<VoidButtonBgDarken className='px-3 py-1' onClick={onConnect} disabled={busy || loading}>Connect</VoidButtonBgDarken>
+				<VoidButtonBgDarken className='px-3 py-1' onClick={onDisconnect} disabled={busy}>Disconnect</VoidButtonBgDarken>
+				<VoidButtonBgDarken className='px-3 py-1' onClick={loadServerInfo} disabled={busy || loading}>Refresh</VoidButtonBgDarken>
+			</div>
+
+			{status.startsWith('connected') && <div>
+				<div className='my-4'>
+					<h4 className='text-base'>Providers (from server)</h4>
+					{providers.length === 0 ? <div className='text-loophole-fg-3 text-xs'>No providers reported by the server.</div>
+						: <div className='text-xs'>{providers.map(p => <div key={p.id} className='py-0.5'>{p.name} <span className='text-loophole-fg-3'>({p.id}{p.integrationID ? '' : ' — no integration'})</span></div>)}</div>}
+				</div>
+
+				<div className='my-4'>
+					<h4 className='text-base'>Model (from server)</h4>
+					{models.length === 0 ? <div className='text-loophole-fg-3 text-xs'>No models reported by the server.</div>
+						: <ErrorBoundary>
+							<VoidCustomDropdownBox
+								options={modelOptions}
+								selectedOption={serveModel || null}
+								onChangeOption={(val: string | null) => { const v = val ?? ''; configService.updateValue('loophole.serve.model', v); setServeModel(v) }}
+								getOptionDisplayName={(v: string | null) => v ?? 'Server default'}
+								getOptionDropdownName={(v: string | null) => v ?? 'Server default'}
+								getOptionsEqual={(a: string | null, b: string | null) => a === b}
+								className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1 max-w-md'
+								arrowTouchesText={false}
+							/>
+							<div className='text-loophole-fg-3 text-xs mt-1'>Empty = server default model. Selection is stored as "providerID/modelID" and used for chat when Serve is on.</div>
+						</ErrorBoundary>}
+				</div>
+
+				<div className='my-4'>
+					<h4 className='text-base'>API Keys (stored on the server)</h4>
+					{keyableProviders.length === 0 ? <div className='text-loophole-fg-3 text-xs'>No providers with integrations reported by the server.</div>
+						: <div className='flex flex-col gap-2 max-w-md'>
+							<VoidCustomDropdownBox
+								options={keyableProviders.map(p => p.id)}
+								selectedOption={keyProviderId}
+								onChangeOption={(id: string | null) => setKeyProviderId(id)}
+								getOptionDisplayName={(id: string | null) => id ? (providers.find(p => p.id === id)?.name ?? id) : 'Provider'}
+								getOptionDropdownName={(id: string | null) => id ? (providers.find(p => p.id === id)?.name ?? id) : 'Provider'}
+								getOptionsEqual={(a: string | null, b: string | null) => a === b}
+								className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1'
+								arrowTouchesText={false}
+							/>
+							<VoidSimpleInputBox value={apiKey} onChangeValue={setApiKey} placeholder='API Key' passwordBlur={true} compact={true} />
+							<VoidButtonBgDarken className='px-3 py-1 w-fit' onClick={onSaveKey}>Save Key on Server</VoidButtonBgDarken>
+							{keyMessage && <div className='text-xs'>{keyMessage}</div>}
+						</div>}
+				</div>
+			</div>}
+
+			<div className='my-4'>
+				<h4 className='text-base'>FIM Autocomplete (Inception, direct)</h4>
+				<div className='flex items-center gap-x-2 my-2'>
+					<VoidSwitch
+						size='xs'
+						value={fimEnabled}
+						onChange={(newVal) => { configService.updateValue('loophole.fim.enabled', newVal); setFimEnabled(newVal) }}
+					/>
+					<span className='text-loophole-fg-3 text-xs pointer-events-none'>{fimEnabled ? 'Enabled (needs an Inception API key)' : 'Disabled'}</span>
+				</div>
+				<div className='flex flex-col gap-2 max-w-md'>
+					<VoidSimpleInputBox value={fimApiKey} onChangeValue={setFimApiKey} placeholder='Inception API Key' passwordBlur={true} compact={true} />
+					<VoidSimpleInputBox value={fimModel} onChangeValue={setFimModel} placeholder='mercury-edit-2' compact={true} />
+					<VoidButtonBgDarken className='px-3 py-1 w-fit' onClick={() => {
+						configService.updateValue('loophole.fim.apiKey', fimApiKey)
+						configService.updateValue('loophole.fim.model', fimModel)
+						setFimMessage('Saved. FIM autocomplete does nothing until a key is set.')
+					}}>Save FIM Settings</VoidButtonBgDarken>
+					{fimMessage && <div className='text-xs'>{fimMessage}</div>}
+				</div>
+			</div>
+		</ErrorBoundary>}
+	</div>
+}
+
 // full settings
 
 // MCP Server component
@@ -1149,6 +1355,7 @@ export const Settings = () => {
 		]) : []),
 		{ tab: 'localOther', label: 'Local (other)' },
 		{ tab: 'providers', label: 'Main Providers' },
+		{ tab: 'serve', label: 'Loophole Serve' },
 		{ tab: 'featureOptions', label: 'Feature Options' },
 		{ tab: 'general', label: 'General' },
 		{ tab: 'mcp', label: 'MCP' },
@@ -1370,6 +1577,15 @@ export const Settings = () => {
 									<h3 className={`text-loophole-fg-3 mb-2`}>{`Loophole can access models from Anthropic, OpenAI, OpenRouter, and more.`}</h3>
 
 									<VoidProviderSettings providerNames={nonlocalProviderNames} />
+								</ErrorBoundary>
+							</div>
+
+							{/* Loophole Serve section (Phase 1, inert unless `loophole.serve.enabled`) */}
+							<div className={shouldShowTab('serve') ? `` : 'hidden'}>
+								<ErrorBoundary>
+									<h2 className={`text-3xl mb-2`}>Loophole Serve</h2>
+									<h3 className={`text-loophole-fg-3 mb-2`}>{`When enabled, the bundled Loophole Serve backend owns providers, models, and chat transport. Direct provider settings above stay intact and remain the default.`}</h3>
+									<LoopholeServeSettings />
 								</ErrorBoundary>
 							</div>
 

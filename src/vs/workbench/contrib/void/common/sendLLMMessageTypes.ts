@@ -147,9 +147,17 @@ export type SendLLMMessageParams = {
 
 
 
+// Loophole Serve overrides the provider-backed transport (Phase 2). When set, the
+// main process routes chat to the serve server instead of `modelSelection`'s provider.
+export type ServeOverrides = {
+	enabled: boolean;
+	// server model (Phase 1 picker / default); undefined = server's own default
+	model?: { providerID: string; modelID: string } | null;
+}
+
 // can't send functions across a proxy, use listeners instead
 export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'abortRef'
-export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams> & { requestId: string } & SendLLMType
+export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams> & { requestId: string, modelSelection: ModelSelection | null, serve?: ServeOverrides } & SendLLMType
 
 export type MainLLMMessageAbortParams = { requestId: string }
 

@@ -52,6 +52,7 @@ import { ITerminalService } from '../../../../../terminal/browser/terminal.js'
 import { ISearchService } from '../../../../../../services/search/common/search.js'
 import { IExtensionManagementService } from '../../../../../../../platform/extensionManagement/common/extensionManagement.js'
 import { IMCPService } from '../../../../common/mcpService.js';
+import { ILoopholeServeService } from '../../../../common/loopholeServeService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
 import { ITokenUsageService } from '../../../../common/tokenUsageService.js'
 import { IDailyActivityService } from '../../../../common/dailyActivityService.js'
@@ -250,6 +251,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		ITokenUsageService: accessor.get(ITokenUsageService),
 		IFileDialogService: accessor.get(IFileDialogService),
 		IDailyActivityService: accessor.get(IDailyActivityService),
+		ILoopholeServeService: accessor.get(ILoopholeServeService),
 
 	} as const
 	return reactAccessor

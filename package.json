@@ -316,5 +316,39 @@
 	},
 	"optionalDependencies": {
 		"windows-foreground-love": "0.6.1"
+	},
+	"contributes": {
+		"configuration": {
+			"title": "Loophole",
+			"type": "object",
+			"properties": {
+				"loophole.serve.enabled": {
+					"type": "boolean",
+					"default": false,
+					"description": "When enabled, Loophole uses the bundled Loophole Serve backend for providers, models, and chat transport (behind the Loophole Serve settings section)."
+				},
+				"loophole.serve.model": {
+					"type": "string",
+					"default": "",
+					"description": "Server model used by Loophole Serve for chat, as \"providerID/modelID\". Empty uses the server default model."
+				},
+				"loophole.fim.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "When enabled, Loophole provides inline completions via the Inception FIM API. Does nothing unless an Inception API key is configured."
+				},
+				"loophole.fim.apiKey": {
+					"type": "string",
+					"default": "",
+					"description": "Inception API key used by Loophole FIM autocomplete (https://api.inceptionlabs.ai). Never synced.",
+					"scope": "machine"
+				},
+				"loophole.fim.model": {
+					"type": "string",
+					"default": "mercury-edit-2",
+					"description": "Inception model used by Loophole FIM autocomplete."
+				}
+			}
+		}
 	}
 }

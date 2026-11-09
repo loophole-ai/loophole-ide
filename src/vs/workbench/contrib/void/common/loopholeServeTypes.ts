@@ -20,3 +20,66 @@ export interface LoopholeServeStatus {
 	binaryPath?: string;
 	pid?: number;
 }
+
+/** Subset of the server's `Provider.Info` (packages/schema/src/provider.ts). */
+export interface LoopholeServeProviderInfo {
+	id: string;
+	name: string;
+	integrationID?: string;
+	activation?: string;
+}
+
+/** Subset of the server's `Model.Info` (packages/schema/src/model.ts). */
+export interface LoopholeServeModelInfo {
+	id: string;
+	modelID: string;
+	providerID: string;
+	name?: string;
+	family?: string;
+}
+
+/** Server model selection: an opencode `Model.Ref` without the optional variant. */
+export interface LoopholeServeModelRef {
+	providerID: string;
+	modelID: string;
+}
+
+/**
+ * `Config.Patch` (packages/schema/src/config.ts) only supports the shell field,
+ * so provider keys must NOT go through configUpdate. They are stored via
+ * `POST /api/integration/:integrationID/connect/key` instead (see connectKey* below).
+ */
+export interface LoopholeServeConfigUpdateParams {
+	shell?: string | null;
+}
+
+/** `POST /api/integration/:integrationID/connect/key` body (packages/protocol/src/groups/integration.ts). */
+export interface LoopholeServeConnectKeyParams {
+	integrationID: string;
+	key: string;
+	label?: string;
+}
+
+/** Direct Inception FIM completion (loophole serve has no FIM endpoint). */
+export interface LoopholeServeFimParams {
+	requestId: string;
+	prefix: string;
+	suffix: string;
+	apiKey: string;
+	model?: string;
+	maxTokens?: number;
+	temperature?: number;
+}
+
+export interface LoopholeServeFimResult {
+	text: string;
+}
+
+/** Channel event emitted while a `fim` command streams (see `onEvent_loopholeServe`). */
+export interface LoopholeServeFimEvent {
+	kind: 'fim';
+	requestId: string;
+	type: 'chunk' | 'final' | 'error';
+	text?: string;
+	error?: string;
+}
