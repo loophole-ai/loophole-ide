@@ -16,6 +16,8 @@ export const sendLLMMessage = async ({
 	onText: onText_,
 	onFinalMessage: onFinalMessage_,
 	onError: onError_,
+	onTool: onTool_,
+	onCompaction: onCompaction_,
 	abortRef: abortRef_,
 	logging: { loggingName, loggingExtras },
 	settingsOfProvider,
@@ -41,6 +43,8 @@ export const sendLLMMessage = async ({
 			onText: onText_,
 			onFinalMessage: onFinalMessage_,
 			onError: onError_,
+			onTool: onTool_,
+			onCompaction: onCompaction_,
 			_setAborter: (fn: () => void) => { abortRef_.current = fn; },
 		});
 		return;

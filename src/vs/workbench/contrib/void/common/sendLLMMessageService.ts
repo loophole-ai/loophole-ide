@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMessageOnFinalMessageParams, ServiceSendLLMMessageParams, MainSendLLMMessageParams, MainLLMMessageAbortParams, ServiceModelListParams, EventModelListOnSuccessParams, EventModelListOnErrorParams, MainModelListParams, OllamaModelResponse, OpenaiCompatibleModelResponse, } from './sendLLMMessageTypes.js';
+import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMessageOnFinalMessageParams, EventLLMMessageOnToolParams, EventLLMMessageOnCompactionParams, ServiceSendLLMMessageParams, MainSendLLMMessageParams, MainLLMMessageAbortParams, ServiceModelListParams, EventModelListOnSuccessParams, EventModelListOnErrorParams, MainModelListParams, OllamaModelResponse, OpenaiCompatibleModelResponse, } from './sendLLMMessageTypes.js';
 import { ModelSelection } from './voidSettingsTypes.js';
 
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
@@ -40,6 +40,8 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		onText: {} as { [eventId: string]: ((params: EventLLMMessageOnTextParams) => void) },
 		onFinalMessage: {} as { [eventId: string]: ((params: EventLLMMessageOnFinalMessageParams) => void) },
 		onError: {} as { [eventId: string]: ((params: EventLLMMessageOnErrorParams) => void) },
+		onTool: {} as { [eventId: string]: ((params: EventLLMMessageOnToolParams) => void) },
+		onCompaction: {} as { [eventId: string]: ((params: EventLLMMessageOnCompactionParams) => void) },
 		onAbort: {} as { [eventId: string]: (() => void) }, // NOT sent over the channel, result is instant when we call .abort()
 	}
 
@@ -93,6 +95,12 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 			this.llmMessageHooks.onError[e.requestId]?.(e);
 			this._clearChannelHooks(e.requestId);
 		}))
+		this._register((this.channel.listen('onTool_sendLLMMessage') satisfies Event<EventLLMMessageOnToolParams>)(e => {
+			this.llmMessageHooks.onTool[e.requestId]?.(e)
+		}))
+		this._register((this.channel.listen('onCompaction_sendLLMMessage') satisfies Event<EventLLMMessageOnCompactionParams>)(e => {
+			this.llmMessageHooks.onCompaction[e.requestId]?.(e)
+		}))
 		// .list()
 		this._register((this.channel.listen('onSuccess_list_ollama') satisfies Event<EventModelListOnSuccessParams<OllamaModelResponse>>)(e => {
 			this.listHooks.ollama.success[e.requestId]?.(e)
@@ -110,7 +118,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 	}
 
 	sendLLMMessage(params: ServiceSendLLMMessageParams) {
-		const { onText, onFinalMessage, onError, onAbort, modelSelection, ...proxyParams } = params;
+		const { onText, onFinalMessage, onError, onTool, onCompaction, onAbort, modelSelection, ...proxyParams } = params;
 
 		// Phase 2: Loophole Serve (server owns providers/models) — modelSelection may be null.
 		const serveEnabled = this.configService.getValue<boolean>('loophole.serve.enabled') === true;
@@ -143,6 +151,8 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		this.llmMessageHooks.onText[requestId] = onText
 		this.llmMessageHooks.onFinalMessage[requestId] = onFinalMessage
 		this.llmMessageHooks.onError[requestId] = onError
+		if (onTool) this.llmMessageHooks.onTool[requestId] = onTool
+		if (onCompaction) this.llmMessageHooks.onCompaction[requestId] = onCompaction
 		this.llmMessageHooks.onAbort[requestId] = onAbort // used internally only
 		if (modelSelection) this.requestModelSelection[requestId] = modelSelection
 
@@ -206,6 +216,8 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		delete this.llmMessageHooks.onText[requestId]
 		delete this.llmMessageHooks.onFinalMessage[requestId]
 		delete this.llmMessageHooks.onError[requestId]
+		delete this.llmMessageHooks.onTool[requestId]
+		delete this.llmMessageHooks.onCompaction[requestId]
 		delete this.requestModelSelection[requestId]
 
 		delete this.listHooks.ollama.success[requestId]

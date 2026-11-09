@@ -106,6 +106,31 @@ export type OnAbort = () => void
 export type AbortRef = { current: (() => void) | null }
 
 
+// Loophole Serve (server-side agent loop, Phase 3: tool UI). The server runs
+// tools itself and streams their lifecycle as session.tool.* events; these
+// hooks carry snapshots back to the renderer. All fields are JSON-safe for IPC.
+export type ServeToolStatus = 'input' | 'running' | 'done' | 'error'
+export type ServeToolState = {
+	id: string; // opencode tool call id (session.tool.* `id`)
+	name: string; // opencode tool name (e.g. 'edit', 'bash', 'todowrite')
+	status: ServeToolStatus;
+	input?: Record<string, unknown>; // parsed call input (session.tool.called `input`)
+	inputText?: string; // raw input JSON fragments (session.tool.input.delta, ephemeral)
+	outputText?: string; // concatenated text content (session.tool.success `content`)
+	error?: string; // failure message (session.tool.failed `error.message`)
+	metadata?: Record<string, unknown>; // UI metadata (session.tool.success/failed `metadata`)
+}
+export type OnTool = (p: { tools: ServeToolState[] }) => void
+export type ServeCompactionPhase = 'started' | 'streaming' | 'done' | 'failed'
+export type ServeCompactionState = {
+	phase: ServeCompactionPhase;
+	reason?: string; // 'auto' | 'manual' (session.compaction.* `reason`)
+	text?: string; // summary text (session.compaction.delta / .ended `text`)
+	error?: string; // failure message (session.compaction.failed `error.message`)
+}
+export type OnCompaction = (p: { compaction: ServeCompactionState }) => void
+
+
 // service types
 type SendLLMType = {
 	messagesType: 'chatMessages';
@@ -122,6 +147,10 @@ export type ServiceSendLLMMessageParams = {
 	onText: OnText;
 	onFinalMessage: OnFinalMessage;
 	onError: OnError;
+	// Loophole Serve tool/compaction UI (optional; only set in serve mode, the
+	// direct-LLM path never calls them).
+	onTool?: OnTool;
+	onCompaction?: OnCompaction;
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
 	modelSelection: ModelSelection | null;
 	modelSelectionOptions: ModelSelectionOptions | undefined;
@@ -134,6 +163,8 @@ export type SendLLMMessageParams = {
 	onText: OnText;
 	onFinalMessage: OnFinalMessage;
 	onError: OnError;
+	onTool?: OnTool;
+	onCompaction?: OnCompaction;
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
 	abortRef: AbortRef;
 
@@ -156,7 +187,7 @@ export type ServeOverrides = {
 }
 
 // can't send functions across a proxy, use listeners instead
-export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'abortRef'
+export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'onTool' | 'onCompaction' | 'abortRef'
 export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams> & { requestId: string, modelSelection: ModelSelection | null, serve?: ServeOverrides } & SendLLMType
 
 export type MainLLMMessageAbortParams = { requestId: string }
@@ -164,6 +195,8 @@ export type MainLLMMessageAbortParams = { requestId: string }
 export type EventLLMMessageOnTextParams = Parameters<OnText>[0] & { requestId: string }
 export type EventLLMMessageOnFinalMessageParams = Parameters<OnFinalMessage>[0] & { requestId: string }
 export type EventLLMMessageOnErrorParams = Parameters<OnError>[0] & { requestId: string }
+export type EventLLMMessageOnToolParams = Parameters<OnTool>[0] & { requestId: string }
+export type EventLLMMessageOnCompactionParams = Parameters<OnCompaction>[0] & { requestId: string }
 
 // service -> main -> internal -> event (back to main)
 // (browser)

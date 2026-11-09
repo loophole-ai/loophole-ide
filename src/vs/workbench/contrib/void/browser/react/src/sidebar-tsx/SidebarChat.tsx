@@ -33,6 +33,9 @@ import { IsRunningType } from '../../../chatThreadService.js';
 import { acceptAllBg, acceptBorder, buttonFontSize, buttonTextColor, rejectAllBg, rejectBg, rejectBorder } from '../../../../common/helpers/colors.js';
 import { builtinToolNames, isABuiltinToolName, MAX_FILE_CHARS_PAGE, MAX_TERMINAL_INACTIVE_TIME } from '../../../../common/prompt/prompts.js';
 import { RawToolCallObj } from '../../../../common/sendLLMMessageTypes.js';
+import { ThinkingBlock } from './tool-ui/ThinkingBlock.js';
+import { ToolCard, CompactionBanner } from './tool-ui/ToolCard.js';
+import { TodoListCard, isTodoToolName } from './tool-ui/TodoList.js';
 import ErrorBoundary from './ErrorBoundary.js';
 import { ToolApprovalTypeSwitch } from '../void-settings-tsx/Settings.js';
 
@@ -1485,7 +1488,11 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 
 	const reasoningStr = chatMessage.reasoning?.trim() || null
 	const hasReasoning = !!reasoningStr
-	const isDoneReasoning = !!chatMessage.displayContent
+	// Loophole Serve server-side tool calls for this turn (Kilo-style cards).
+	const serveTools = chatMessage.serveTools ?? []
+	// Kilo behavior: reasoning stays open while streaming, then auto-collapses
+	// once the turn moves on to tool calls or final text (re-expandable).
+	const hasFollowup = serveTools.length > 0 || !!chatMessage.displayContent
 	const thread = chatThreadsService.getCurrentThread()
 
 
@@ -1494,23 +1501,34 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 		messageIdx: messageIdx,
 	}
 
-	const isEmpty = !chatMessage.displayContent && !chatMessage.reasoning
+	const isEmpty = !chatMessage.displayContent && !chatMessage.reasoning && serveTools.length === 0 && !chatMessage.compaction
 	if (isEmpty) return null
 
 	return <>
+		{/* compaction banner (Loophole Serve session.compaction.*) */}
+		{chatMessage.compaction &&
+			<div className={`${isCheckpointGhost ? 'opacity-50' : ''}`}>
+				<CompactionBanner compaction={chatMessage.compaction} />
+			</div>
+		}
+
 		{/* reasoning token */}
 		{hasReasoning &&
 			<div className={`${isCheckpointGhost ? 'opacity-50' : ''}`}>
-				<ReasoningWrapper isDoneReasoning={isDoneReasoning} isStreaming={!isCommitted}>
-					<SmallProseWrapper>
-						<ChatMarkdownRender
-							string={reasoningStr}
-							chatMessageLocation={chatMessageLocation}
-							isApplyEnabled={false}
-							isLinkDetectionEnabled={true}
-						/>
-					</SmallProseWrapper>
-				</ReasoningWrapper>
+				<ThinkingBlock text={reasoningStr} isStreaming={!isCommitted} hasFollowup={hasFollowup} chatMessageLocation={chatMessageLocation} />
+			</div>
+		}
+
+		{/* server-side tool calls (Loophole Serve); todo tools get a checklist */}
+		{serveTools.length > 0 &&
+			<div className={`flex flex-col gap-1 ${isCheckpointGhost ? 'opacity-50' : ''}`}>
+				{serveTools.map(tool => (
+					<React.Fragment key={tool.id}>
+						{isTodoToolName(tool.name)
+							? <TodoListCard tool={tool} />
+							: <ToolCard tool={tool} />}
+					</React.Fragment>
+				))}
 			</div>
 		}
 
@@ -1531,21 +1549,7 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 
 }
 
-const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneReasoning: boolean, isStreaming: boolean, children: React.ReactNode }) => {
-	const isDone = isDoneReasoning || !isStreaming
-	const isWriting = !isDone
-	const [isOpen, setIsOpen] = useState(isWriting)
-	useEffect(() => {
-		if (!isWriting) setIsOpen(false) // if just finished reasoning, close
-	}, [isWriting])
-	return <ToolHeaderWrapper title='Reasoning' desc1={isWriting ? <IconLoading /> : ''} isOpen={isOpen} onClick={() => setIsOpen(v => !v)}>
-		<ToolChildrenWrapper>
-			<div className='!select-text cursor-auto'>
-				{children}
-			</div>
-		</ToolChildrenWrapper>
-	</ToolHeaderWrapper>
-}
+
 
 
 
@@ -3157,7 +3161,7 @@ export const SidebarChat = () => {
 	const currThreadStreamState = useChatThreadsStreamState(chatThreadsState.currentThreadId)
 	const isRunning = currThreadStreamState?.isRunning
 	const latestError = currThreadStreamState?.error
-	const { displayContentSoFar, toolCallSoFar, reasoningSoFar } = currThreadStreamState?.llmInfo ?? {}
+	const { displayContentSoFar, toolCallSoFar, reasoningSoFar, serveTools, compaction } = currThreadStreamState?.llmInfo ?? {}
 
 	// this is just if it's currently being generated, NOT if it's currently running
 	const toolIsGenerating = toolCallSoFar && !toolCallSoFar.isDone // show loading for slow tools (right now just edit)
@@ -3245,7 +3249,7 @@ export const SidebarChat = () => {
 	}, [previousMessages, threadId, currCheckpointIdx, isRunning])
 
 	const streamingChatIdx = previousMessagesHTML.length
-	const currStreamingMessageHTML = reasoningSoFar || displayContentSoFar || isRunning ?
+	const currStreamingMessageHTML = reasoningSoFar || displayContentSoFar || isRunning || (serveTools?.length ?? 0) > 0 || compaction ?
 		<ChatBubble
 			key={'curr-streaming-msg'}
 			currCheckpointIdx={currCheckpointIdx}
@@ -3254,6 +3258,8 @@ export const SidebarChat = () => {
 				displayContent: displayContentSoFar ?? '',
 				reasoning: reasoningSoFar ?? '',
 				anthropicReasoning: null,
+				serveTools,
+				compaction,
 			}}
 			messageIdx={streamingChatIdx}
 			isCommitted={false}
