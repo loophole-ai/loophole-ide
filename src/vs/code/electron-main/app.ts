@@ -150,6 +150,7 @@ import { ILoopholeUpdateService } from '../../workbench/contrib/void/common/void
 import { MetricsMainService } from '../../workbench/contrib/void/electron-main/metricsMainService.js';
 import { LoopholeMainUpdateService } from '../../workbench/contrib/void/electron-main/voidUpdateMainService.js';
 import { LLMMessageChannel } from '../../workbench/contrib/void/electron-main/sendLLMMessageChannel.js';
+import { LoopholeServeChannel } from '../../workbench/contrib/void/electron-main/loopholeServeChannel.js';
 import { VoidSCMService } from '../../workbench/contrib/void/electron-main/voidSCMMainService.js';
 import { AppleFoundationModelsMainService } from '../../workbench/contrib/void/electron-main/appleFoundationModelsMainService.js';
 import { IAppleFoundationModelsMainService } from '../../workbench/contrib/void/common/appleFoundationModelsTypes.js';
@@ -1337,6 +1338,9 @@ export class CodeApplication extends Disposable {
 
 		const sendLLMMessageChannel = new LLMMessageChannel(accessor.get(IMetricsService));
 		mainProcessElectronServer.registerChannel('void-channel-llmMessage', sendLLMMessageChannel);
+
+		const loopholeServeChannel = new LoopholeServeChannel();
+		mainProcessElectronServer.registerChannel('void-channel-loopholeServe', loopholeServeChannel);
 
 		// Kodia added this
 		const voidSCMChannel = ProxyChannel.fromService(accessor.get(IVoidSCMService), disposables);
