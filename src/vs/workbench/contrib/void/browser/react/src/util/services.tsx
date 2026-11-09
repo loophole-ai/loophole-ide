@@ -336,6 +336,32 @@ export const useFullChatThreadsStreamState = () => {
 		return () => { chatThreadsStreamStateListeners.delete(listener) }
 	}, [ss])
 	return s
+};
+
+// Loophole Serve pending permission requests for one thread (permission.asked).
+let servePermissionsVersion = 0
+const servePermissionsListeners: Set<() => void> = new Set()
+
+export const useServePermissions = (threadId: string) => {
+	const accessor = useAccessor()
+	const chatThreadsService = accessor.get('IChatThreadService')
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const [_version, setVersion] = useState(servePermissionsVersion)
+	useEffect(() => {
+		setVersion(servePermissionsVersion)
+		const listener = () => setVersion(servePermissionsVersion)
+		servePermissionsListeners.add(listener)
+		return () => { servePermissionsListeners.delete(listener) }
+	}, [])
+	// keep the module mirror fresh from the service event
+	useEffect(() => {
+		const d = chatThreadsService.onDidChangeServePermissions(() => {
+			servePermissionsVersion += 1
+			servePermissionsListeners.forEach(l => l())
+		})
+		return () => { try { (d as { dispose?: () => void })?.dispose?.() } catch { /* best effort */ } }
+	}, [chatThreadsService])
+	return chatThreadsService.getServePermissions(threadId)
 }
 
 

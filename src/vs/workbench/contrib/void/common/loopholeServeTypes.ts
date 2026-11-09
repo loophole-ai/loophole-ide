@@ -83,3 +83,125 @@ export interface LoopholeServeFimEvent {
 	text?: string;
 	error?: string;
 }
+
+// ---- Loophole Serve sessions / messages / commands / skills / permissions /
+// ---- usage / revert / voice (all shapes mirror packages/schema + protocol) ----
+
+/** Subset of the server's `Session.Info` (packages/schema/src/session.ts). */
+export interface LoopholeServeSessionInfo {
+	id: string;
+	parentID?: string;
+	title?: string;
+	cost: number;
+	tokens: LoopholeServeTokenUsage;
+	time: {
+		created: number;
+		updated: number;
+		busy?: number;
+		idle?: number;
+	};
+	revert?: LoopholeServeRevert;
+	[key: string]: unknown;
+}
+
+/** `TokenUsage.Info` (packages/schema/src/token-usage.ts). */
+export interface LoopholeServeTokenUsage {
+	input: number;
+	output: number;
+	reasoning: number;
+	cache: {
+		read: number;
+		write: number;
+	};
+}
+
+/** Minimal projected message (packages/schema/src/session-message.ts); extra fields pass through. */
+export type LoopholeServeSessionMessage = {
+	id: string;
+	type: string;
+	text?: string;
+	content?: Array<LoopholeServeAssistantContent>;
+	[key: string]: unknown;
+};
+
+export type LoopholeServeAssistantContent = {
+	type: string;
+	text?: string;
+	// tool part: { id, name, state: { status, input?, content?, error? } }
+	id?: string;
+	name?: string;
+	state?: {
+		status?: string;
+		input?: Record<string, unknown>;
+		content?: Array<{ type?: string; text?: string }>;
+		error?: { message?: string };
+		[key: string]: unknown;
+	};
+	[key: string]: unknown;
+};
+
+/** `Command.Info` (packages/schema/src/command.ts). */
+export interface LoopholeServeCommandInfo {
+	name: string;
+	description?: string;
+}
+
+/** `Skill.Info` (packages/schema/src/skill.ts). */
+export interface LoopholeServeSkillInfo {
+	id: string;
+	name: string;
+	description?: string;
+	autoinvoke?: boolean;
+	path: string;
+	content: string;
+}
+
+/** `Permission.Request` subset (packages/schema/src/permission.ts); reply is `once | always | reject`. */
+export interface LoopholeServePermissionRequest {
+	id: string;
+	sessionID: string;
+	action: string;
+	resources: string[];
+	save?: string[];
+	metadata?: Record<string, unknown>;
+	message?: string;
+	[key: string]: unknown;
+}
+
+export type LoopholeServePermissionDecision = 'once' | 'always' | 'reject';
+
+/** `Session.Revert` (packages/schema/src/session-revert.ts). */
+export interface LoopholeServeRevert {
+	messageID: string;
+	snapshot?: string;
+	files?: Array<{
+		file?: string;
+		status?: string;
+		additions?: number;
+		deletions?: number;
+		patch?: string;
+		[key: string]: unknown;
+	}>;
+	[key: string]: unknown;
+}
+
+/** `VoiceModel` (packages/protocol/src/groups/voice.ts). */
+export interface LoopholeServeVoiceModel {
+	model: string;
+	provider: string;
+	transports: string[];
+	available: boolean;
+}
+
+export type LoopholeServeVoiceTransport =
+	| { type: 'webrtc'; sdp: string }
+	| { type: 'websocket'; url: string; token: string; expiresAt: number };
+
+/** Channel event for a proxied voice WebSocket (see `onEvent_loopholeServe`). */
+export interface LoopholeServeVoiceWsEvent {
+	kind: 'voiceWs';
+	requestId: string;
+	type: 'message' | 'error' | 'close';
+	text?: string;
+	error?: string;
+}

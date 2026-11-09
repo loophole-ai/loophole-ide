@@ -8,7 +8,7 @@
 
 import { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
-import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMessageOnFinalMessageParams, EventLLMMessageOnToolParams, EventLLMMessageOnCompactionParams, MainSendLLMMessageParams, AbortRef, SendLLMMessageParams, MainLLMMessageAbortParams, ModelListParams, EventModelListOnSuccessParams, EventModelListOnErrorParams, OllamaModelResponse, OpenaiCompatibleModelResponse, MainModelListParams, } from '../common/sendLLMMessageTypes.js';
+import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMessageOnFinalMessageParams, EventLLMMessageOnToolParams, EventLLMMessageOnCompactionParams, EventLLMMessageOnServeSessionParams, EventLLMMessageOnPermissionParams, EventLLMMessageOnUsageParams, MainSendLLMMessageParams, AbortRef, SendLLMMessageParams, MainLLMMessageAbortParams, ModelListParams, EventModelListOnSuccessParams, EventModelListOnErrorParams, OllamaModelResponse, OpenaiCompatibleModelResponse, MainModelListParams, } from '../common/sendLLMMessageTypes.js';
 import { sendLLMMessage } from './llmMessage/sendLLMMessage.js'
 import { IMetricsService } from '../common/metricsService.js';
 import { sendLLMMessageToProviderImplementation } from './llmMessage/sendLLMMessage.impl.js';
@@ -24,6 +24,9 @@ export class LLMMessageChannel implements IServerChannel {
 		onError: new Emitter<EventLLMMessageOnErrorParams>(),
 		onTool: new Emitter<EventLLMMessageOnToolParams>(),
 		onCompaction: new Emitter<EventLLMMessageOnCompactionParams>(),
+		onServeSession: new Emitter<EventLLMMessageOnServeSessionParams>(),
+		onPermission: new Emitter<EventLLMMessageOnPermissionParams>(),
+		onUsage: new Emitter<EventLLMMessageOnUsageParams>(),
 	}
 
 	// aborters for above
@@ -60,6 +63,9 @@ export class LLMMessageChannel implements IServerChannel {
 		else if (event === 'onError_sendLLMMessage') return this.llmMessageEmitters.onError.event;
 		else if (event === 'onTool_sendLLMMessage') return this.llmMessageEmitters.onTool.event;
 		else if (event === 'onCompaction_sendLLMMessage') return this.llmMessageEmitters.onCompaction.event;
+		else if (event === 'onServeSession_sendLLMMessage') return this.llmMessageEmitters.onServeSession.event;
+		else if (event === 'onPermission_sendLLMMessage') return this.llmMessageEmitters.onPermission.event;
+		else if (event === 'onUsage_sendLLMMessage') return this.llmMessageEmitters.onUsage.event;
 		// list
 		else if (event === 'onSuccess_list_ollama') return this.listEmitters.ollama.success.event;
 		else if (event === 'onError_list_ollama') return this.listEmitters.ollama.error.event;
@@ -117,6 +123,15 @@ export class LLMMessageChannel implements IServerChannel {
 			},
 			onCompaction: (p) => {
 				this.llmMessageEmitters.onCompaction.fire({ requestId, ...p });
+			},
+			onServeSession: (p) => {
+				this.llmMessageEmitters.onServeSession.fire({ requestId, ...p });
+			},
+			onPermission: (p) => {
+				this.llmMessageEmitters.onPermission.fire({ requestId, ...p });
+			},
+			onUsage: (p) => {
+				this.llmMessageEmitters.onUsage.fire({ requestId, ...p });
 			},
 			abortRef: this._infoOfRunningRequest[requestId].abortRef,
 		}

@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMessageOnFinalMessageParams, EventLLMMessageOnToolParams, EventLLMMessageOnCompactionParams, ServiceSendLLMMessageParams, MainSendLLMMessageParams, MainLLMMessageAbortParams, ServiceModelListParams, EventModelListOnSuccessParams, EventModelListOnErrorParams, MainModelListParams, OllamaModelResponse, OpenaiCompatibleModelResponse, } from './sendLLMMessageTypes.js';
+import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMessageOnFinalMessageParams, EventLLMMessageOnToolParams, EventLLMMessageOnCompactionParams, EventLLMMessageOnServeSessionParams, EventLLMMessageOnPermissionParams, EventLLMMessageOnUsageParams, ServiceSendLLMMessageParams, MainSendLLMMessageParams, MainLLMMessageAbortParams, ServiceModelListParams, EventModelListOnSuccessParams, EventModelListOnErrorParams, MainModelListParams, OllamaModelResponse, OpenaiCompatibleModelResponse, } from './sendLLMMessageTypes.js';
 import { ModelSelection } from './voidSettingsTypes.js';
 
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
@@ -42,6 +42,9 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		onError: {} as { [eventId: string]: ((params: EventLLMMessageOnErrorParams) => void) },
 		onTool: {} as { [eventId: string]: ((params: EventLLMMessageOnToolParams) => void) },
 		onCompaction: {} as { [eventId: string]: ((params: EventLLMMessageOnCompactionParams) => void) },
+		onServeSession: {} as { [eventId: string]: ((params: EventLLMMessageOnServeSessionParams) => void) },
+		onPermission: {} as { [eventId: string]: ((params: EventLLMMessageOnPermissionParams) => void) },
+		onUsage: {} as { [eventId: string]: ((params: EventLLMMessageOnUsageParams) => void) },
 		onAbort: {} as { [eventId: string]: (() => void) }, // NOT sent over the channel, result is instant when we call .abort()
 	}
 
@@ -101,6 +104,15 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		this._register((this.channel.listen('onCompaction_sendLLMMessage') satisfies Event<EventLLMMessageOnCompactionParams>)(e => {
 			this.llmMessageHooks.onCompaction[e.requestId]?.(e)
 		}))
+		this._register((this.channel.listen('onServeSession_sendLLMMessage') satisfies Event<EventLLMMessageOnServeSessionParams>)(e => {
+			this.llmMessageHooks.onServeSession[e.requestId]?.(e)
+		}))
+		this._register((this.channel.listen('onPermission_sendLLMMessage') satisfies Event<EventLLMMessageOnPermissionParams>)(e => {
+			this.llmMessageHooks.onPermission[e.requestId]?.(e)
+		}))
+		this._register((this.channel.listen('onUsage_sendLLMMessage') satisfies Event<EventLLMMessageOnUsageParams>)(e => {
+			this.llmMessageHooks.onUsage[e.requestId]?.(e)
+		}))
 		// .list()
 		this._register((this.channel.listen('onSuccess_list_ollama') satisfies Event<EventModelListOnSuccessParams<OllamaModelResponse>>)(e => {
 			this.listHooks.ollama.success[e.requestId]?.(e)
@@ -118,7 +130,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 	}
 
 	sendLLMMessage(params: ServiceSendLLMMessageParams) {
-		const { onText, onFinalMessage, onError, onTool, onCompaction, onAbort, modelSelection, ...proxyParams } = params;
+		const { onText, onFinalMessage, onError, onTool, onCompaction, onServeSession, onPermission, onUsage, onAbort, modelSelection, serveSessionId, ...proxyParams } = params;
 
 		// Phase 2: Loophole Serve (server owns providers/models) — modelSelection may be null.
 		const serveEnabled = this.configService.getValue<boolean>('loophole.serve.enabled') === true;
@@ -153,6 +165,9 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		this.llmMessageHooks.onError[requestId] = onError
 		if (onTool) this.llmMessageHooks.onTool[requestId] = onTool
 		if (onCompaction) this.llmMessageHooks.onCompaction[requestId] = onCompaction
+		if (onServeSession) this.llmMessageHooks.onServeSession[requestId] = onServeSession
+		if (onPermission) this.llmMessageHooks.onPermission[requestId] = onPermission
+		if (onUsage) this.llmMessageHooks.onUsage[requestId] = onUsage
 		this.llmMessageHooks.onAbort[requestId] = onAbort // used internally only
 		if (modelSelection) this.requestModelSelection[requestId] = modelSelection
 
@@ -163,6 +178,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 			settingsOfProvider,
 			modelSelection,
 			mcpTools,
+			...(serveSessionId ? { serveSessionId } : {}),
 			...(serve ? { serve } : {}),
 		} satisfies MainSendLLMMessageParams);
 
@@ -218,6 +234,9 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		delete this.llmMessageHooks.onError[requestId]
 		delete this.llmMessageHooks.onTool[requestId]
 		delete this.llmMessageHooks.onCompaction[requestId]
+		delete this.llmMessageHooks.onServeSession[requestId]
+		delete this.llmMessageHooks.onPermission[requestId]
+		delete this.llmMessageHooks.onUsage[requestId]
 		delete this.requestModelSelection[requestId]
 
 		delete this.listHooks.ollama.success[requestId]

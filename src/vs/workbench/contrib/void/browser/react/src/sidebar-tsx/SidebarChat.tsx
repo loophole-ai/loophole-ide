@@ -6,9 +6,15 @@
 import React, { ButtonHTMLAttributes, FormEvent, FormHTMLAttributes, Fragment, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
-import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState } from '../util/services.js';
+import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useServePermissions } from '../util/services.js';
 import { useLocalVoiceModel, useLocalVoiceRecorder } from '../util/localVoiceModel.js';
 import { localVoiceModelService } from '../../../localVoiceModelService.js';
+import { ServePermissionCard } from './ServePermissionCard.js';
+import { ServeUsageChip } from './ServeUsageChip.js';
+import { ServeSessionsBrowser } from './ServeSessionsBrowser.js';
+import { ServeCheckpointPanel } from './ServeCheckpointPanel.js';
+import { ServeSlashMenu, filterServeSlashEntries, useServeSlashEntries } from './ServeSlashMenu.js';
+import { ServeMicButton, useServeVoiceRecorder } from './ServeVoiceButton.js';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
 
 import { ChatMarkdownRender, ChatMessageLocation, getApplyBoxId } from '../markdown/ChatMarkdownRender.js';
@@ -3132,6 +3138,10 @@ export const SidebarChat = () => {
 	const chatThreadsService = accessor.get('IChatThreadService')
 
 	const settingsState = useSettingsState()
+	// Loophole Serve (behind `loophole.serve.enabled`; direct-LLM path untouched).
+	const configService = accessor.get('IConfigurationService')
+	const serveEnabled = configService.getValue<boolean>('loophole.serve.enabled') === true
+	const serveService = accessor.get('ILoopholeServeService')
 	const voiceState = useLocalVoiceModel()
 	const selectedVoiceModelId = settingsState.globalSettings.localVoiceModelId
 	const selectedVoiceModelStatus = selectedVoiceModelId === null
@@ -3146,6 +3156,11 @@ export const SidebarChat = () => {
 		textAreaFnsRef.current?.insertTextAtCursor(text)
 	}, [])
 	const voiceRecorder = useLocalVoiceRecorder(isVoiceModelReady ? selectedVoiceModelId : null, onVoiceTranscript)
+	// Server-side voice (serve mode only; click-driven, no polling). Live transcripts
+	// insert into the composer; Enter/stop sends through the normal serve chat path.
+	const serveVoiceBaseline = useCallback(() => textAreaRef.current?.value ?? '', [])
+	const serveVoice = useServeVoiceRecorder(serveEnabled, textAreaFnsRef, serveVoiceBaseline)
+	const [serveOverlays, setServeOverlays] = useState<{ sessions: boolean; checkpoints: boolean }>({ sessions: false, checkpoints: false })
 	// ----- HIGHER STATE -----
 
 	// threads state
@@ -3162,6 +3177,71 @@ export const SidebarChat = () => {
 	const isRunning = currThreadStreamState?.isRunning
 	const latestError = currThreadStreamState?.error
 	const { displayContentSoFar, toolCallSoFar, reasoningSoFar, serveTools, compaction } = currThreadStreamState?.llmInfo ?? {}
+	const servePermissions = useServePermissions(chatThreadsState.currentThreadId)
+	// Backfill pending permissions from the GET list on bind (permission.asked can
+	// fire before the SSE subscription is established).
+	const serveSessionId = chatThreadsState.allThreads[chatThreadsState.currentThreadId]?.state.serveSessionId
+	useEffect(() => {
+		if (!serveEnabled || !serveSessionId) return;
+		let cancelled = false;
+		serveService.permissionList(serveSessionId)
+			.then((list) => {
+				if (cancelled) return;
+				// Map to ServePermissionRequest (same shape as the SSE event payload).
+				const mapped = (Array.isArray(list) ? list : []).map((p) => ({
+					id: p.id,
+					sessionID: p.sessionID,
+					action: p.action,
+					resources: p.resources ?? [],
+					...(p.message ? { message: p.message } : {}),
+				}));
+				if (mapped.length > 0) chatThreadsService.setServePermissions(chatThreadsState.currentThreadId, mapped);
+			})
+			.catch(() => { /* best effort — live SSE still works */ });
+		return () => { cancelled = true; }
+	}, [serveService, chatThreadsService, serveEnabled, serveSessionId, chatThreadsState.currentThreadId])
+	// Slash commands + skills (serve mode only). `/` in the composer opens the menu;
+	// selecting inserts `/name ` (or runs immediately below on submit).
+	const serveSlashEntries = useServeSlashEntries(serveEnabled)
+	const [slashIndex, setSlashIndex] = useState(0)
+	const [slashOpen, setSlashOpen] = useState(false)
+	const ensureServeSession = useCallback(async (): Promise<string | undefined> => {
+		const thread = chatThreadsService.state.allThreads[chatThreadsService.state.currentThreadId]
+		if (!thread) return undefined
+		const bound = thread.state.serveSessionId
+		if (bound) return bound
+		try {
+			const created = await serveService.createSession({})
+			if (created?.id) {
+				chatThreadsService.setServeSessionId(thread.id, created.id)
+				return created.id
+			}
+		} catch { /* caller falls back to normal chat submit */ }
+		return undefined
+	}, [chatThreadsService, serveService])
+
+	const runSlashSubmit = useCallback(async (rawText: string): Promise<boolean> => {
+		if (!serveEnabled) return false
+		const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(rawText.trim())
+		if (!match) return false
+		const name = match[1]
+		const args = match[2] ?? ''
+		const entry = serveSlashEntries.find((e) => e.name === name)
+		if (!entry) return false
+		const sessionID = await ensureServeSession()
+		if (!sessionID) return false
+		try {
+			if (entry.kind === 'skill' && entry.skillId) {
+				await serveService.activateSkill(sessionID, entry.skillId)
+			} else {
+				await serveService.runCommand(sessionID, name, args)
+			}
+			return true
+		} catch (e) {
+			console.error('Error while running serve command:', e)
+			return false
+		}
+	}, [serveEnabled, serveSlashEntries, ensureServeSession, serveService])
 
 	// this is just if it's currently being generated, NOT if it's currently running
 	const toolIsGenerating = toolCallSoFar && !toolCallSoFar.isDone // show loading for slow tools (right now just edit)
@@ -3193,6 +3273,20 @@ export const SidebarChat = () => {
 		// send message to LLM
 		const userMessage = _forceSubmit || textAreaRef.current?.value || ''
 
+		// Serve slash commands: `/name args` runs server-side instead of chat.
+		if (!_forceSubmit && serveEnabled) {
+			const handled = await runSlashSubmit(userMessage)
+			if (handled) {
+				setSelections([])
+				textAreaFnsRef.current?.setValue('')
+				textAreaRef.current?.focus()
+				return
+			}
+		}
+
+		// Enter (or stop) while server voice is live: stop dictation first, then send normally.
+		if (serveVoice.isRecording) serveVoice.stop()
+
 		try {
 			await chatThreadsService.addUserMessageAndStreamResponse({ userMessage, threadId })
 		} catch (e) {
@@ -3203,7 +3297,7 @@ export const SidebarChat = () => {
 		textAreaFnsRef.current?.setValue('')
 		textAreaRef.current?.focus() // focus input after submit
 
-	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState, voiceRecorder.isRecording, voiceRecorder.isTranscribing])
+	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState, voiceRecorder.isRecording, voiceRecorder.isTranscribing, serveEnabled, runSlashSubmit, serveVoice])
 
 	const onAbort = async () => {
 		const threadId = currentThread.id
@@ -3323,19 +3417,59 @@ export const SidebarChat = () => {
 	const onChangeText = useCallback((newStr: string) => {
 		setInstructionsAreEmpty(!newStr)
 		setTokenEstimate(estimateTokens(newStr))
-	}, [setInstructionsAreEmpty, setTokenEstimate])
+		// Serve slash menu: live `/query` detection (only when text starts with `/`).
+		if (serveEnabled) {
+			const match = /^\/(\S*)$/.exec(newStr)
+			setSlashOpen(!!match && serveSlashEntries.length > 0)
+			setSlashIndex(0)
+		}
+	}, [setInstructionsAreEmpty, setTokenEstimate, serveEnabled, serveSlashEntries])
+	const onPickSlash = useCallback((entry: { name: string }) => {
+		// Insert `/name ` and keep focus; Enter runs it (or submits args via runSlashSubmit).
+		textAreaFnsRef.current?.setValue(`/${entry.name} `)
+		setSlashOpen(false)
+		setSlashIndex(0)
+		textAreaRef.current?.focus()
+	}, [textAreaFnsRef])
 	const onKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
+		if (serveEnabled && slashOpen) {
+			const filtered = filterServeSlashEntries(serveSlashEntries, ((textAreaRef.current?.value ?? '').match(/^\/(\S*)$/) ?? [])[1] ?? '')
+			if (e.key === 'ArrowDown') {
+				e.preventDefault()
+				setSlashIndex((prev) => (filtered.length > 0 ? (prev + 1) % filtered.length : 0))
+				return
+			}
+			if (e.key === 'ArrowUp') {
+				e.preventDefault()
+				setSlashIndex((prev) => (filtered.length > 0 ? (prev - 1 + filtered.length) % filtered.length : 0))
+				return
+			}
+			if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+				const entry = filtered[Math.min(slashIndex, filtered.length - 1)]
+				if (entry) {
+					e.preventDefault()
+					onPickSlash(entry)
+					return
+				}
+			}
+			if (e.key === 'Escape' || e.key === 'Tab') {
+				e.preventDefault()
+				setSlashOpen(false)
+				return
+			}
+		}
 		if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
 			onSubmit()
 		} else if (e.key === 'Escape' && isRunning) {
 			onAbort()
 		}
-	}, [onSubmit, onAbort, isRunning])
+	}, [onSubmit, onAbort, isRunning, serveEnabled, slashOpen, serveSlashEntries, slashIndex, onPickSlash])
 
 	// Sized and styled like the attach button next to it. The icon never changes:
 	// dictating only tints it red, so the button does not resize or swap glyphs
 	// under the cursor mid-sentence.
-	const voiceButton = isVoiceModelReady && !isRunning ? <button
+	// Serve mode -> server voice (click-driven); otherwise keep the local model button.
+	const localVoiceButton = isVoiceModelReady && !isRunning ? <button
 		type='button'
 		className={`flex items-center justify-center transition-colors ${voiceRecorder.isRecording ? 'text-red-500' : 'text-loophole-fg-2 opacity-60 hover:opacity-100'} ${voiceRecorder.isTranscribing ? 'cursor-wait opacity-50' : 'cursor-pointer'}`}
 		aria-label={voiceRecorder.isRecording ? 'Stop dictation' : 'Start dictation'}
@@ -3350,6 +3484,19 @@ export const SidebarChat = () => {
 	>
 		<Mic size={13} strokeWidth={2} />
 	</button> : undefined
+	const voiceButton = serveEnabled
+		? (!isRunning ? <ServeMicButton voice={serveVoice} /> : undefined)
+		: localVoiceButton
+
+	const slashMenuHTML = serveEnabled && slashOpen ? <div className='px-2 pb-1'>
+		<ServeSlashMenu
+			query={(textAreaRef.current?.value ?? '').replace(/^\//, '').split(/\s/)[0] ?? ''}
+			entries={serveSlashEntries}
+			index={slashIndex}
+			onHover={(idx) => setSlashIndex(idx)}
+			onPick={onPickSlash}
+		/>
+	</div> : null
 
 	const inputChatArea = <VoidChatArea
 		featureName='Chat'
@@ -3380,6 +3527,32 @@ export const SidebarChat = () => {
 
 	</VoidChatArea>
 
+	// Serve header: sessions browser + usage chip + checkpoints (serve mode only).
+	const serveHeaderHTML = serveEnabled ? <div className='flex items-center gap-2 px-3 pt-2'>
+		<button
+			type='button'
+			className='text-xs text-loophole-fg-3 hover:text-loophole-fg-1'
+			title='Sessions'
+			onClick={() => setServeOverlays((o) => ({ ...o, sessions: true }))}
+		>
+			Sessions
+		</button>
+		<button
+			type='button'
+			className='text-xs text-loophole-fg-3 hover:text-loophole-fg-1'
+			title='Checkpoints'
+			onClick={() => setServeOverlays((o) => ({ ...o, checkpoints: true }))}
+		>
+			Checkpoints
+		</button>
+		<div className='flex-1' />
+		<ServeUsageChip threadId={threadId} />
+	</div> : null
+
+	const permissionHTML = serveEnabled && servePermissions.length > 0 ? <div className='px-2 pb-1'>
+		<ServePermissionCard threadId={threadId} />
+	</div> : null
+
 
 	const isLandingPage = previousMessages.length === 0
 
@@ -3406,6 +3579,8 @@ export const SidebarChat = () => {
 		<div className='px-4'>
 			<CommandBarInChat />
 		</div>
+		{permissionHTML}
+		{slashMenuHTML}
 		<div className='px-2 pb-2'>
 			{inputChatArea}
 		</div>
@@ -3413,6 +3588,9 @@ export const SidebarChat = () => {
 
 	const landingPageInput = <div>
 		<div className='pt-8'>
+			{serveHeaderHTML}
+			{permissionHTML}
+			{slashMenuHTML}
 			{inputChatArea}
 		</div>
 	</div>
@@ -3457,12 +3635,15 @@ export const SidebarChat = () => {
 		className='w-full h-full flex flex-col overflow-hidden'
 	>
 
+		{serveHeaderHTML}
 		<ErrorBoundary>
 			{messagesHTML}
 		</ErrorBoundary>
 		<ErrorBoundary>
 			{threadPageInput}
 		</ErrorBoundary>
+		{serveOverlays.sessions && <ServeSessionsBrowser onClose={() => setServeOverlays((o) => ({ ...o, sessions: false }))} />}
+		{serveOverlays.checkpoints && <div className='fixed inset-0 z-[100] flex items-start justify-center bg-black/40 pt-16' onClick={() => setServeOverlays((o) => ({ ...o, checkpoints: false }))}><div className='w-[560px] max-w-[92vw] max-h-[70vh] overflow-y-auto rounded-md border border-loophole-border-1 bg-loophole-bg-2-alt shadow-lg' onClick={(e) => e.stopPropagation()}><ServeCheckpointPanel threadId={threadId} onClose={() => setServeOverlays((o) => ({ ...o, checkpoints: false }))} /></div></div>}
 	</div>
 
 
@@ -3470,7 +3651,13 @@ export const SidebarChat = () => {
 		<Fragment key={threadId} // force rerender when change thread
 		>
 			{isLandingPage ?
-				landingPageContent
+				<>
+					{landingPageContent}
+					<ErrorBoundary>
+						{serveOverlays.sessions && <ServeSessionsBrowser onClose={() => setServeOverlays((o) => ({ ...o, sessions: false }))} />}
+						{serveOverlays.checkpoints && <div className='fixed inset-0 z-[100] flex items-start justify-center bg-black/40 pt-16' onClick={() => setServeOverlays((o) => ({ ...o, checkpoints: false }))}><div className='w-[560px] max-w-[92vw] max-h-[70vh] overflow-y-auto rounded-md border border-loophole-border-1 bg-loophole-bg-2-alt shadow-lg' onClick={(e) => e.stopPropagation()}><ServeCheckpointPanel threadId={threadId} onClose={() => setServeOverlays((o) => ({ ...o, checkpoints: false }))} /></div></div>}
+					</ErrorBoundary>
+				</>
 				: threadPageContent}
 		</Fragment>
 	)

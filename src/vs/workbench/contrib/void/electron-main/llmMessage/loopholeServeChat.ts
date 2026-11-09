@@ -28,6 +28,10 @@
 //   session.compaction.started/delta/ended/failed -> onCompaction
 // Deltas are ephemeral (live-only); .ended/.called/success/failed are the replayable full-value boundaries.
 //
+// Permissions + usage (emitted via onPermission / onUsage):
+//   permission.asked       { sessionID, id, action, resources[], save?, metadata?, message? }
+//   session.usage.updated  { sessionID, cost, tokens: { input, output, reasoning, cache } }
+//
 // Simplifications:
 // - Void's provider-shaped message history is flattened to a single prompt text:
 //   system message first, then the last user text. Tool-call history is NOT replayed;
@@ -36,7 +40,7 @@
 // - Tool input deltas are accumulated per call id and re-emitted as the full list;
 //   file (non-text) content parts are dropped, only text output is kept for cards.
 
-import type { LLMChatMessage, OnCompaction, OnError, OnFinalMessage, OnText, OnTool, ServeCompactionState, ServeToolState } from '../../common/sendLLMMessageTypes.js';
+import type { LLMChatMessage, OnCompaction, OnError, OnFinalMessage, OnPermission, OnServeSession, OnText, OnTool, OnUsage, ServeCompactionState, ServePermissionRequest, ServeToolState, ServeUsage } from '../../common/sendLLMMessageTypes.js';
 import type { LoopholeServeModelRef } from '../../common/loopholeServeTypes.js';
 import { getLoopholeServeChannel } from '../loopholeServeChannel.js';
 
@@ -44,6 +48,11 @@ export type LoopholeServeChatParams = {
 	messages: LLMChatMessage[];
 	separateSystemMessage: string | undefined;
 	modelRef?: LoopholeServeModelRef | null;
+	// When set, reuse this server session instead of creating one (thread binding).
+	serveSessionId?: string;
+	onServeSession?: OnServeSession;
+	onPermission?: OnPermission;
+	onUsage?: OnUsage;
 	onText: OnText;
 	onFinalMessage: OnFinalMessage;
 	onError: OnError;
@@ -90,7 +99,7 @@ const buildPromptText = (messages: LLMChatMessage[], separateSystemMessage: stri
 	return system ? `${system}\n\n${lastUserText}` : lastUserText;
 };
 
-export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, modelRef, onText, onFinalMessage, onError, onTool, onCompaction, _setAborter }: LoopholeServeChatParams): Promise<void> => {
+export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, modelRef, serveSessionId, onServeSession, onPermission, onUsage, onText, onFinalMessage, onError, onTool, onCompaction, _setAborter }: LoopholeServeChatParams): Promise<void> => {
 	const channel = getLoopholeServeChannel();
 	if (!channel) {
 		onError({ message: 'Loophole Serve channel is unavailable.', fullError: null });
@@ -102,16 +111,24 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 		return;
 	}
 
+	// Reuse the thread's bound session when the renderer passes one; otherwise
+	// create a fresh session and report it so the thread can rebind to it.
+	// (Only the new user turn is prompted — the server owns the full history.)
 	let sessionID: string;
-	try {
-		const session = await channel.serveApi<{ id: string }>('POST', '/api/session', {
-			...(modelRef ? { model: { id: modelRef.modelID, providerID: modelRef.providerID } } : {}),
-			title: 'Loophole',
-		});
-		sessionID = session.id;
-	} catch (e) {
-		onError({ message: `Loophole Serve: failed to create session (${e instanceof Error ? e.message : String(e)})`, fullError: null });
-		return;
+	if (serveSessionId) {
+		sessionID = serveSessionId;
+	} else {
+		try {
+			const session = await channel.serveApi<{ id: string }>('POST', '/api/session', {
+				...(modelRef ? { model: { id: modelRef.modelID, providerID: modelRef.providerID } } : {}),
+				title: 'Loophole',
+			});
+			sessionID = session.id;
+		} catch (e) {
+			onError({ message: `Loophole Serve: failed to create session (${e instanceof Error ? e.message : String(e)})`, fullError: null });
+			return;
+		}
+		if (onServeSession) onServeSession({ serveSessionId: sessionID });
 	}
 
 	const text = buildPromptText(messages, separateSystemMessage);
@@ -274,6 +291,45 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 		}
 		else if (evt.type === 'session.compaction.failed') {
 			emitCompaction({ phase: 'failed', reason: typeof data.reason === 'string' ? data.reason : compaction?.reason, error: errorText(data.error) });
+		}
+		else if (evt.type === 'permission.asked') {
+			// Server-side tool permission request (packages/schema/src/permission.ts):
+			// `data` is the full Permission.Request (id + sessionID/action/resources/...).
+			// The server pauses execution until the client replies via
+			// POST /api/session/:id/permission/:requestID/reply (see LoopholeServeService.permissionReply).
+			const id = typeof data.id === 'string' ? data.id : '';
+			if (id && onPermission) {
+				const permission: ServePermissionRequest = {
+					id,
+					sessionID: sessionID,
+					action: typeof data.action === 'string' ? data.action : 'unknown',
+					resources: Array.isArray(data.resources) ? data.resources.filter((r): r is string => typeof r === 'string') : [],
+					...(typeof data.message === 'string' ? { message: data.message } : {}),
+					...(Array.isArray(data.save) ? { save: data.save.filter((r): r is string => typeof r === 'string') } : {}),
+					...(data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata) ? { metadata: data.metadata as Record<string, unknown> } : {}),
+				};
+				onPermission({ permission });
+			}
+		}
+		else if (evt.type === 'session.usage.updated') {
+			// Ephemeral per-session usage (packages/schema/src/session-event.ts):
+			// { sessionID, cost, tokens: { input, output, reasoning, cache: { read, write } } }.
+			const tokens = (data.tokens && typeof data.tokens === 'object') ? data.tokens as Record<string, unknown> : undefined;
+			const cost = typeof data.cost === 'number' ? data.cost : undefined;
+			if (tokens && cost !== undefined && onUsage) {
+				const num = (v: unknown): number => typeof v === 'number' ? v : 0;
+				const cache = (tokens.cache && typeof tokens.cache === 'object') ? tokens.cache as Record<string, unknown> : {};
+				const usage: ServeUsage = {
+					cost,
+					tokens: {
+						input: num(tokens.input),
+						output: num(tokens.output),
+						reasoning: num(tokens.reasoning),
+						cache: { read: num(cache.read), write: num(cache.write) },
+					},
+				};
+				onUsage({ usage });
+			}
 		}
 		else if (evt.type === 'session.step.ended' || evt.type === 'session.execution.succeeded') {
 			const evtTokens = evt.type === 'session.step.ended' ? data.tokens : undefined;

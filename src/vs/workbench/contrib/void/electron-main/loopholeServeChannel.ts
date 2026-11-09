@@ -10,9 +10,11 @@ import { existsSync } from 'fs';
 import { createServer, request, type IncomingMessage } from 'http';
 import { randomBytes } from 'crypto';
 import * as path from 'path';
+import { WebSocket } from 'ws';
 import type { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { Emitter, type Event } from '../../../../base/common/event.js';
-import type { LoopholeServeConfigUpdateParams, LoopholeServeConnectKeyParams, LoopholeServeConnectParams, LoopholeServeFimParams, LoopholeServeStatus } from '../common/loopholeServeTypes.js';
+import type { LoopholeServeConfigUpdateParams, LoopholeServeConnectKeyParams, LoopholeServeConnectParams, LoopholeServeFimParams, LoopholeServeStatus, LoopholeServeVoiceWsEvent } from '../common/loopholeServeTypes.js';
+import type { LoopholeServeCommandInfo, LoopholeServePermissionDecision, LoopholeServePermissionRequest, LoopholeServeSessionInfo, LoopholeServeSessionMessage, LoopholeServeSkillInfo, LoopholeServeVoiceModel, LoopholeServeVoiceTransport, LoopholeServeRevert } from '../common/loopholeServeTypes.js';
 
 // Direct Inception FIM endpoint (loophole serve has no FIM endpoint).
 const INCEPTION_FIM_URL = 'https://api.inceptionlabs.ai/v1/fim/completions';
@@ -74,6 +76,8 @@ export class LoopholeServeChannel implements IServerChannel {
 	private readonly _onEvent = new Emitter<unknown>();
 	// requestId -> FIM abort controllers (cancel on new request / on fimAbort)
 	private readonly _fimControllers = new Map<string, AbortController>();
+	// requestId -> proxied voice WebSockets (provider realtime audio; browser WS cannot set Authorization headers)
+	private readonly _voiceWsSockets = new Map<string, WebSocket>();
 
 	constructor() {
 		currentChannel = this;
@@ -96,6 +100,29 @@ export class LoopholeServeChannel implements IServerChannel {
 		if (command === 'connectKey') return this._callConnectKey(params);
 		if (command === 'fim') return this._callFim(params);
 		if (command === 'fimAbort') return this._callFimAbort(params);
+		// ---- sessions / messages / commands / skills / revert / permission / usage / voice ----
+		if (command === 'sessions') return this._callSessions(params);
+		if (command === 'sessionGet') return this._callSessionGet(params);
+		if (command === 'sessionMessages') return this._callSessionMessages(params);
+		if (command === 'sessionContext') return this._callSessionContext(params);
+		if (command === 'sessionCreate') return this._callSessionCreate(params);
+		if (command === 'sessionDelete') return this._callSessionDelete(params);
+		if (command === 'sessionFork') return this._callSessionFork(params);
+		if (command === 'sessionRename') return this._callSessionRename(params);
+		if (command === 'commands') return this._callCommands();
+		if (command === 'skills') return this._callSkills();
+		if (command === 'runCommand') return this._callRunCommand(params);
+		if (command === 'activateSkill') return this._callActivateSkill(params);
+		if (command === 'revertStage') return this._callRevertStage(params);
+		if (command === 'revertClear') return this._callRevertClear(params);
+		if (command === 'revertCommit') return this._callRevertCommit(params);
+		if (command === 'permissionList') return this._callPermissionList(params);
+		if (command === 'permissionReply') return this._callPermissionReply(params);
+		if (command === 'voiceModels') return this._callVoiceModels();
+		if (command === 'voiceSession') return this._callVoiceSession(params);
+		if (command === 'voiceWsConnect') return this._callVoiceWsConnect(params);
+		if (command === 'voiceWsSend') return this._callVoiceWsSend(params);
+		if (command === 'voiceWsClose') return this._callVoiceWsClose(params);
 		throw new Error(`LoopholeServe: command "${command}" not recognized.`);
 	}
 
@@ -388,6 +415,169 @@ export class LoopholeServeChannel implements IServerChannel {
 		const controller = params?.requestId ? this._fimControllers.get(params.requestId) : undefined;
 		controller?.abort();
 		if (controller && params.requestId) this._fimControllers.delete(params.requestId);
+		return Promise.resolve();
+	}
+
+	// ---- sessions / messages / commands / skills / revert / permission / usage / voice ----
+	// All shapes follow packages/protocol/src/groups/*. serveApi unwraps `{ data }`.
+
+	private _callSessions(params?: { limit?: number; search?: string; archived?: boolean }): Promise<LoopholeServeSessionInfo[]> {
+		const p = params ?? {};
+		const q = new URLSearchParams({
+			limit: String(p.limit ?? 100),
+			order: 'desc',
+			...(p.search ? { search: p.search } : {}),
+			...(p.archived !== undefined ? { archived: String(p.archived) } : {}),
+		});
+		return this.serveApi('GET', `/api/session?${q.toString()}`);
+	}
+
+	private _callSessionGet(params: { sessionID: string }): Promise<LoopholeServeSessionInfo> {
+		return this.serveApi('GET', `/api/session/${encodeURIComponent(params.sessionID)}`);
+	}
+
+	private _callSessionMessages(params: { sessionID: string; limit?: number; order?: string }): Promise<LoopholeServeSessionMessage[]> {
+		const q = new URLSearchParams({
+			limit: String(params.limit ?? 200),
+			order: params.order === 'asc' ? 'asc' : 'desc',
+		});
+		return this.serveApi('GET', `/api/session/${encodeURIComponent(params.sessionID)}/message?${q.toString()}`);
+	}
+
+	// Active context (all messages after the last compaction) — complete window, no pagination cursor.
+	private _callSessionContext(params: { sessionID: string }): Promise<LoopholeServeSessionMessage[]> {
+		return this.serveApi('GET', `/api/session/${encodeURIComponent(params.sessionID)}/context`);
+	}
+
+	private _callSessionCreate(params?: Record<string, unknown>): Promise<LoopholeServeSessionInfo> {
+		return this.serveApi('POST', '/api/session', params ?? {});
+	}
+
+	private _callSessionDelete(params: { sessionID: string }): Promise<void> {
+		return this.serveApi('DELETE', `/api/session/${encodeURIComponent(params.sessionID)}`);
+	}
+
+	private _callSessionFork(params: { sessionID: string; before?: string }): Promise<LoopholeServeSessionInfo> {
+		return this.serveApi('POST', `/api/session/${encodeURIComponent(params.sessionID)}/fork`, {
+			...(params.before ? { before: params.before } : {}),
+		});
+	}
+
+	private _callSessionRename(params: { sessionID: string; title: string }): Promise<void> {
+		return this.serveApi('PATCH', `/api/session/${encodeURIComponent(params.sessionID)}`, { title: params.title });
+	}
+
+	private _callCommands(): Promise<LoopholeServeCommandInfo[]> {
+		return this.serveApi('GET', '/api/command');
+	}
+
+	private _callSkills(): Promise<LoopholeServeSkillInfo[]> {
+		return this.serveApi('GET', '/api/skill');
+	}
+
+	private _callRunCommand(params: { sessionID: string; name: string; text: string }): Promise<void> {
+		return this.serveApi('POST', `/api/session/${encodeURIComponent(params.sessionID)}/command`, {
+			name: params.name,
+			text: params.text,
+		});
+	}
+
+	private _callActivateSkill(params: { sessionID: string; id: string; resume?: boolean }): Promise<void> {
+		return this.serveApi('POST', `/api/experimental/session/${encodeURIComponent(params.sessionID)}/skill`, {
+			id: params.id,
+			...(params.resume !== undefined ? { resume: params.resume } : {}),
+		});
+	}
+
+	private _callRevertStage(params: { sessionID: string; messageID: string; files?: boolean }): Promise<LoopholeServeRevert> {
+		return this.serveApi('POST', `/api/session/${encodeURIComponent(params.sessionID)}/revert/stage`, {
+			messageID: params.messageID,
+			...(params.files !== undefined ? { files: params.files } : {}),
+		});
+	}
+
+	private _callRevertClear(params: { sessionID: string }): Promise<void> {
+		return this.serveApi('DELETE', `/api/session/${encodeURIComponent(params.sessionID)}/revert`);
+	}
+
+	private _callRevertCommit(params: { sessionID: string }): Promise<void> {
+		return this.serveApi('POST', `/api/session/${encodeURIComponent(params.sessionID)}/revert/commit`);
+	}
+
+	private _callPermissionList(params: { sessionID: string }): Promise<LoopholeServePermissionRequest[]> {
+		return this.serveApi('GET', `/api/session/${encodeURIComponent(params.sessionID)}/permission`);
+	}
+
+	private _callPermissionReply(params: { sessionID: string; requestID: string; decision: LoopholeServePermissionDecision; message?: string }): Promise<void> {
+		return this.serveApi('POST', `/api/session/${encodeURIComponent(params.sessionID)}/permission/${encodeURIComponent(params.requestID)}/reply`, {
+			decision: params.decision,
+			...(params.message ? { message: params.message } : {}),
+		});
+	}
+
+	private _callVoiceModels(): Promise<{ models: LoopholeServeVoiceModel[]; default?: string }> {
+		return this.serveApi<{ models: LoopholeServeVoiceModel[]; default?: string }>('GET', '/api/experimental/voice/models');
+	}
+
+	private _callVoiceSession(params: { model: string; session?: Record<string, unknown>; transport: { type: string; sdp?: string; dcid?: number } }): Promise<{ transport: LoopholeServeVoiceTransport }> {
+		return this.serveApi('POST', '/api/experimental/voice/session', {
+			model: params.model,
+			...(params.session ? { session: params.session } : {}),
+			transport: params.transport,
+		});
+	}
+
+	// Browser WebSocket cannot set Authorization headers, so the main process
+	// dials the provider realtime endpoint with the server-issued ephemeral
+	// token and relays frames to the renderer over onEvent_loopholeServe.
+	private _callVoiceWsConnect(params: { requestId: string; url: string; token: string; provider?: string }): Promise<void> {
+		const { requestId, url, token, provider } = params ?? ({} as { requestId: string; url: string; token: string; provider?: string });
+		this._callVoiceWsClose({ requestId });
+		const headers: Record<string, string> = provider === 'google'
+			? { 'x-goog-api-key': token }
+			: { Authorization: `Bearer ${token}` };
+		const socket = new WebSocket(url, { headers });
+		this._voiceWsSockets.set(requestId, socket);
+		socket.on('message', (data: unknown) => {
+			const text = typeof data === 'string' ? data : Buffer.from(data as Uint8Array).toString('utf8');
+			const evt: LoopholeServeVoiceWsEvent = { kind: 'voiceWs', requestId, type: 'message', text };
+			this._onEvent.fire(evt);
+		});
+		socket.on('error', (err: Error) => {
+			const evt: LoopholeServeVoiceWsEvent = { kind: 'voiceWs', requestId, type: 'error', error: err.message };
+			this._onEvent.fire(evt);
+		});
+		socket.on('close', () => {
+			if (this._voiceWsSockets.get(requestId) === socket) this._voiceWsSockets.delete(requestId);
+			const evt: LoopholeServeVoiceWsEvent = { kind: 'voiceWs', requestId, type: 'close' };
+			this._onEvent.fire(evt);
+		});
+		return Promise.resolve();
+	}
+
+	private _callVoiceWsSend(params: { requestId: string; message: string }): Promise<void> {
+		const socket = params?.requestId ? this._voiceWsSockets.get(params.requestId) : undefined;
+		if (socket && socket.readyState === WebSocket.OPEN) {
+			try {
+				socket.send(params.message);
+			} catch { /* best effort */ }
+		}
+		return Promise.resolve();
+	}
+
+	private _callVoiceWsClose(params: { requestId: string }): Promise<void> {
+		const socket = params?.requestId ? this._voiceWsSockets.get(params.requestId) : undefined;
+		if (socket) {
+			this._voiceWsSockets.delete(params.requestId);
+			try {
+				if (socket.readyState === WebSocket.OPEN) {
+					try {
+						socket.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+					} catch { /* best effort */ }
+				}
+				socket.close();
+			} catch { /* best effort */ }
+		}
 		return Promise.resolve();
 	}
 }

@@ -12,8 +12,9 @@ import { URI } from '../../../../base/common/uri.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { chat_userMessageContent, isABuiltinToolName } from '../common/prompt/prompts.js';
-import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj, ServeCompactionState, ServeToolState } from '../common/sendLLMMessageTypes.js';
+import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj, ServeCompactionState, ServePermissionRequest, ServeToolState, ServeUsage } from '../common/sendLLMMessageTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
+import type { LoopholeServeSessionInfo, LoopholeServeSessionMessage } from '../common/loopholeServeTypes.js';
 import { FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, ToolCallParams, ToolName, ToolResult } from '../common/toolsServiceTypes.js';
@@ -21,6 +22,8 @@ import { IToolsService } from './toolsService.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
 import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage } from '../common/chatThreadServiceTypes.js';
+import type { LoopholeServeSessionInfo, LoopholeServeSessionMessage } from '../common/loopholeServeTypes.js';
+import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj, ServeCompactionState, ServePermissionRequest, ServeToolState, ServeUsage } from '../common/sendLLMMessageTypes.js';
 import { Position } from '../../../../editor/common/core/position.js';
 import { IMetricsService } from '../common/metricsService.js';
 import { IDailyActivityService } from '../common/dailyActivityService.js';
@@ -136,6 +139,11 @@ export type ThreadType = {
 
 		cumulativeTokenCount: number; // inputTokens from the latest API call — represents current context size
 
+		// Loophole Serve (optional, additive — old threads lack these): the server
+		// session this Void thread is bound to, plus its cumulative usage for the chip.
+		serveSessionId?: string;
+		serveUsage?: ServeUsage;
+
 		mountedInfo?: {
 			whenMounted: Promise<WhenMounted>
 			_whenMountedResolver: (res: WhenMounted) => void
@@ -243,10 +251,20 @@ export interface IChatThreadService {
 
 	onDidChangeCurrentThread: Event<void>;
 	onDidChangeStreamState: Event<{ threadId: string }>
+	// Loophole Serve permission requests per thread (transient, never persisted).
+	onDidChangeServePermissions: Event<{ threadId: string }>
+	getServePermissions: (threadId: string) => ServePermissionRequest[]
+	setServePermissions: (threadId: string, permissions: ServePermissionRequest[]) => void;
+	clearServePermission: (threadId: string, requestID: string) => void
 
 	getCurrentThread(): ThreadType;
 	openNewThread(): void;
 	switchToThread(threadId: string): void;
+
+	// Loophole Serve session binding (optional, additive — only populated in serve mode).
+	setServeSessionId: (threadId: string, serveSessionId: string) => void;
+	updateServeUsage: (threadId: string, usage: ServeUsage) => void;
+	importServeSession: (opts: { threadId: string; sessionID: string; info: LoopholeServeSessionInfo; messages: LoopholeServeSessionMessage[] }) => void;
 
 	// thread selector
 	deleteThread(threadId: string): void;
@@ -311,6 +329,11 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	private readonly _onDidChangeStreamState = new Emitter<{ threadId: string }>();
 	readonly onDidChangeStreamState: Event<{ threadId: string }> = this._onDidChangeStreamState.event;
+
+	// Pending server-side tool permission requests (permission.asked), keyed by thread.
+	private readonly _servePermissions: { [threadId: string]: ServePermissionRequest[] } = {};
+	private readonly _onDidChangeServePermissions = new Emitter<{ threadId: string }>();
+	readonly onDidChangeServePermissions: Event<{ threadId: string }> = this._onDidChangeServePermissions.event;
 
 	readonly streamState: ThreadStreamState = {}
 	state: ThreadsState // allThreads is persisted, currentThread is not
@@ -502,6 +525,139 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		const state = this.streamState[threadId]
 		if (state?.isRunning !== 'LLM') return
 		this._setStreamState(threadId, { ...state, llmInfo: { ...state.llmInfo, ...patch } })
+	}
+
+
+	// ---------- Loophole Serve: sessions / history / permissions / usage ----------
+
+	getServePermissions = (threadId: string): ServePermissionRequest[] => {
+		return this._servePermissions[threadId] ?? []
+	}
+
+	// Replace the pending list (used to backfill from GET permission list so
+	// requests that fired before the SSE subscription aren't lost).
+	setServePermissions = (threadId: string, permissions: ServePermissionRequest[]) => {
+		this._servePermissions[threadId] = [...permissions]
+		this._onDidChangeServePermissions.fire({ threadId })
+	}
+
+	private _addServePermission = (threadId: string, permission: ServePermissionRequest) => {
+		const list = this._servePermissions[threadId] ?? []
+		if (list.some((p) => p.id === permission.id)) return
+		this._servePermissions[threadId] = [...list, permission]
+		this._onDidChangeServePermissions.fire({ threadId })
+	}
+
+	clearServePermission = (threadId: string, requestID: string) => {
+		const list = this._servePermissions[threadId]
+		if (!list) return
+		const next = list.filter((p) => p.id !== requestID)
+		if (next.length === list.length) return
+		this._servePermissions[threadId] = next
+		this._onDidChangeServePermissions.fire({ threadId })
+	}
+
+	setServeSessionId = (threadId: string, serveSessionId: string) => {
+		if (!this.state.allThreads[threadId]) return
+		if (this.state.allThreads[threadId].state.serveSessionId === serveSessionId) return
+		this._setThreadState(threadId, { serveSessionId })
+	}
+
+	updateServeUsage = (threadId: string, usage: ServeUsage) => {
+		if (!this.state.allThreads[threadId]) return
+		this._setThreadState(threadId, { serveUsage: usage })
+	}
+
+	// Map a projected serve transcript (PublicSessionMessage[]) into Void
+	// ChatMessage[] as best as possible. Only user/assistant/compaction are
+	// rendered; metadata messages (agent/model-switched, idle, ...) are skipped.
+	// A checkpoint entry precedes every user/assistant message to preserve
+	// Void's checkpoint invariant (file snapshots are empty — server-side
+	// rewind is offered separately via the checkpoints UI).
+	private _mapServeMessages = (messages: LoopholeServeSessionMessage[]): ChatMessage[] => {
+		const out: ChatMessage[] = []
+		const toolPartToState = (part: NonNullable<LoopholeServeSessionMessage['content']>[number]): ServeToolState | null => {
+			if (part.type !== 'tool') return null
+			const id = typeof part.id === 'string' ? part.id : undefined
+			const name = typeof part.name === 'string' ? part.name : 'tool'
+			if (!id) return null
+			const state = part.state
+			const statusRaw = typeof state?.status === 'string' ? state.status : ''
+			const status: ServeToolState['status'] = statusRaw === 'completed' ? 'done' : statusRaw === 'error' ? 'error' : 'running'
+			const input = (state?.input && typeof state.input === 'object' && !Array.isArray(state.input)) ? state.input as Record<string, unknown> : undefined
+			const outputText = Array.isArray(state?.content)
+				? state.content.filter((c) => c?.type === 'text' && typeof c.text === 'string').map((c) => c.text as string).join('\n') || undefined
+				: undefined
+			const error = (state?.error && typeof state.error === 'object' && typeof state.error.message === 'string') ? state.error.message : undefined
+			return { id, name, status, input, outputText, error }
+		}
+		const checkpoint = (): ChatMessage => ({
+			role: 'checkpoint',
+			type: 'user_edit',
+			voidFileSnapshotOfURI: {},
+			userModifications: { voidFileSnapshotOfURI: {} },
+		})
+		for (const m of messages) {
+			if (m.type === 'user' && typeof m.text === 'string') {
+				out.push(checkpoint())
+				out.push({ role: 'user', content: m.text, displayContent: m.text, selections: null, state: { stagingSelections: [], isBeingEdited: false } })
+			}
+			else if (m.type === 'assistant' && Array.isArray(m.content)) {
+				let text = ''
+				let reasoning = ''
+				const tools: ServeToolState[] = []
+				for (const part of m.content) {
+					if (part.type === 'text' && typeof part.text === 'string') text += part.text
+					else if (part.type === 'reasoning' && typeof part.text === 'string') reasoning += part.text
+					else {
+						const t = toolPartToState(part)
+						if (t) tools.push(t)
+					}
+				}
+				out.push(checkpoint())
+				out.push({ role: 'assistant', displayContent: text, reasoning, anthropicReasoning: null, ...(tools.length > 0 ? { serveTools: tools } : {}) })
+			}
+			else if (m.type === 'compaction' && typeof (m as { summary?: unknown }).summary === 'string') {
+				out.push(checkpoint())
+				out.push({
+					role: 'assistant',
+					displayContent: '',
+					reasoning: '',
+					anthropicReasoning: null,
+					compaction: { phase: 'done', text: (m as { summary: string }).summary },
+				})
+			}
+		}
+		return out
+	}
+
+	// Load a serve session into a Void thread (sessions browser select).
+	importServeSession = ({ threadId, sessionID, info, messages }: { threadId: string; sessionID: string; info: LoopholeServeSessionInfo; messages: LoopholeServeSessionMessage[] }) => {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return
+		const mapped = this._mapServeMessages(messages)
+		const usage: ServeUsage | undefined = info.tokens ? {
+			cost: typeof info.cost === 'number' ? info.cost : 0,
+			tokens: {
+				input: info.tokens.input ?? 0,
+				output: info.tokens.output ?? 0,
+				reasoning: info.tokens.reasoning ?? 0,
+				cache: { read: info.tokens.cache?.read ?? 0, write: info.tokens.cache?.write ?? 0 },
+			},
+		} : undefined
+		const newThreads = {
+			...this.state.allThreads,
+			[threadId]: {
+				...thread,
+				lastModified: new Date().toISOString(),
+				messages: mapped,
+				state: { ...thread.state, serveSessionId: sessionID, ...(usage ? { serveUsage: usage } : {}) },
+			},
+		}
+		this._servePermissions[threadId] = []
+		this._storeAllThreads(newThreads)
+		this._setState({ allThreads: newThreads })
+		this._onDidChangeServePermissions.fire({ threadId })
 	}
 
 
@@ -831,6 +987,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					overridesOfModel,
 					logging: { loggingName: `Chat - ${chatMode}`, loggingExtras: { threadId, nMessagesSent, chatMode } },
 					separateSystemMessage: separateSystemMessage,
+					// Loophole Serve thread binding (serve-only; undefined for direct-LLM).
+					serveSessionId: this.state.allThreads[threadId]?.state.serveSessionId,
 					onText: ({ fullText, fullReasoning, toolCall }) => {
 						const prevState = this.streamState[threadId]
 						const serve = prevState?.isRunning === 'LLM' ? prevState.llmInfo : undefined
@@ -842,6 +1000,15 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					},
 					onCompaction: ({ compaction }) => {
 						this._mergeServeStreamState(threadId, { compaction })
+					},
+					onServeSession: ({ serveSessionId }) => {
+						this.setServeSessionId(threadId, serveSessionId)
+					},
+					onPermission: ({ permission }) => {
+						this._addServePermission(threadId, permission)
+					},
+					onUsage: ({ usage }) => {
+						this.updateServeUsage(threadId, usage)
 					},
 					onFinalMessage: async ({ fullText, fullReasoning, toolCall, anthropicReasoning, tokenUsage }) => {
 						// Track token usage if available
@@ -1698,6 +1865,9 @@ We only need to do it for files that were edited since `from`, ie files between 
 		const newThreads = { ...currentThreads };
 		delete newThreads[threadId];
 
+		// Loophole Serve: drop pending permission state (thread is gone).
+		delete this._servePermissions[threadId]
+
 		// store the updated threads
 		this._storeAllThreads(newThreads);
 		this._setState({ ...this.state, allThreads: newThreads })
@@ -1707,10 +1877,15 @@ We only need to do it for files that were edited since `from`, ie files between 
 		const { allThreads: currentThreads } = this.state
 		const threadToDuplicate = currentThreads[threadId]
 		if (!threadToDuplicate) return
+		// Loophole Serve: the duplicate must not share the source thread's server
+		// session — it creates its own on first serve turn (history already copied
+		// into Void messages, which serve flattens to the last user text anyway).
 		const newThread = {
 			...deepClone(threadToDuplicate),
 			id: generateUuid(),
 		}
+		delete newThread.state.serveSessionId
+		delete newThread.state.serveUsage
 		const newThreads = {
 			...currentThreads,
 			[newThread.id]: newThread,

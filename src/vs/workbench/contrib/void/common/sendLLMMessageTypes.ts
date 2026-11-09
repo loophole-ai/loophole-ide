@@ -130,6 +130,27 @@ export type ServeCompactionState = {
 }
 export type OnCompaction = (p: { compaction: ServeCompactionState }) => void
 
+// Loophole Serve session binding + permission + usage (optional; serve-only).
+// The server owns the agent loop, so the IDE reuses one session per thread:
+// the first serve turn creates it and reports it here so chatThreadService can
+// persist it onto the Void thread; later turns pass it back via `serveSessionId`.
+export type OnServeSession = (p: { serveSessionId: string }) => void
+export type ServePermissionRequest = {
+	id: string; // Permission.ID (permission.asked `id`)
+	sessionID: string;
+	action: string; // tool action e.g. 'edit' | 'bash'
+	resources: string[];
+	message?: string;
+	save?: string[];
+	metadata?: Record<string, unknown>;
+}
+export type OnPermission = (p: { permission: ServePermissionRequest }) => void
+export type ServeUsage = {
+	cost: number; // USD, cumulative for the session (Session.Info + session.usage.updated)
+	tokens: { input: number; output: number; reasoning: number; cache: { read: number; write: number } };
+}
+export type OnUsage = (p: { usage: ServeUsage }) => void
+
 
 // service types
 type SendLLMType = {
@@ -151,6 +172,12 @@ export type ServiceSendLLMMessageParams = {
 	// direct-LLM path never calls them).
 	onTool?: OnTool;
 	onCompaction?: OnCompaction;
+	// Loophole Serve session binding (optional, serve-only): reuses the thread's
+	// server session when set; the main process reports the created id via onServeSession.
+	serveSessionId?: string;
+	onServeSession?: OnServeSession;
+	onPermission?: OnPermission;
+	onUsage?: OnUsage;
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
 	modelSelection: ModelSelection | null;
 	modelSelectionOptions: ModelSelectionOptions | undefined;
@@ -165,6 +192,10 @@ export type SendLLMMessageParams = {
 	onError: OnError;
 	onTool?: OnTool;
 	onCompaction?: OnCompaction;
+	serveSessionId?: string;
+	onServeSession?: OnServeSession;
+	onPermission?: OnPermission;
+	onUsage?: OnUsage;
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
 	abortRef: AbortRef;
 
@@ -187,7 +218,7 @@ export type ServeOverrides = {
 }
 
 // can't send functions across a proxy, use listeners instead
-export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'onTool' | 'onCompaction' | 'abortRef'
+export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'onTool' | 'onCompaction' | 'onServeSession' | 'onPermission' | 'onUsage' | 'abortRef'
 export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams> & { requestId: string, modelSelection: ModelSelection | null, serve?: ServeOverrides } & SendLLMType
 
 export type MainLLMMessageAbortParams = { requestId: string }
@@ -197,6 +228,9 @@ export type EventLLMMessageOnFinalMessageParams = Parameters<OnFinalMessage>[0] 
 export type EventLLMMessageOnErrorParams = Parameters<OnError>[0] & { requestId: string }
 export type EventLLMMessageOnToolParams = Parameters<OnTool>[0] & { requestId: string }
 export type EventLLMMessageOnCompactionParams = Parameters<OnCompaction>[0] & { requestId: string }
+export type EventLLMMessageOnServeSessionParams = Parameters<OnServeSession>[0] & { requestId: string }
+export type EventLLMMessageOnPermissionParams = Parameters<OnPermission>[0] & { requestId: string }
+export type EventLLMMessageOnUsageParams = Parameters<OnUsage>[0] & { requestId: string }
 
 // service -> main -> internal -> event (back to main)
 // (browser)
