@@ -22,8 +22,6 @@ import { IToolsService } from './toolsService.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
 import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage } from '../common/chatThreadServiceTypes.js';
-import type { LoopholeServeSessionInfo, LoopholeServeSessionMessage } from '../common/loopholeServeTypes.js';
-import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj, ServeCompactionState, ServePermissionRequest, ServeToolState, ServeUsage } from '../common/sendLLMMessageTypes.js';
 import { Position } from '../../../../editor/common/core/position.js';
 import { IMetricsService } from '../common/metricsService.js';
 import { IDailyActivityService } from '../common/dailyActivityService.js';
@@ -624,7 +622,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					displayContent: '',
 					reasoning: '',
 					anthropicReasoning: null,
-					compaction: { phase: 'done', text: (m as { summary: string }).summary },
+					compaction: { phase: 'done', text: (m as unknown as { summary: string }).summary },
 				})
 			}
 		}

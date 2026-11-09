@@ -219,7 +219,7 @@ export type ServeOverrides = {
 
 // can't send functions across a proxy, use listeners instead
 export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'onTool' | 'onCompaction' | 'onServeSession' | 'onPermission' | 'onUsage' | 'abortRef'
-export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams> & { requestId: string, modelSelection: ModelSelection | null, serve?: ServeOverrides } & SendLLMType
+export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams | 'modelSelection'> & { requestId: string, modelSelection: ModelSelection | null, serve?: ServeOverrides } & SendLLMType
 
 export type MainLLMMessageAbortParams = { requestId: string }
 
