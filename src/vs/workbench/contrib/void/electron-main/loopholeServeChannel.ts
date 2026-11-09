@@ -61,10 +61,14 @@ function resolveBinary(explicit?: string): string {
 	if (explicit) return explicit;
 	if (process.env.LOOPHOLE_SERVE_BIN) return process.env.LOOPHOLE_SERVE_BIN;
 	const exe = process.platform === 'win32' ? 'loophole.exe' : 'loophole';
+	const cliExe = process.platform === 'win32' ? 'loophole-cli.exe' : 'loophole-cli';
 	// appRoot is <install>/resources/app in a packaged build (vs code app layout)
 	const appRoot = path.resolve(path.dirname(process.execPath), '..', '..', 'resources', 'app');
 	const bundled = path.join(appRoot, 'bin', exe);
 	if (existsSync(bundled)) return bundled;
+	// build/packaging (scripts/bundle-cli.sh) also drops the binary at <install>/resources/loophole-cli(.exe)
+	const sibling = path.join(appRoot, '..', cliExe);
+	if (existsSync(sibling)) return sibling;
 	return 'loophole';
 }
 
