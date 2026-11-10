@@ -26,7 +26,7 @@ configurationRegistry.registerConfiguration({
 		[LoopholeServeEnabledSettingId]: {
 			type: 'boolean',
 			description: nls.localize('loophole.serve.enabled', 'When enabled, Loophole uses the bundled Loophole Serve backend for providers, models, and chat transport (behind the Loophole Serve settings section).'),
-			default: false,
+			default: true,
 		},
 		[LoopholeServeModelSettingId]: {
 			type: 'string',

@@ -9,7 +9,7 @@ import { registerSingleton, InstantiationType } from '../../../../platform/insta
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import { Emitter, type Event } from '../../../../base/common/event.js';
 import type { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
-import type { LoopholeServeConfigUpdateParams, LoopholeServeConnectKeyParams, LoopholeServeConnectParams, LoopholeServeFimEvent, LoopholeServeFimParams, LoopholeServeModelInfo, LoopholeServeProviderInfo, LoopholeServeStatus, LoopholeServeVoiceWsEvent } from './loopholeServeTypes.js';
+import type { LoopholeServeConfigUpdateParams, LoopholeServeConnectKeyParams, LoopholeServeConnectParams, LoopholeServeFimEvent, LoopholeServeFimParams, LoopholeServeIntegrationInfo, LoopholeServeModelInfo, LoopholeServeProviderInfo, LoopholeServeStatus, LoopholeServeVoiceWsEvent } from './loopholeServeTypes.js';
 import type { LoopholeServeCommandInfo, LoopholeServePermissionDecision, LoopholeServePermissionRequest, LoopholeServeRevert, LoopholeServeSessionInfo, LoopholeServeSessionMessage, LoopholeServeSkillInfo, LoopholeServeVoiceModel, LoopholeServeVoiceTransport } from './loopholeServeTypes.js';
 
 /** Loophole Serve (opencode) backend connection. See LOOPSERVE.md. */
@@ -28,10 +28,14 @@ export interface ILoopholeServeService {
 	models: () => Promise<LoopholeServeModelInfo[]>;
 	/** `GET /api/model/default` on the running server (may be empty). */
 	defaultModel: () => Promise<LoopholeServeModelInfo | null>;
+	/** `GET /api/integration` — connectable integrations and their auth methods/connections. */
+	integrations: () => Promise<LoopholeServeIntegrationInfo[]>;
 	/** `PATCH /api/experimental/config` (Config.Patch — only `shell` is supported). */
 	configUpdate: (params: LoopholeServeConfigUpdateParams) => Promise<void>;
 	/** `POST /api/integration/:integrationID/connect/key` — stores a provider API key server-side. */
 	connectKey: (params: LoopholeServeConnectKeyParams) => Promise<void>;
+	/** `DELETE /api/credential/:credentialID` — removes a stored credential (disconnect). */
+	credentialRemove: (credentialID: string) => Promise<void>;
 	/** Start a direct Inception FIM completion. Progress arrives via `onFimEvent`; cancel with `fimAbort`. */
 	fim: (params: Omit<LoopholeServeFimParams, 'requestId'>, hooks: { onChunk?: (text: string) => void; onFinal: (text: string) => void; onError: (error: string) => void }) => string;
 	/** Cancel an in-flight FIM request started with `fim`. */
@@ -176,12 +180,20 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 		return this.channel.call('defaultModel');
 	}
 
+	async integrations(): Promise<LoopholeServeIntegrationInfo[]> {
+		return this.channel.call('integrations');
+	}
+
 	async configUpdate(params: LoopholeServeConfigUpdateParams): Promise<void> {
 		await this.channel.call('configUpdate', params);
 	}
 
 	async connectKey(params: LoopholeServeConnectKeyParams): Promise<void> {
 		await this.channel.call('connectKey', params);
+	}
+
+	async credentialRemove(credentialID: string): Promise<void> {
+		await this.channel.call('credentialRemove', { credentialID });
 	}
 
 	fim(params: Omit<LoopholeServeFimParams, 'requestId'>, hooks: { onChunk?: (text: string) => void; onFinal: (text: string) => void; onError: (error: string) => void }): string {

@@ -100,8 +100,10 @@ export class LoopholeServeChannel implements IServerChannel {
 		if (command === 'providers') return this._callProviders();
 		if (command === 'models') return this._callModels();
 		if (command === 'defaultModel') return this._callDefaultModel();
+		if (command === 'integrations') return this._callIntegrations();
 		if (command === 'configUpdate') return this._callConfigUpdate(params);
 		if (command === 'connectKey') return this._callConnectKey(params);
+		if (command === 'credentialRemove') return this._callCredentialRemove(params);
 		if (command === 'fim') return this._callFim(params);
 		if (command === 'fimAbort') return this._callFimAbort(params);
 		// ---- sessions / messages / commands / skills / revert / permission / usage / voice ----
@@ -267,11 +269,14 @@ export class LoopholeServeChannel implements IServerChannel {
 		const password = randomBytes(24).toString('base64url');
 		const port = await freePort();
 		const cwd = params.workspacePath ?? process.cwd();
-		const env = { ...process.env, ...params.env };
+		// The server refuses to boot without a password (ServerProcess.run fails
+		// with "Missing server password"), and every request is Basic-authenticated
+		// against it, so the same secret has to be handed to the child.
+		const env = { ...process.env, ...params.env, OPENCODE_SERVER_PASSWORD: password };
 
 		console.log(`[LoopholeServe] spawning ${binary} serve --port ${port} in ${cwd}`);
 
-		const proc = spawn(binary, ['serve', '--port', String(port)], {
+		const proc = spawn(binary, ['serve', '--port', String(port), '--hostname', '127.0.0.1'], {
 			cwd,
 			env,
 			windowsHide: true,
@@ -328,6 +333,11 @@ export class LoopholeServeChannel implements IServerChannel {
 		return this.serveApi('GET', '/api/model/default');
 	}
 
+	// Connectable integrations (auth methods + current connections) for the provider settings UI.
+	private async _callIntegrations(): Promise<unknown> {
+		return this.serveApi('GET', '/api/integration');
+	}
+
 	// Config.Patch only supports `shell`; kept for spec + for any future patchable fields.
 	private async _callConfigUpdate(params: LoopholeServeConfigUpdateParams): Promise<void> {
 		await this.serveApi('PATCH', '/api/experimental/config', params ?? {});
@@ -337,6 +347,11 @@ export class LoopholeServeChannel implements IServerChannel {
 	private async _callConnectKey(params: LoopholeServeConnectKeyParams): Promise<void> {
 		const integrationID = encodeURIComponent(params.integrationID);
 		await this.serveApi('POST', `/api/integration/${integrationID}/connect/key`, { key: params.key, ...(params.label ? { label: params.label } : {}) });
+	}
+
+	// Disconnect removes the stored credential; env-backed providers have no credential to remove.
+	private async _callCredentialRemove(params: { credentialID: string }): Promise<void> {
+		await this.serveApi('DELETE', `/api/credential/${encodeURIComponent(params.credentialID)}`);
 	}
 
 	// ---- Phase 3: direct Inception FIM (streaming, abortable by requestId) ----

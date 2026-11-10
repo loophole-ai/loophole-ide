@@ -11,8 +11,6 @@ import { useLocalVoiceModel, useLocalVoiceRecorder } from '../util/localVoiceMod
 import { localVoiceModelService } from '../../../localVoiceModelService.js';
 import { ServePermissionCard } from './ServePermissionCard.js';
 import { ServeUsageChip } from './ServeUsageChip.js';
-import { ServeSessionsBrowser } from './ServeSessionsBrowser.js';
-import { ServeCheckpointPanel } from './ServeCheckpointPanel.js';
 import { ServeSlashMenu, filterServeSlashEntries, useServeSlashEntries } from './ServeSlashMenu.js';
 import { ServeMicButton, useServeVoiceRecorder } from './ServeVoiceButton.js';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
@@ -22,7 +20,7 @@ import { URI } from '../../../../../../../base/common/uri.js';
 import { IDisposable } from '../../../../../../../base/common/lifecycle.js';
 import { ErrorDisplay } from './ErrorDisplay.js';
 import { BlockCode, TextAreaFns, VoidCustomDropdownBox, VoidInputBox2, VoidSlider, VoidSwitch, VoidDiffEditor } from '../util/inputs.js';
-import { ModelDropdown, } from '../void-settings-tsx/ModelDropdown.js';
+import { ServeModelPicker } from '../void-settings-tsx/serve-settings/ServeModelPicker.js';
 import { PastThreadsList } from './SidebarThreadSelector.js';
 import { VOID_CTRL_L_ACTION_ID } from '../../../actionIDs.js';
 import { VOID_OPEN_SETTINGS_ACTION_ID } from '../../../voidSettingsPane.js';
@@ -553,7 +551,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 
 						<div className='flex items-center flex-wrap gap-x-2 gap-y-1 text-nowrap '>
 							{featureName === 'Chat' && <ChatModeDropdown className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-2 rounded py-0.5 px-1' />}
-							<ModelDropdown featureName={featureName} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 rounded' />
+							<ServeModelPicker className='text-xs text-loophole-fg-3 bg-loophole-bg-1 rounded' />
 							{featureName === 'Chat' && <AttachFileButton className='text-loophole-fg-3' />}
 						</div>
 					</div>
@@ -3142,6 +3140,18 @@ export const SidebarChat = () => {
 	const configService = accessor.get('IConfigurationService')
 	const serveEnabled = configService.getValue<boolean>('loophole.serve.enabled') === true
 	const serveService = accessor.get('ILoopholeServeService')
+	// The server is the default transport; start it when the chat surface mounts.
+	useEffect(() => {
+		if (!serveEnabled) return
+		let cancelled = false
+		serveService.status()
+			.then((status) => {
+				if (cancelled) return
+				if (status.status === 'disconnected' || status.status === 'error') void serveService.connect()
+			})
+			.catch(() => undefined)
+		return () => { cancelled = true }
+	}, [serveEnabled, serveService])
 	const voiceState = useLocalVoiceModel()
 	const selectedVoiceModelId = settingsState.globalSettings.localVoiceModelId
 	const selectedVoiceModelStatus = selectedVoiceModelId === null
@@ -3160,7 +3170,6 @@ export const SidebarChat = () => {
 	// insert into the composer; Enter/stop sends through the normal serve chat path.
 	const serveVoiceBaseline = useCallback(() => textAreaRef.current?.value ?? '', [])
 	const serveVoice = useServeVoiceRecorder(serveEnabled, textAreaFnsRef, serveVoiceBaseline)
-	const [serveOverlays, setServeOverlays] = useState<{ sessions: boolean; checkpoints: boolean }>({ sessions: false, checkpoints: false })
 	// ----- HIGHER STATE -----
 
 	// threads state
@@ -3253,7 +3262,7 @@ export const SidebarChat = () => {
 	const [instructionsAreEmpty, setInstructionsAreEmpty] = useState(!initVal)
 	const [tokenEstimate, setTokenEstimate] = useState(0)
 
-	const isDisabled = instructionsAreEmpty || !!isFeatureNameDisabled('Chat', settingsState)
+	const isDisabled = instructionsAreEmpty || (!serveEnabled && !!isFeatureNameDisabled('Chat', settingsState))
 
 	const chatModelSelection = settingsState.modelSelectionOfFeature['Chat']
 	const chatContextWindow = chatModelSelection
@@ -3527,24 +3536,8 @@ export const SidebarChat = () => {
 
 	</VoidChatArea>
 
-	// Serve header: sessions browser + usage chip + checkpoints (serve mode only).
+	// Serve header: usage chip (serve mode only).
 	const serveHeaderHTML = serveEnabled ? <div className='flex items-center gap-2 px-3 pt-2'>
-		<button
-			type='button'
-			className='text-xs text-loophole-fg-3 hover:text-loophole-fg-1'
-			title='Sessions'
-			onClick={() => setServeOverlays((o) => ({ ...o, sessions: true }))}
-		>
-			Sessions
-		</button>
-		<button
-			type='button'
-			className='text-xs text-loophole-fg-3 hover:text-loophole-fg-1'
-			title='Checkpoints'
-			onClick={() => setServeOverlays((o) => ({ ...o, checkpoints: true }))}
-		>
-			Checkpoints
-		</button>
 		<div className='flex-1' />
 		<ServeUsageChip threadId={threadId} />
 	</div> : null
@@ -3642,23 +3635,13 @@ export const SidebarChat = () => {
 		<ErrorBoundary>
 			{threadPageInput}
 		</ErrorBoundary>
-		{serveOverlays.sessions && <ServeSessionsBrowser onClose={() => setServeOverlays((o) => ({ ...o, sessions: false }))} />}
-		{serveOverlays.checkpoints && <div className='fixed inset-0 z-[100] flex items-start justify-center bg-black/40 pt-16' onClick={() => setServeOverlays((o) => ({ ...o, checkpoints: false }))}><div className='w-[560px] max-w-[92vw] max-h-[70vh] overflow-y-auto rounded-md border border-loophole-border-1 bg-loophole-bg-2-alt shadow-lg' onClick={(e) => e.stopPropagation()}><ServeCheckpointPanel threadId={threadId} onClose={() => setServeOverlays((o) => ({ ...o, checkpoints: false }))} /></div></div>}
 	</div>
 
 
 	return (
 		<Fragment key={threadId} // force rerender when change thread
 		>
-			{isLandingPage ?
-				<>
-					{landingPageContent}
-					<ErrorBoundary>
-						{serveOverlays.sessions && <ServeSessionsBrowser onClose={() => setServeOverlays((o) => ({ ...o, sessions: false }))} />}
-						{serveOverlays.checkpoints && <div className='fixed inset-0 z-[100] flex items-start justify-center bg-black/40 pt-16' onClick={() => setServeOverlays((o) => ({ ...o, checkpoints: false }))}><div className='w-[560px] max-w-[92vw] max-h-[70vh] overflow-y-auto rounded-md border border-loophole-border-1 bg-loophole-bg-2-alt shadow-lg' onClick={(e) => e.stopPropagation()}><ServeCheckpointPanel threadId={threadId} onClose={() => setServeOverlays((o) => ({ ...o, checkpoints: false }))} /></div></div>}
-					</ErrorBoundary>
-				</>
-				: threadPageContent}
+			{isLandingPage ? landingPageContent : threadPageContent}
 		</Fragment>
 	)
 }

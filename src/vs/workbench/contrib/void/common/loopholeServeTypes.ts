@@ -29,6 +29,37 @@ export interface LoopholeServeProviderInfo {
 	activation?: string;
 }
 
+/** Subset of `Integration.Method` (packages/schema/src/integration.ts). */
+export interface LoopholeServeIntegrationMethod {
+	/** `oauth`, `command`, `key`, `external`, or `env` today. */
+	type: string;
+	label?: string;
+	names?: string[];
+}
+
+/** Subset of `Connection.Info` (packages/schema/src/connection.ts). */
+export interface LoopholeServeIntegrationConnection {
+	type: 'credential' | 'env';
+	id?: string;
+	label?: string;
+	method?: 'key' | 'oauth' | 'external';
+	name?: string;
+	status?: {
+		status: string;
+		message: string;
+		url?: string;
+	};
+}
+
+/** Subset of `Integration.Info` (packages/schema/src/integration.ts). */
+export interface LoopholeServeIntegrationInfo {
+	id: string;
+	name: string;
+	metadata?: Record<string, unknown>;
+	methods: LoopholeServeIntegrationMethod[];
+	connections: LoopholeServeIntegrationConnection[];
+}
+
 /** Subset of the server's `Model.Info` (packages/schema/src/model.ts). */
 export interface LoopholeServeModelInfo {
 	id: string;

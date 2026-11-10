@@ -14,7 +14,6 @@ import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { chat_userMessageContent, isABuiltinToolName } from '../common/prompt/prompts.js';
 import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj, ServeCompactionState, ServePermissionRequest, ServeToolState, ServeUsage } from '../common/sendLLMMessageTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
-import type { LoopholeServeSessionInfo, LoopholeServeSessionMessage } from '../common/loopholeServeTypes.js';
 import { FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, ToolCallParams, ToolName, ToolResult } from '../common/toolsServiceTypes.js';
@@ -262,7 +261,6 @@ export interface IChatThreadService {
 	// Loophole Serve session binding (optional, additive — only populated in serve mode).
 	setServeSessionId: (threadId: string, serveSessionId: string) => void;
 	updateServeUsage: (threadId: string, usage: ServeUsage) => void;
-	importServeSession: (opts: { threadId: string; sessionID: string; info: LoopholeServeSessionInfo; messages: LoopholeServeSessionMessage[] }) => void;
 
 	// thread selector
 	deleteThread(threadId: string): void;
@@ -564,98 +562,6 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	updateServeUsage = (threadId: string, usage: ServeUsage) => {
 		if (!this.state.allThreads[threadId]) return
 		this._setThreadState(threadId, { serveUsage: usage })
-	}
-
-	// Map a projected serve transcript (PublicSessionMessage[]) into Void
-	// ChatMessage[] as best as possible. Only user/assistant/compaction are
-	// rendered; metadata messages (agent/model-switched, idle, ...) are skipped.
-	// A checkpoint entry precedes every user/assistant message to preserve
-	// Void's checkpoint invariant (file snapshots are empty — server-side
-	// rewind is offered separately via the checkpoints UI).
-	private _mapServeMessages = (messages: LoopholeServeSessionMessage[]): ChatMessage[] => {
-		const out: ChatMessage[] = []
-		const toolPartToState = (part: NonNullable<LoopholeServeSessionMessage['content']>[number]): ServeToolState | null => {
-			if (part.type !== 'tool') return null
-			const id = typeof part.id === 'string' ? part.id : undefined
-			const name = typeof part.name === 'string' ? part.name : 'tool'
-			if (!id) return null
-			const state = part.state
-			const statusRaw = typeof state?.status === 'string' ? state.status : ''
-			const status: ServeToolState['status'] = statusRaw === 'completed' ? 'done' : statusRaw === 'error' ? 'error' : 'running'
-			const input = (state?.input && typeof state.input === 'object' && !Array.isArray(state.input)) ? state.input as Record<string, unknown> : undefined
-			const outputText = Array.isArray(state?.content)
-				? state.content.filter((c) => c?.type === 'text' && typeof c.text === 'string').map((c) => c.text as string).join('\n') || undefined
-				: undefined
-			const error = (state?.error && typeof state.error === 'object' && typeof state.error.message === 'string') ? state.error.message : undefined
-			return { id, name, status, input, outputText, error }
-		}
-		const checkpoint = (): ChatMessage => ({
-			role: 'checkpoint',
-			type: 'user_edit',
-			voidFileSnapshotOfURI: {},
-			userModifications: { voidFileSnapshotOfURI: {} },
-		})
-		for (const m of messages) {
-			if (m.type === 'user' && typeof m.text === 'string') {
-				out.push(checkpoint())
-				out.push({ role: 'user', content: m.text, displayContent: m.text, selections: null, state: { stagingSelections: [], isBeingEdited: false } })
-			}
-			else if (m.type === 'assistant' && Array.isArray(m.content)) {
-				let text = ''
-				let reasoning = ''
-				const tools: ServeToolState[] = []
-				for (const part of m.content) {
-					if (part.type === 'text' && typeof part.text === 'string') text += part.text
-					else if (part.type === 'reasoning' && typeof part.text === 'string') reasoning += part.text
-					else {
-						const t = toolPartToState(part)
-						if (t) tools.push(t)
-					}
-				}
-				out.push(checkpoint())
-				out.push({ role: 'assistant', displayContent: text, reasoning, anthropicReasoning: null, ...(tools.length > 0 ? { serveTools: tools } : {}) })
-			}
-			else if (m.type === 'compaction' && typeof (m as { summary?: unknown }).summary === 'string') {
-				out.push(checkpoint())
-				out.push({
-					role: 'assistant',
-					displayContent: '',
-					reasoning: '',
-					anthropicReasoning: null,
-					compaction: { phase: 'done', text: (m as unknown as { summary: string }).summary },
-				})
-			}
-		}
-		return out
-	}
-
-	// Load a serve session into a Void thread (sessions browser select).
-	importServeSession = ({ threadId, sessionID, info, messages }: { threadId: string; sessionID: string; info: LoopholeServeSessionInfo; messages: LoopholeServeSessionMessage[] }) => {
-		const thread = this.state.allThreads[threadId]
-		if (!thread) return
-		const mapped = this._mapServeMessages(messages)
-		const usage: ServeUsage | undefined = info.tokens ? {
-			cost: typeof info.cost === 'number' ? info.cost : 0,
-			tokens: {
-				input: info.tokens.input ?? 0,
-				output: info.tokens.output ?? 0,
-				reasoning: info.tokens.reasoning ?? 0,
-				cache: { read: info.tokens.cache?.read ?? 0, write: info.tokens.cache?.write ?? 0 },
-			},
-		} : undefined
-		const newThreads = {
-			...this.state.allThreads,
-			[threadId]: {
-				...thread,
-				lastModified: new Date().toISOString(),
-				messages: mapped,
-				state: { ...thread.state, serveSessionId: sessionID, ...(usage ? { serveUsage: usage } : {}) },
-			},
-		}
-		this._servePermissions[threadId] = []
-		this._storeAllThreads(newThreads)
-		this._setState({ allThreads: newThreads })
-		this._onDidChangeServePermissions.fire({ threadId })
 	}
 
 

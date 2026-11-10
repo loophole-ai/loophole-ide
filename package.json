@@ -324,7 +324,7 @@
 			"properties": {
 				"loophole.serve.enabled": {
 					"type": "boolean",
-					"default": false,
+					"default": true,
 					"description": "When enabled, Loophole uses the bundled Loophole Serve backend for providers, models, and chat transport (behind the Loophole Serve settings section)."
 				},
 				"loophole.serve.model": {

@@ -8,7 +8,8 @@ import { useAccessor, useIsDark, useSettingsState } from '../util/services.js';
 import { Brain, Check, ChevronRight, DollarSign, ExternalLink, Lock, X } from 'lucide-react';
 import { displayInfoOfProviderName, ProviderName, providerNames, localProviderNames, ollamaProviderNames, mlxProviderNames, appleProviderNames, otherLocalProviderNames, featureNames, FeatureName, isFeatureNameDisabled } from '../../../../common/voidSettingsTypes.js';
 import { os } from '../../../../common/helpers/systemInfo.js';
-import { OllamaSetupInstructions, MlxSetupInstructions, AppleFoundationModelsSetupInstructions, OneClickSwitchButton, SettingsForProvider, ModelDump } from '../void-settings-tsx/Settings.js';
+import { OllamaSetupInstructions, MlxSetupInstructions, AppleFoundationModelsSetupInstructions, SettingsForProvider, ModelDump } from '../void-settings-tsx/ProviderSetupSections.js';
+import { OneClickSwitchButton } from '../void-settings-tsx/Settings.js';
 import { ColorScheme } from '../../../../../../../platform/theme/common/theme.js';
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js';
 import { isLinux } from '../../../../../../../base/common/platform.js';
@@ -282,7 +283,8 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 					<PreviousButton onClick={() => setPageIndex(pageIndex - 1)} />
 					<NextButton
 						onClick={() => {
-							const isDisabled = isFeatureNameDisabled('Chat', settingsState)
+							const serveEnabled = accessor.get('IConfigurationService').getValue<boolean>('loophole.serve.enabled') === true
+							const isDisabled = !serveEnabled && isFeatureNameDisabled('Chat', settingsState)
 							if (!isDisabled) {
 								setPageIndex(pageIndex + 1);
 								setErrorMessage(null);
