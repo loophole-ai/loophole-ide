@@ -3,114 +3,123 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'; // Added useRef import just in case it was missed, though likely already present
-import { displayInfoOfFeatureName } from '../../../../common/voidSettingsTypes.js'
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { os } from '../../../../common/helpers/systemInfo.js'
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useIsDark, useIsOptedOut, useSettingsState } from '../util/services.js'
-import { ModelDropdown } from './ModelDropdown.js'
-import { LocalVoiceModelSettings } from '../local-voice/LocalVoiceModelSettings.js'
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
 import { WarningBox } from './WarningBox.js'
 import { IconLoading } from '../sidebar-tsx/SidebarChat.js'
 import { ToolApprovalType, toolApprovalTypes } from '../../../../common/toolsServiceTypes.js'
 import Severity from '../../../../../../../base/common/severity.js'
-import { TransferEditorType } from '../../../extensionTransferTypes.js';
-import { MCPServer } from '../../../../common/mcpServiceTypes.js';
-import { useMCPServiceState } from '../util/services.js';
-import { PROJECT_MEMORY_STORAGE_KEY } from '../../../../common/storageKeys.js';
-import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js';
-import { ServeProvidersTab } from './serve-settings/ServeProvidersTab.js'
-import { ServeModelsTab } from './serve-settings/ServeModelsTab.js'
-import { ServeAutocompleteTab } from './serve-settings/ServeAutocompleteTab.js'
+import { TransferEditorType } from '../../../extensionTransferTypes.js'
+import { MCPServer } from '../../../../common/mcpServiceTypes.js'
+import { useMCPServiceState } from '../util/services.js'
+import { PROJECT_MEMORY_STORAGE_KEY } from '../../../../common/storageKeys.js'
+import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js'
+import { CliProvidersTab } from './cli-settings/CliProvidersTab.js'
+import { CliModelsTab } from './cli-settings/CliModelsTab.js'
+import { CliAutocompleteTab } from './cli-settings/CliAutocompleteTab.js'
+import { CliContextTab } from './cli-settings/CliContextTab.js'
+import { CliCommitMessageTab } from './cli-settings/CliCommitMessageTab.js'
+import { CliNotificationsTab } from './cli-settings/CliNotificationsTab.js'
+import { CliStatusTab } from './cli-settings/CliStatusTab.js'
+import { CliAboutTab } from './cli-settings/CliAboutTab.js'
 
 type Tab =
-	| 'serveProviders'
-	| 'serveModels'
-	| 'serveAutocomplete'
-	| 'voice'
-	| 'featureOptions'
-	| 'mcp'
+	| 'models'
+	| 'providers'
+	| 'autocomplete'
+	| 'context'
+	| 'commitMessage'
+	| 'notifications'
+	| 'status'
 	| 'general'
+	| 'mcp'
+	| 'about'
 	| 'all';
 
+const navItems: { tab: Tab, label: string }[] = [
+	{ tab: 'models', label: 'Models' },
+	{ tab: 'providers', label: 'Providers' },
+	{ tab: 'autocomplete', label: 'Autocomplete' },
+	{ tab: 'context', label: 'Context' },
+	{ tab: 'commitMessage', label: 'Commit Message' },
+	{ tab: 'notifications', label: 'Notifications' },
+	{ tab: 'status', label: 'Status' },
+	{ tab: 'general', label: 'General' },
+	{ tab: 'mcp', label: 'MCP' },
+	{ tab: 'about', label: 'About' },
+	{ tab: 'all', label: 'All Settings' },
+]
 
 export const AnimatedCheckmarkButton = ({ text, className }: { text?: string, className?: string }) => {
-	const [dashOffset, setDashOffset] = useState(40);
+	const [dashOffset, setDashOffset] = useState(40)
 
 	useEffect(() => {
-		const startTime = performance.now();
-		const duration = 500; // 500ms animation
+		const startTime = performance.now()
+		const duration = 500
 
 		const animate = (currentTime: number) => {
-			const elapsed = currentTime - startTime;
-			const progress = Math.min(elapsed / duration, 1);
-			const newOffset = 40 - (progress * 40);
+			const elapsed = currentTime - startTime
+			const progress = Math.min(elapsed / duration, 1)
+			setDashOffset(40 - (progress * 40))
+			if (progress < 1) requestAnimationFrame(animate)
+		}
 
-			setDashOffset(newOffset);
-
-			if (progress < 1) {
-				requestAnimationFrame(animate);
-			}
-		};
-
-		const animationId = requestAnimationFrame(animate);
-		return () => cancelAnimationFrame(animationId);
-	}, []);
+		const animationId = requestAnimationFrame(animate)
+		return () => cancelAnimationFrame(animationId)
+	}, [])
 
 	return <div
 		className={`flex items-center gap-1.5 w-fit
 			${className ? className : `px-2 py-0.5 text-xs text-zinc-900 bg-zinc-100 rounded-sm`}
 		`}
 	>
-		<svg className="size-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+		<svg className='size-4' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'>
 			<path
-				d="M5 13l4 4L19 7"
-				stroke="currentColor"
-				strokeWidth="2"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-				style={{
-					strokeDasharray: 40,
-					strokeDashoffset: dashOffset
-				}}
+				d='M5 13l4 4L19 7'
+				stroke='currentColor'
+				strokeWidth='2'
+				strokeLinecap='round'
+				strokeLinejoin='round'
+				style={{ strokeDasharray: 40, strokeDashoffset: dashOffset }}
 			/>
 		</svg>
 		{text}
 	</div>
 }
 
-
 // ConfirmButton prompts for a second click to confirm an action, cancels if clicking outside
 const ConfirmButton = ({ children, onConfirm, className }: { children: React.ReactNode, onConfirm: () => void, className?: string }) => {
-	const [confirm, setConfirm] = useState(false);
-	const ref = useRef<HTMLDivElement>(null);
+	const [confirm, setConfirm] = useState(false)
+	const ref = useRef<HTMLDivElement>(null)
 	useEffect(() => {
-		if (!confirm) return;
+		if (!confirm) return
 		const handleClickOutside = (e: MouseEvent) => {
 			if (ref.current && !ref.current.contains(e.target as Node)) {
-				setConfirm(false);
+				setConfirm(false)
 			}
-		};
-		document.addEventListener('click', handleClickOutside);
-		return () => document.removeEventListener('click', handleClickOutside);
-	}, [confirm]);
+		}
+		document.addEventListener('click', handleClickOutside)
+		return () => document.removeEventListener('click', handleClickOutside)
+	}, [confirm])
 	return (
-		<div ref={ref} className={`inline-block`}>
+		<div ref={ref} className='inline-block'>
 			<VoidButtonBgDarken className={className} onClick={() => {
 				if (!confirm) {
-					setConfirm(true);
+					setConfirm(true)
 				} else {
-					onConfirm();
-					setConfirm(false);
+					onConfirm()
+					setConfirm(false)
 				}
 			}}>
 				{confirm ? `Confirm Reset` : children}
 			</VoidButtonBgDarken>
 		</div>
-	);
-};
+	)
+}
 
 export const AIInstructionsBox = () => {
 	const accessor = useAccessor()
@@ -147,9 +156,7 @@ const FastApplyMethodDropdown = () => {
 		getOptionDropdownDetail={(val) => val ? 'Output Search/Replace blocks' : 'Rewrite whole files'}
 		getOptionsEqual={(a, b) => a === b}
 	/>
-
 }
-
 
 const RedoOnboardingButton = ({ className }: { className?: string }) => {
 	const accessor = useAccessor()
@@ -160,16 +167,9 @@ const RedoOnboardingButton = ({ className }: { className?: string }) => {
 	>
 		See onboarding screen?
 	</div>
-
 }
 
-
-
-
-
-
-
-export const ToolApprovalTypeSwitch = ({ approvalType, size, desc }: { approvalType: ToolApprovalType, size: "xxs" | "xs" | "sm" | "sm+" | "md", desc: string }) => {
+export const ToolApprovalTypeSwitch = ({ approvalType, size, desc }: { approvalType: ToolApprovalType, size: 'xxs' | 'xs' | 'sm' | 'sm+' | 'md', desc: string }) => {
 	const accessor = useAccessor()
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const voidSettingsState = useSettingsState()
@@ -189,35 +189,25 @@ export const ToolApprovalTypeSwitch = ({ approvalType, size, desc }: { approvalT
 			value={voidSettingsState.globalSettings.autoApprove[approvalType] ?? false}
 			onChange={(newVal) => onToggleAutoApprove(approvalType, newVal)}
 		/>
-		<span className="text-loophole-fg-3 text-xs">{desc}</span>
+		<span className='text-loophole-fg-3 text-xs'>{desc}</span>
 	</>
 }
-
-
 
 export const OneClickSwitchButton = ({ fromEditor = 'VS Code', className = '' }: { fromEditor?: TransferEditorType, className?: string }) => {
 	const accessor = useAccessor()
 	const extensionTransferService = accessor.get('IExtensionTransferService')
 
-	const [transferState, setTransferState] = useState<{ type: 'done', error?: string } | { type: | 'loading' | 'justfinished' }>({ type: 'done' })
-
-
+	const [transferState, setTransferState] = useState<{ type: 'done', error?: string } | { type: 'loading' | 'justfinished' }>({ type: 'done' })
 
 	const onClick = async () => {
 		if (transferState.type !== 'done') return
-
 		setTransferState({ type: 'loading' })
-
 		const errAcc = await extensionTransferService.transferExtensions(os, fromEditor)
-
-		// Even if some files were missing, consider it a success if no actual errors occurred
-		const hadError = !!errAcc
-		if (hadError) {
+		if (errAcc) {
 			setTransferState({ type: 'done', error: errAcc })
-		}
-		else {
+		} else {
 			setTransferState({ type: 'justfinished' })
-			setTimeout(() => { setTransferState({ type: 'done' }); }, 3000)
+			setTimeout(() => { setTransferState({ type: 'done' }) }, 3000)
 		}
 	}
 
@@ -233,13 +223,10 @@ export const OneClickSwitchButton = ({ fromEditor = 'VS Code', className = '' }:
 	</>
 }
 
-
-// full settings
-
 // MCP Server component
 const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer }) => {
-	const accessor = useAccessor();
-	const mcpService = accessor.get('IMCPService');
+	const accessor = useAccessor()
+	const mcpService = accessor.get('IMCPService')
 
 	const voidSettings = useSettingsState()
 	const isOn = voidSettings.mcpUserStateOfName[name]?.isOn
@@ -247,11 +234,9 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 	const removeUniquePrefix = (name: string) => name.split('_').slice(1).join('_')
 
 	return (
-		<div className="border border-loophole-border-2 bg-loophole-bg-1 py-3 px-4 rounded-sm my-2">
-			<div className="flex items-center justify-between">
-				{/* Left side - status and name */}
-				<div className="flex items-center gap-2">
-					{/* Status indicator */}
+		<div className='border border-loophole-border-2 bg-loophole-bg-1 py-3 px-4 rounded-sm my-2'>
+			<div className='flex items-center justify-between'>
+				<div className='flex items-center gap-2'>
 					<div className={`w-2 h-2 rounded-full
 						${server.status === 'success' ? 'bg-green-500'
 							: server.status === 'error' ? 'bg-red-500'
@@ -259,12 +244,8 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 									: server.status === 'offline' ? 'bg-loophole-fg-3'
 										: ''}
 					`}></div>
-
-					{/* Server name */}
-					<div className="text-sm font-medium text-loophole-fg-1">{name}</div>
+					<div className='text-sm font-medium text-loophole-fg-1'>{name}</div>
 				</div>
-
-				{/* Right side - power toggle switch */}
 				<VoidSwitch
 					value={isOn ?? false}
 					size='xs'
@@ -273,16 +254,14 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 				/>
 			</div>
 
-			{/* Tools section */}
 			{isOn && (
-				<div className="mt-3">
-					<div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+				<div className='mt-3'>
+					<div className='flex flex-wrap gap-2 max-h-32 overflow-y-auto'>
 						{(server.tools ?? []).length > 0 ? (
 							(server.tools ?? []).map((tool: { name: string; description?: string }) => (
 								<span
 									key={tool.name}
-									className="px-2 py-0.5 bg-loophole-bg-2 text-loophole-fg-3 rounded-sm text-xs"
-
+									className='px-2 py-0.5 bg-loophole-bg-2 text-loophole-fg-3 rounded-sm text-xs'
 									data-tooltip-id='loophole-tooltip'
 									data-tooltip-content={tool.description || ''}
 									data-tooltip-class-name='loophole-max-w-[300px]'
@@ -291,76 +270,47 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 								</span>
 							))
 						) : (
-							<span className="text-xs text-loophole-fg-3">No tools available</span>
+							<span className='text-xs text-loophole-fg-3'>No tools available</span>
 						)}
 					</div>
 				</div>
 			)}
 
-			{/* Command badge */}
 			{isOn && server.command && (
-				<div className="mt-3">
-					<div className="text-xs text-loophole-fg-3 mb-1">Command:</div>
-					<div className="px-2 py-1 bg-loophole-bg-2 text-xs font-mono overflow-x-auto whitespace-nowrap text-loophole-fg-2 rounded-sm">
+				<div className='mt-3'>
+					<div className='text-xs text-loophole-fg-3 mb-1'>Command:</div>
+					<div className='px-2 py-1 bg-loophole-bg-2 text-xs font-mono overflow-x-auto whitespace-nowrap text-loophole-fg-2 rounded-sm'>
 						{server.command}
 					</div>
 				</div>
 			)}
 
-			{/* Error message if present */}
 			{server.error && (
-				<div className="mt-3">
+				<div className='mt-3'>
 					<WarningBox text={server.error} />
 				</div>
 			)}
 		</div>
-	);
-};
+	)
+}
 
-// Main component that renders the list of servers
 const MCPServersList = () => {
 	const mcpServiceState = useMCPServiceState()
 
 	let content: React.ReactNode
 	if (mcpServiceState.error) {
-		content = <div className="text-loophole-fg-3 text-sm mt-2">
-			{mcpServiceState.error}
-		</div>
-	}
-	else {
+		content = <div className='text-loophole-fg-3 text-sm mt-2'>{mcpServiceState.error}</div>
+	} else {
 		const entries = Object.entries(mcpServiceState.mcpServerOfName)
-		if (entries.length === 0) {
-			content = <div className="text-loophole-fg-3 text-sm mt-2">
-				No servers found
-			</div>
-		}
-		else {
-			content = entries.map(([name, server]) => (
-				<MCPServerComponent key={name} name={name} server={server} />
-			))
-		}
+		content = entries.length === 0
+			? <div className='text-loophole-fg-3 text-sm mt-2'>No servers found</div>
+			: entries.map(([name, server]) => <MCPServerComponent key={name} name={name} server={server} />)
 	}
 
-	return <div className="my-2">{content}</div>
-};
+	return <div className='my-2'>{content}</div>
+}
 
-export const Settings = () => {
-	const isDark = useIsDark()
-	// ─── sidebar nav ──────────────────────────
-	const [selectedSection, setSelectedSection] =
-		useState<Tab>('serveModels');
-
-	const navItems: { tab: Tab; label: string }[] = [
-		{ tab: 'serveProviders', label: 'Providers' },
-		{ tab: 'serveModels', label: 'Models' },
-		{ tab: 'serveAutocomplete', label: 'Autocomplete' },
-		{ tab: 'voice', label: 'Microphone' },
-		{ tab: 'featureOptions', label: 'Feature Options' },
-		{ tab: 'general', label: 'General' },
-		{ tab: 'mcp', label: 'MCP' },
-		{ tab: 'all', label: 'All Settings' },
-	];
-	const shouldShowTab = (tab: Tab) => selectedSection === 'all' || selectedSection === tab;
+const GeneralTab = () => {
 	const accessor = useAccessor()
 	const commandService = accessor.get('ICommandService')
 	const environmentService = accessor.get('IEnvironmentService')
@@ -369,30 +319,27 @@ export const Settings = () => {
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const chatThreadsService = accessor.get('IChatThreadService')
 	const notificationService = accessor.get('INotificationService')
-	const mcpService = accessor.get('IMCPService')
 	const storageService = accessor.get('IStorageService')
 	const workspaceContextService = accessor.get('IWorkspaceContextService')
 	const metricsService = accessor.get('IMetricsService')
 	const isOptedOut = useIsOptedOut()
 
+	const [s, ss] = useState(0)
+	const workspaceName = workspaceContextService.getWorkspace().folders[0]?.name
+	const [projectMemory, setProjectMemory] = useState(() => storageService.get(PROJECT_MEMORY_STORAGE_KEY, StorageScope.WORKSPACE) ?? '')
+	const fileInputSettingsRef = useRef<HTMLInputElement>(null)
+	const fileInputChatsRef = useRef<HTMLInputElement>(null)
+
 	const onDownload = (t: 'Chats' | 'Settings') => {
 		let dataStr: string
 		let downloadName: string
 		if (t === 'Chats') {
-			// Export chat threads
 			dataStr = JSON.stringify(chatThreadsService.state, null, 2)
-			downloadName = 'void-chats.json'
-		}
-		else if (t === 'Settings') {
-			// Export user settings
+			downloadName = 'loophole-chats.json'
+		} else {
 			dataStr = JSON.stringify(voidSettingsService.state, null, 2)
-			downloadName = 'void-settings.json'
+			downloadName = 'loophole-settings.json'
 		}
-		else {
-			dataStr = ''
-			downloadName = ''
-		}
-
 		const blob = new Blob([dataStr], { type: 'application/json' })
 		const url = URL.createObjectURL(blob)
 		const a = document.createElement('a')
@@ -402,71 +349,212 @@ export const Settings = () => {
 		URL.revokeObjectURL(url)
 	}
 
-
-	// Add file input refs
-	const fileInputSettingsRef = useRef<HTMLInputElement>(null)
-	const fileInputChatsRef = useRef<HTMLInputElement>(null)
-
-	const [s, ss] = useState(0)
-
-	const workspaceName = workspaceContextService.getWorkspace().folders[0]?.name
-	const [projectMemory, setProjectMemory] = useState(() => storageService.get(PROJECT_MEMORY_STORAGE_KEY, StorageScope.WORKSPACE) ?? '')
-
-	const handleUpload = (t: 'Chats' | 'Settings') => (e: React.ChangeEvent<HTMLInputElement>,) => {
+	const handleUpload = (t: 'Chats' | 'Settings') => (e: React.ChangeEvent<HTMLInputElement>) => {
 		const files = e.target.files
-		if (!files) return;
+		if (!files) return
 		const file = files[0]
 		if (!file) return
-
-		const reader = new FileReader();
+		const reader = new FileReader()
 		reader.onload = () => {
 			try {
-				const json = JSON.parse(reader.result as string);
-
+				const json = JSON.parse(reader.result as string)
 				if (t === 'Chats') {
 					chatThreadsService.dangerousSetState(json as any)
-				}
-				else if (t === 'Settings') {
+				} else {
 					voidSettingsService.dangerousSetState(json as any)
 				}
-
 				notificationService.info(`${t} imported successfully!`)
 			} catch (err) {
-				notificationService.notify({ message: `Failed to import ${t}`, source: err + '', severity: Severity.Error, })
+				notificationService.notify({ message: `Failed to import ${t}`, source: err + '', severity: Severity.Error })
 			}
-		};
-		reader.readAsText(file);
-		e.target.value = '';
-
+		}
+		reader.readAsText(file)
+		e.target.value = ''
 		ss(s => s + 1)
 	}
 
+	return <div className='flex flex-col gap-12'>
+		<div>
+			<ErrorBoundary>
+				<h2 className='text-3xl mb-2'>One-Click Switch</h2>
+				<h4 className='text-loophole-fg-3 mb-4'>Transfer your editor settings into Loophole.</h4>
+				<div className='flex flex-col gap-2'>
+					<OneClickSwitchButton className='w-48' fromEditor='VS Code' />
+					<OneClickSwitchButton className='w-48' fromEditor='Cursor' />
+					<OneClickSwitchButton className='w-48' fromEditor='Windsurf' />
+				</div>
+			</ErrorBoundary>
+		</div>
+
+		<div>
+			<h2 className='text-3xl mb-2'>Import/Export</h2>
+			<h4 className='text-loophole-fg-3 mb-4'>Transfer Loophole's settings and chats in and out of Loophole.</h4>
+			<div className='flex flex-col gap-8'>
+				<div className='flex flex-col gap-2 max-w-48 w-full'>
+					<input key={2 * s} ref={fileInputSettingsRef} type='file' accept='.json' className='hidden' onChange={handleUpload('Settings')} />
+					<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => { fileInputSettingsRef.current?.click() }}>Import Settings</VoidButtonBgDarken>
+					<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => onDownload('Settings')}>Export Settings</VoidButtonBgDarken>
+					<ConfirmButton className='px-4 py-1 w-full' onConfirm={() => { voidSettingsService.resetState() }}>Reset Settings</ConfirmButton>
+				</div>
+				<div className='flex flex-col gap-2 max-w-48 w-full'>
+					<input key={2 * s + 1} ref={fileInputChatsRef} type='file' accept='.json' className='hidden' onChange={handleUpload('Chats')} />
+					<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => { fileInputChatsRef.current?.click() }}>Import Chats</VoidButtonBgDarken>
+					<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => onDownload('Chats')}>Export Chats</VoidButtonBgDarken>
+					<ConfirmButton className='px-4 py-1 w-full' onConfirm={() => { chatThreadsService.resetState() }}>Reset Chats</ConfirmButton>
+				</div>
+			</div>
+		</div>
+
+		<div>
+			<h2 className='text-3xl mb-2'>Built-in Settings</h2>
+			<h4 className='text-loophole-fg-3 mb-4'>IDE settings, keyboard settings, and theme customization.</h4>
+			<ErrorBoundary>
+				<div className='flex flex-col gap-2 justify-center max-w-48 w-full'>
+					<VoidButtonBgDarken className='px-4 py-1' onClick={() => { commandService.executeCommand('workbench.action.openSettings') }}>General Settings</VoidButtonBgDarken>
+					<VoidButtonBgDarken className='px-4 py-1' onClick={() => { commandService.executeCommand('workbench.action.openGlobalKeybindings') }}>Keyboard Settings</VoidButtonBgDarken>
+					<VoidButtonBgDarken className='px-4 py-1' onClick={() => { commandService.executeCommand('workbench.action.selectTheme') }}>Theme Settings</VoidButtonBgDarken>
+					<VoidButtonBgDarken className='px-4 py-1' onClick={() => { void nativeHostService.showItemInFolder(environmentService.logsHome.fsPath) }}>Open Logs</VoidButtonBgDarken>
+				</div>
+			</ErrorBoundary>
+		</div>
+
+		<div className='max-w-[600px]'>
+			<h2 className='text-3xl mb-2'>Metrics</h2>
+			<h4 className='text-loophole-fg-3 mb-4'>Very basic anonymous usage tracking helps us keep Loophole running smoothly. You may opt out below. Regardless of this setting, Loophole never sees your code, messages, or API keys.</h4>
+			<div className='flex items-center gap-x-2 my-2'>
+				<VoidSwitch
+					size='xs'
+					value={isOptedOut}
+					onChange={(newVal) => { metricsService.setOptOut(newVal) }}
+				/>
+				<span className='text-loophole-fg-3 text-xs pointer-events-none'>Opt-out of basic usage metrics</span>
+			</div>
+		</div>
+
+		<div className='max-w-[600px]'>
+			<h2 className='text-3xl mb-2'>AI Instructions</h2>
+			<h4 className='text-loophole-fg-3 mb-4'>
+				<ChatMarkdownRender inPTag={true} string={`System instructions to include with all AI requests.
+Alternatively, place a \`.loopholerules\` file in the root of your workspace.`} chatMessageLocation={undefined} />
+			</h4>
+			<ErrorBoundary>
+				<AIInstructionsBox />
+			</ErrorBoundary>
+			<div className='my-4'>
+				<div className='flex items-center gap-x-2'>
+					<VoidSwitch
+						size='xs'
+						value={!!settingsState.globalSettings.disableSystemMessage}
+						onChange={(newValue) => { voidSettingsService.setGlobalSetting('disableSystemMessage', newValue) }}
+					/>
+					<span className='text-loophole-fg-3 text-xs pointer-events-none'>Disable system message</span>
+				</div>
+				<div className='text-loophole-fg-3 text-xs mt-1'>When disabled, Loophole will not include anything in the system message except for content you specified above.</div>
+			</div>
+		</div>
+
+		<div>
+			<h2 className='text-3xl mb-2'>Tools</h2>
+			<h4 className='text-loophole-fg-3 mb-4'>Tools are functions that models can call. Some tools require approval.</h4>
+			<ErrorBoundary>
+				{[...toolApprovalTypes].map((approvalType) => <div key={approvalType} className='flex items-center gap-x-2 my-2'>
+					<ToolApprovalTypeSwitch size='xs' approvalType={approvalType} desc={`Auto-approve ${approvalType}`} />
+				</div>)}
+				<div className='flex items-center gap-x-2 my-2'>
+					<VoidSwitch size='xs' value={settingsState.globalSettings.includeToolLintErrors} onChange={(newVal) => voidSettingsService.setGlobalSetting('includeToolLintErrors', newVal)} />
+					<span className='text-loophole-fg-3 text-xs pointer-events-none'>Fix lint errors</span>
+				</div>
+				<div className='flex items-center gap-x-2 my-2'>
+					<VoidSwitch size='xs' value={settingsState.globalSettings.autoAcceptLLMChanges} onChange={(newVal) => voidSettingsService.setGlobalSetting('autoAcceptLLMChanges', newVal)} />
+					<span className='text-loophole-fg-3 text-xs pointer-events-none'>Auto-accept model changes</span>
+				</div>
+			</ErrorBoundary>
+		</div>
+
+		<div>
+			<h2 className='text-3xl mb-2'>Editor</h2>
+			<h4 className='text-loophole-fg-3 mb-4'>Settings that control Loophole suggestions in the code editor.</h4>
+			<div className='flex items-center gap-x-2 my-2'>
+				<VoidSwitch size='xs' value={settingsState.globalSettings.showInlineSuggestions} onChange={(newVal) => voidSettingsService.setGlobalSetting('showInlineSuggestions', newVal)} />
+				<span className='text-loophole-fg-3 text-xs pointer-events-none'>Show suggestions on select</span>
+			</div>
+			<div className='flex items-center gap-x-2 my-2'>
+				<FastApplyMethodDropdown />
+			</div>
+		</div>
+
+		<div className='max-w-[600px]'>
+			<h2 className='text-3xl mb-2'>Project Memory</h2>
+			<h4 className='text-loophole-fg-3 mb-4'>Durable notes the agent has saved across sessions, stored locally on this machine.</h4>
+			<div className='text-loophole-fg-3 text-xs mb-4'>
+				{`Showing memory for the currently open project only: ${workspaceName ? `"${workspaceName}"` : 'this workspace'}.`}
+			</div>
+			<ErrorBoundary>
+				<VoidInputBox2
+					key={`project-memory-${s}`}
+					className='min-h-[81px] p-3 rounded-sm'
+					initValue={projectMemory}
+					placeholder='No project memory stored yet.'
+					multiline
+					onChangeText={(newText) => {
+						setProjectMemory(newText)
+						storageService.store(PROJECT_MEMORY_STORAGE_KEY, newText, StorageScope.WORKSPACE, StorageTarget.MACHINE)
+					}}
+				/>
+			</ErrorBoundary>
+			<div className='mt-2'>
+				<ConfirmButton className='px-4 py-1' onConfirm={() => {
+					storageService.remove(PROJECT_MEMORY_STORAGE_KEY, StorageScope.WORKSPACE)
+					setProjectMemory('')
+					ss(s => s + 1)
+				}}>Delete Project Memory</ConfirmButton>
+			</div>
+		</div>
+	</div>
+}
+
+const MCPTab = () => {
+	const accessor = useAccessor()
+	const mcpService = accessor.get('IMCPService')
+	return <>
+		<h2 className='text-3xl mb-2'>MCP</h2>
+		<h4 className='text-loophole-fg-3 mb-4'>
+			<ChatMarkdownRender inPTag={true} string={`Use Model Context Protocol to provide Agent mode with more tools.`} chatMessageLocation={undefined} />
+		</h4>
+		<div className='my-2'>
+			<VoidButtonBgDarken className='px-4 py-1 w-full max-w-48' onClick={async () => { await mcpService.revealMCPConfigFile() }}>Add MCP Server</VoidButtonBgDarken>
+		</div>
+		<ErrorBoundary>
+			<MCPServersList />
+		</ErrorBoundary>
+	</>
+}
+
+export const Settings = () => {
+	const isDark = useIsDark()
+	const [selectedSection, setSelectedSection] = useState<Tab>('models')
+	const shouldShowTab = (tab: Tab) => selectedSection === 'all' || selectedSection === tab
+
+	useEffect(() => {
+		window.scrollTo({ top: 0, behavior: 'smooth' })
+	}, [selectedSection])
 
 	return (
 		<div className={`@@loophole-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%', overflow: 'auto' }}>
-			<div className="flex flex-col md:flex-row w-full gap-6 max-w-[900px] mx-auto mb-32" style={{ minHeight: '80vh' }}>
+			<div className='flex flex-col md:flex-row w-full gap-6 max-w-[900px] mx-auto mb-32' style={{ minHeight: '80vh' }}>
 				{/* ──────────────  SIDEBAR  ────────────── */}
-
-				<aside className="md:w-1/4 w-full p-6 shrink-0">
-					{/* vertical tab list */}
-					<div className="flex flex-col gap-2 mt-12">
+				<aside className='md:w-1/4 w-full p-6 shrink-0'>
+					<div className='flex flex-col gap-1 mt-12'>
 						{navItems.map(({ tab, label }) => (
 							<button
 								key={tab}
-								onClick={() => {
-									if (tab === 'all') {
-										setSelectedSection('all');
-										window.scrollTo({ top: 0, behavior: 'smooth' });
-									} else {
-										setSelectedSection(tab);
-									}
-								}}
+								onClick={() => setSelectedSection(tab)}
 								className={`
-          py-2 px-4 rounded-md text-left transition-all duration-200
-          ${selectedSection === tab
-										? 'bg-[#0e70c0]/80 text-white font-medium shadow-sm'
-										: 'bg-loophole-bg-2 hover:bg-loophole-bg-2/80 text-loophole-fg-1'}
-        `}
+									py-2 px-3 rounded-sm text-left text-sm border
+									${selectedSection === tab
+										? 'bg-loophole-bg-3 text-loophole-fg-1 border-loophole-border-1'
+										: 'bg-transparent text-loophole-fg-2 border-transparent hover:bg-loophole-bg-2'}
+								`}
 							>
 								{label}
 							</button>
@@ -475,440 +563,59 @@ export const Settings = () => {
 				</aside>
 
 				{/* ───────────── MAIN PANE ───────────── */}
-				<main className="flex-1 p-6 select-none">
-
-
-
+				<main className='flex-1 p-6 select-none'>
 					<div className='max-w-3xl'>
-
 						<h1 className='text-2xl w-full'>{`Loophole's Settings`}</h1>
-
 						<div className='w-full h-[1px] my-2' />
-
-						{/* Onboarding shortcut */}
 						<ErrorBoundary>
 							<RedoOnboardingButton />
 						</ErrorBoundary>
-
 						<div className='w-full h-[1px] my-4' />
 
-						{/* All sections in flex container with gap-12 */}
 						<div className='flex flex-col gap-12'>
-							{/* Loophole Serve: providers */}
-							<div className={shouldShowTab('serveProviders') ? `` : 'hidden'}>
-								<ErrorBoundary>
-									<h2 className={`text-3xl mb-2`}>Providers</h2>
-									<h3 className={`text-loophole-fg-3 mb-2`}>{`Providers and API keys are owned by the bundled Loophole Serve backend.`}</h3>
-									<ServeProvidersTab />
-								</ErrorBoundary>
+							<div className={shouldShowTab('models') ? '' : 'hidden'}>
+								<ErrorBoundary><CliModelsTab /></ErrorBoundary>
 							</div>
 
-							{/* Loophole Serve: models */}
-							<div className={shouldShowTab('serveModels') ? `` : 'hidden'}>
-								<ErrorBoundary>
-									<h2 className={`text-3xl mb-2`}>Models</h2>
-									<h3 className={`text-loophole-fg-3 mb-2`}>{`Models reported by the server. The selected model is stored as "providerID/modelID" in loophole.serve.model.`}</h3>
-									<ServeModelsTab />
-								</ErrorBoundary>
+							<div className={shouldShowTab('providers') ? '' : 'hidden'}>
+								<ErrorBoundary><CliProvidersTab /></ErrorBoundary>
 							</div>
 
-							{/* Loophole Serve: autocomplete */}
-							<div className={shouldShowTab('serveAutocomplete') ? `` : 'hidden'}>
-								<ErrorBoundary>
-									<ServeAutocompleteTab />
-								</ErrorBoundary>
+							<div className={shouldShowTab('autocomplete') ? '' : 'hidden'}>
+								<ErrorBoundary><CliAutocompleteTab /></ErrorBoundary>
 							</div>
 
-							<div className={shouldShowTab('voice') ? `` : 'hidden'}>
-								<ErrorBoundary>
-									<LocalVoiceModelSettings />
-								</ErrorBoundary>
+							<div className={shouldShowTab('context') ? '' : 'hidden'}>
+								<ErrorBoundary><CliContextTab /></ErrorBoundary>
 							</div>
 
-							{/* Feature Options section */}
-							<div className={shouldShowTab('featureOptions') ? `` : 'hidden'}>
-								<ErrorBoundary>
-									<h2 className={`text-3xl mb-2`}>Feature Options</h2>
-
-									<div className='flex flex-col gap-y-8 my-4'>
-										<ErrorBoundary>
-											{/* FIM */}
-											<div>
-												<h4 className={`text-base`}>{displayInfoOfFeatureName('Autocomplete')}</h4>
-												<div className='text-sm text-loophole-fg-3 mt-1'>
-													<span>
-														Experimental.{' '}
-													</span>
-													<span
-														className='hover:brightness-110'
-														data-tooltip-id='loophole-tooltip'
-														data-tooltip-content='We recommend using the largest qwen2.5-coder model you can with Ollama (try qwen2.5-coder:3b).'
-														data-tooltip-class-name='loophole-max-w-[20px]'
-													>
-														Only works with FIM models.*
-													</span>
-												</div>
-
-												<div className='my-2'>
-													{/* Enable Switch */}
-													<ErrorBoundary>
-														<div className='flex items-center gap-x-2 my-2'>
-															<VoidSwitch
-																size='xs'
-																value={settingsState.globalSettings.enableAutocomplete}
-																onChange={(newVal) => voidSettingsService.setGlobalSetting('enableAutocomplete', newVal)}
-															/>
-															<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.enableAutocomplete ? 'Enabled' : 'Disabled'}</span>
-														</div>
-													</ErrorBoundary>
-
-													{/* Model Dropdown */}
-													<ErrorBoundary>
-														<div className={`my-2 ${!settingsState.globalSettings.enableAutocomplete ? 'hidden' : ''}`}>
-															<ModelDropdown featureName={'Autocomplete'} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1' />
-														</div>
-													</ErrorBoundary>
-
-												</div>
-
-											</div>
-										</ErrorBoundary>
-
-										{/* Apply */}
-										<ErrorBoundary>
-
-											<div className='w-full'>
-												<h4 className={`text-base`}>{displayInfoOfFeatureName('Apply')}</h4>
-												<div className='text-sm text-loophole-fg-3 mt-1'>Settings that control the behavior of the Apply button.</div>
-
-												<div className='my-2'>
-													{/* Sync to Chat Switch */}
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.syncApplyToChat}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('syncApplyToChat', newVal)}
-														/>
-														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.syncApplyToChat ? 'Same as Chat model' : 'Different model'}</span>
-													</div>
-
-													{/* Model Dropdown */}
-													<div className={`my-2 ${settingsState.globalSettings.syncApplyToChat ? 'hidden' : ''}`}>
-														<ModelDropdown featureName={'Apply'} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1' />
-													</div>
-												</div>
-
-
-												<div className='my-2'>
-													{/* Fast Apply Method Dropdown */}
-													<div className='flex items-center gap-x-2 my-2'>
-														<FastApplyMethodDropdown />
-													</div>
-												</div>
-
-											</div>
-										</ErrorBoundary>
-
-
-
-
-										{/* Tools Section */}
-										<div>
-											<h4 className={`text-base`}>Tools</h4>
-											<div className='text-sm text-loophole-fg-3 mt-1'>{`Tools are functions that LLMs can call. Some tools require user approval.`}</div>
-
-											<div className='my-2'>
-												{/* Auto Accept Switch */}
-												<ErrorBoundary>
-													{[...toolApprovalTypes].map((approvalType) => {
-														return <div key={approvalType} className="flex items-center gap-x-2 my-2">
-															<ToolApprovalTypeSwitch size='xs' approvalType={approvalType} desc={`Auto-approve ${approvalType}`} />
-														</div>
-													})}
-
-												</ErrorBoundary>
-
-												{/* Tool Lint Errors Switch */}
-												<ErrorBoundary>
-
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.includeToolLintErrors}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('includeToolLintErrors', newVal)}
-														/>
-														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.includeToolLintErrors ? 'Fix lint errors' : `Fix lint errors`}</span>
-													</div>
-												</ErrorBoundary>
-
-												{/* Auto Accept LLM Changes Switch */}
-												<ErrorBoundary>
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.autoAcceptLLMChanges}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('autoAcceptLLMChanges', newVal)}
-														/>
-														<span className='text-loophole-fg-3 text-xs pointer-events-none'>Auto-accept LLM changes</span>
-													</div>
-												</ErrorBoundary>
-											</div>
-										</div>
-
-
-
-										<div className='w-full'>
-											<h4 className={`text-base`}>Editor</h4>
-											<div className='text-sm text-loophole-fg-3 mt-1'>{`Settings that control the visibility of Loophole suggestions in the code editor.`}</div>
-
-											<div className='my-2'>
-												{/* Auto Accept Switch */}
-												<ErrorBoundary>
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.showInlineSuggestions}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('showInlineSuggestions', newVal)}
-														/>
-														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.showInlineSuggestions ? 'Show suggestions on select' : 'Show suggestions on select'}</span>
-													</div>
-												</ErrorBoundary>
-											</div>
-										</div>
-
-										{/* SCM */}
-										<ErrorBoundary>
-
-											<div className='w-full'>
-												<h4 className={`text-base`}>{displayInfoOfFeatureName('SCM')}</h4>
-												<div className='text-sm text-loophole-fg-3 mt-1'>Settings that control the behavior of the commit message generator.</div>
-
-												<div className='my-2'>
-													{/* Sync to Chat Switch */}
-													<div className='flex items-center gap-x-2 my-2'>
-														<VoidSwitch
-															size='xs'
-															value={settingsState.globalSettings.syncSCMToChat}
-															onChange={(newVal) => voidSettingsService.setGlobalSetting('syncSCMToChat', newVal)}
-														/>
-														<span className='text-loophole-fg-3 text-xs pointer-events-none'>{settingsState.globalSettings.syncSCMToChat ? 'Same as Chat model' : 'Different model'}</span>
-													</div>
-
-													{/* Model Dropdown */}
-													<div className={`my-2 ${settingsState.globalSettings.syncSCMToChat ? 'hidden' : ''}`}>
-														<ModelDropdown featureName={'SCM'} className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1' />
-													</div>
-												</div>
-
-											</div>
-										</ErrorBoundary>
-									</div>
-								</ErrorBoundary>
+							<div className={shouldShowTab('commitMessage') ? '' : 'hidden'}>
+								<ErrorBoundary><CliCommitMessageTab /></ErrorBoundary>
 							</div>
 
-							{/* General section */}
-							<div className={`${shouldShowTab('general') ? `` : 'hidden'} flex flex-col gap-12`}>
-								{/* One-Click Switch section */}
-								<div>
-									<ErrorBoundary>
-										<h2 className='text-3xl mb-2'>One-Click Switch</h2>
-										<h4 className='text-loophole-fg-3 mb-4'>{`Transfer your editor settings into Loophole.`}</h4>
-
-										<div className='flex flex-col gap-2'>
-											<OneClickSwitchButton className='w-48' fromEditor="VS Code" />
-											<OneClickSwitchButton className='w-48' fromEditor="Cursor" />
-											<OneClickSwitchButton className='w-48' fromEditor="Windsurf" />
-										</div>
-									</ErrorBoundary>
-								</div>
-
-								{/* Import/Export section */}
-								<div>
-									<h2 className='text-3xl mb-2'>Import/Export</h2>
-									<h4 className='text-loophole-fg-3 mb-4'>{`Transfer Loophole's settings and chats in and out of Loophole.`}</h4>
-									<div className='flex flex-col gap-8'>
-										{/* Settings Subcategory */}
-										<div className='flex flex-col gap-2 max-w-48 w-full'>
-											<input key={2 * s} ref={fileInputSettingsRef} type='file' accept='.json' className='hidden' onChange={handleUpload('Settings')} />
-											<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => { fileInputSettingsRef.current?.click() }}>
-												Import Settings
-											</VoidButtonBgDarken>
-											<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => onDownload('Settings')}>
-												Export Settings
-											</VoidButtonBgDarken>
-											<ConfirmButton className='px-4 py-1 w-full' onConfirm={() => { voidSettingsService.resetState(); }}>
-												Reset Settings
-											</ConfirmButton>
-										</div>
-
-										{/* Chats Subcategory */}
-										<div className='flex flex-col gap-2 max-w-48 w-full'>
-											<input key={2 * s + 1} ref={fileInputChatsRef} type='file' accept='.json' className='hidden' onChange={handleUpload('Chats')} />
-											<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => { fileInputChatsRef.current?.click() }}>
-												Import Chats
-											</VoidButtonBgDarken>
-											<VoidButtonBgDarken className='px-4 py-1 w-full' onClick={() => onDownload('Chats')}>
-												Export Chats
-											</VoidButtonBgDarken>
-											<ConfirmButton className='px-4 py-1 w-full' onConfirm={() => { chatThreadsService.resetState(); }}>
-												Reset Chats
-											</ConfirmButton>
-										</div>
-									</div>
-								</div>
-
-
-
-								{/* Built-in Settings section */}
-								<div>
-									<h2 className={`text-3xl mb-2`}>Built-in Settings</h2>
-									<h4 className={`text-loophole-fg-3 mb-4`}>{`IDE settings, keyboard settings, and theme customization.`}</h4>
-
-									<ErrorBoundary>
-										<div className='flex flex-col gap-2 justify-center max-w-48 w-full'>
-											<VoidButtonBgDarken className='px-4 py-1' onClick={() => { commandService.executeCommand('workbench.action.openSettings') }}>
-												General Settings
-											</VoidButtonBgDarken>
-											<VoidButtonBgDarken className='px-4 py-1' onClick={() => { commandService.executeCommand('workbench.action.openGlobalKeybindings') }}>
-												Keyboard Settings
-											</VoidButtonBgDarken>
-											<VoidButtonBgDarken className='px-4 py-1' onClick={() => { commandService.executeCommand('workbench.action.selectTheme') }}>
-												Theme Settings
-											</VoidButtonBgDarken>
-											<VoidButtonBgDarken className='px-4 py-1' onClick={() => { nativeHostService.showItemInFolder(environmentService.logsHome.fsPath) }}>
-												Open Logs
-											</VoidButtonBgDarken>
-										</div>
-									</ErrorBoundary>
-								</div>
-
-
-								{/* Metrics section */}
-								<div className='max-w-[600px]'>
-									<h2 className={`text-3xl mb-2`}>Metrics</h2>
-									<h4 className={`text-loophole-fg-3 mb-4`}>Very basic anonymous usage tracking helps us keep Loophole running smoothly. You may opt out below. Regardless of this setting, Loophole never sees your code, messages, or API keys.</h4>
-
-									<div className='my-2'>
-										{/* Disable All Metrics Switch */}
-										<ErrorBoundary>
-											<div className='flex items-center gap-x-2 my-2'>
-												<VoidSwitch
-													size='xs'
-													value={isOptedOut}
-													onChange={(newVal) => {
-														metricsService.setOptOut(newVal)
-													}}
-												/>
-												<span className='text-loophole-fg-3 text-xs pointer-events-none'>{'Opt-out of basic usage metrics'}</span>
-											</div>
-										</ErrorBoundary>
-									</div>
-								</div>
-
-								{/* AI Instructions section */}
-								<div className='max-w-[600px]'>
-									<h2 className={`text-3xl mb-2`}>AI Instructions</h2>
-									<h4 className={`text-loophole-fg-3 mb-4`}>
-										<ChatMarkdownRender inPTag={true} string={`
-System instructions to include with all AI requests.
-Alternatively, place a \`.loopholerules\` file in the root of your workspace.
-								`} chatMessageLocation={undefined} />
-									</h4>
-									<ErrorBoundary>
-										<AIInstructionsBox />
-									</ErrorBoundary>
-									{/* --- Disable System Message Toggle --- */}
-									<div className='my-4'>
-										<ErrorBoundary>
-											<div className='flex items-center gap-x-2'>
-												<VoidSwitch
-													size='xs'
-													value={!!settingsState.globalSettings.disableSystemMessage}
-													onChange={(newValue) => {
-														voidSettingsService.setGlobalSetting('disableSystemMessage', newValue);
-													}}
-												/>
-												<span className='text-loophole-fg-3 text-xs pointer-events-none'>
-													{'Disable system message'}
-												</span>
-											</div>
-										</ErrorBoundary>
-										<div className='text-loophole-fg-3 text-xs mt-1'>
-											{`When disabled, Loophole will not include anything in the system message except for content you specified above.`}
-										</div>
-									</div>
-								</div>
-
-								{/* Project Memory section */}
-								<div className='max-w-[600px]'>
-									<h2 className='text-3xl mb-2'>Project Memory</h2>
-									<h4 className='text-loophole-fg-3 mb-4'>
-										{`Durable notes the agent has saved across sessions (via write_project_memory), stored locally on this machine.`}
-									</h4>
-									<div className='text-loophole-fg-3 text-xs mb-4'>
-										{`Showing memory for the currently open project only: ${workspaceName ? `"${workspaceName}"` : 'this workspace'}. Each project keeps its own separate memory — open a different project to view or manage its memory instead.`}
-									</div>
-									<ErrorBoundary>
-										<VoidInputBox2
-											key={`project-memory-${s}`}
-											className='min-h-[81px] p-3 rounded-sm'
-											initValue={projectMemory}
-											placeholder='No project memory stored yet.'
-											multiline
-											onChangeText={(newText) => {
-												setProjectMemory(newText)
-												storageService.store(PROJECT_MEMORY_STORAGE_KEY, newText, StorageScope.WORKSPACE, StorageTarget.MACHINE)
-											}}
-										/>
-									</ErrorBoundary>
-									<div className='mt-2'>
-										<ConfirmButton
-											className='px-4 py-1'
-											onConfirm={() => {
-												storageService.remove(PROJECT_MEMORY_STORAGE_KEY, StorageScope.WORKSPACE)
-												setProjectMemory('')
-												ss(s => s + 1)
-											}}
-										>
-											Delete Project Memory
-										</ConfirmButton>
-									</div>
-								</div>
-
+							<div className={shouldShowTab('notifications') ? '' : 'hidden'}>
+								<ErrorBoundary><CliNotificationsTab /></ErrorBoundary>
 							</div>
 
-
-
-							{/* MCP section */}
-							<div className={shouldShowTab('mcp') ? `` : 'hidden'}>
-								<ErrorBoundary>
-									<h2 className='text-3xl mb-2'>MCP</h2>
-									<h4 className={`text-loophole-fg-3 mb-4`}>
-										<ChatMarkdownRender inPTag={true} string={`
-Use Model Context Protocol to provide Agent mode with more tools.
-							`} chatMessageLocation={undefined} />
-									</h4>
-									<div className='my-2'>
-										<VoidButtonBgDarken className='px-4 py-1 w-full max-w-48' onClick={async () => { await mcpService.revealMCPConfigFile() }}>
-											Add MCP Server
-										</VoidButtonBgDarken>
-									</div>
-
-									<ErrorBoundary>
-										<MCPServersList />
-									</ErrorBoundary>
-								</ErrorBoundary>
+							<div className={shouldShowTab('status') ? '' : 'hidden'}>
+								<ErrorBoundary><CliStatusTab /></ErrorBoundary>
 							</div>
 
+							<div className={shouldShowTab('general') ? '' : 'hidden'}>
+								<ErrorBoundary><GeneralTab /></ErrorBoundary>
+							</div>
 
+							<div className={shouldShowTab('mcp') ? '' : 'hidden'}>
+								<ErrorBoundary><MCPTab /></ErrorBoundary>
+							</div>
 
-
-
+							<div className={shouldShowTab('about') ? '' : 'hidden'}>
+								<ErrorBoundary><CliAboutTab /></ErrorBoundary>
+							</div>
 						</div>
-
 					</div>
 				</main>
 			</div>
 		</div>
-	);
+	)
 }

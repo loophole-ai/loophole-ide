@@ -5,24 +5,24 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useAccessor } from '../util/services.js';
-import type { LoopholeServeCommandInfo, LoopholeServeSkillInfo } from '../../../../common/loopholeServeTypes.js';
+import type { LoopholeCliCommandInfo, LoopholeCliSkillInfo } from '../../../../common/loopholeCliTypes.js';
 
-export type ServeSlashEntry = {
+export type CliSlashEntry = {
 	kind: 'command' | 'skill';
-	name: string; // display name (skills colliding with a command get the `:skill` suffix, Kilo-style)
+	name: string; // display name (skills colliding with a command get the `:skill` suffix)
 	description?: string;
 	skillId?: string;
 };
 
-// Merges server commands + skills into one `/` menu list (Kilo useSlashCommand look).
-// Data path: GET /api/command + GET /api/skill -> ILoopholeServeService.
-export const useServeSlashEntries = (serveEnabled: boolean): ServeSlashEntry[] => {
+// Merges CLI commands + skills into one `/` menu list.
+// Data path: GET /api/command + GET /api/skill -> ILoopholeCliService.
+export const useCliSlashEntries = (cliEnabled: boolean): CliSlashEntry[] => {
 	const accessor = useAccessor()
-	const serveService = accessor.get('ILoopholeServeService')
-	const [entries, setEntries] = useState<ServeSlashEntry[]>([])
+	const cliService = accessor.get('ILoopholeCliService')
+	const [entries, setEntries] = useState<CliSlashEntry[]>([])
 
 	useEffect(() => {
-		if (!serveEnabled) {
+		if (!cliEnabled) {
 			setEntries([])
 			return;
 		}
@@ -30,14 +30,14 @@ export const useServeSlashEntries = (serveEnabled: boolean): ServeSlashEntry[] =
 		const load = async () => {
 			try {
 				const [commands, skills] = await Promise.all([
-					serveService.commands().catch(() => [] as LoopholeServeCommandInfo[]),
-					serveService.skills().catch(() => [] as LoopholeServeSkillInfo[]),
+					cliService.commands().catch(() => [] as LoopholeCliCommandInfo[]),
+					cliService.skills().catch(() => [] as LoopholeCliSkillInfo[]),
 				])
 				if (cancelled) return;
 				const taken = new Set(commands.map((c) => c.name));
-				const merged: ServeSlashEntry[] = [
-					...commands.map((c): ServeSlashEntry => ({ kind: 'command', name: c.name, description: c.description })),
-					...skills.map((s): ServeSlashEntry => ({
+				const merged: CliSlashEntry[] = [
+					...commands.map((c): CliSlashEntry => ({ kind: 'command', name: c.name, description: c.description })),
+					...skills.map((s): CliSlashEntry => ({
 						kind: 'skill',
 						name: taken.has(s.name) ? `${s.name}:skill` : s.name,
 						description: s.description,
@@ -52,12 +52,12 @@ export const useServeSlashEntries = (serveEnabled: boolean): ServeSlashEntry[] =
 		};
 		void load();
 		return () => { cancelled = true; }
-	}, [serveService, serveEnabled])
+	}, [cliService, cliEnabled])
 
 	return entries
 };
 
-const score = (entry: ServeSlashEntry, query: string): number => {
+const score = (entry: CliSlashEntry, query: string): number => {
 	if (!query) return 1;
 	const n = entry.name.toLowerCase()
 	const q = query.toLowerCase()
@@ -69,7 +69,7 @@ const score = (entry: ServeSlashEntry, query: string): number => {
 };
 
 // Menu shown above the composer when the draft starts with `/`.
-export const ServeSlashMenu = ({
+export const CliSlashMenu = ({
 	query,
 	entries,
 	index,
@@ -77,10 +77,10 @@ export const ServeSlashMenu = ({
 	onPick,
 }: {
 	query: string;
-	entries: ServeSlashEntry[];
+	entries: CliSlashEntry[];
 	index: number;
 	onHover: (idx: number) => void;
-	onPick: (entry: ServeSlashEntry) => void;
+	onPick: (entry: CliSlashEntry) => void;
 }) => {
 	const filtered = useMemo(() => {
 		return entries
@@ -110,7 +110,7 @@ export const ServeSlashMenu = ({
 };
 
 // Best filtered list for the given query (shared by menu + key handling).
-export const filterServeSlashEntries = (entries: ServeSlashEntry[], query: string): ServeSlashEntry[] => {
+export const filterCliSlashEntries = (entries: CliSlashEntry[], query: string): CliSlashEntry[] => {
 	return entries
 		.map((e) => ({ e, s: score(e, query) }))
 		.filter((x) => x.s > 0)

@@ -11,7 +11,7 @@
 // search/web (query or url); everything else falls back to formatted JSON.
 import React, { useState } from 'react';
 import { AlertTriangle, Check, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
-import type { ServeCompactionState, ServeToolState } from '../../../../../common/sendLLMMessageTypes.js';
+import type { CliCompactionState, CliToolState } from '../../../../../common/sendLLMMessageTypes.js';
 
 const titleOfToolName = (name: string): string => {
 	const n = name.toLowerCase();
@@ -43,7 +43,7 @@ const stringOf = (input: Record<string, unknown>, keys: string[]): string | unde
 };
 
 // The one short arg Kilo shows beside the title: file, command, query or url.
-const subtitleOf = (tool: ServeToolState): string => {
+const subtitleOf = (tool: CliToolState): string => {
 	const input = tool.input;
 	if (!input) return '';
 	const path = stringOf(input, ['filePath', 'file_path', 'path', 'uri', 'filename', 'file', 'target']);
@@ -66,7 +66,7 @@ const CodeBlock = ({ children }: { children: React.ReactNode }) => {
 	return <pre className='font-mono whitespace-pre-wrap break-words text-xs text-loophole-fg-2 bg-loophole-bg-1 rounded p-1.5 overflow-auto max-h-[300px] select-text'>{children}</pre>;
 };
 
-const InputBody = ({ tool }: { tool: ServeToolState }) => {
+const InputBody = ({ tool }: { tool: CliToolState }) => {
 	const input = tool.input;
 	if (!input && !tool.inputText) return null;
 	if (!input) {
@@ -88,7 +88,7 @@ const InputBody = ({ tool }: { tool: ServeToolState }) => {
 	</div>;
 };
 
-const OutputBody = ({ tool }: { tool: ServeToolState }) => {
+const OutputBody = ({ tool }: { tool: CliToolState }) => {
 	const { text, truncated } = truncate(tool.outputText ?? '', 3000);
 	if (!tool.outputText) return null;
 	return <div>
@@ -97,13 +97,13 @@ const OutputBody = ({ tool }: { tool: ServeToolState }) => {
 	</div>;
 };
 
-const StatusIcon = ({ status }: { status: ServeToolState['status'] }) => {
+const StatusIcon = ({ status }: { status: CliToolState['status'] }) => {
 	if (status === 'done') return <Check size={13} className='text-emerald-500 flex-shrink-0' />;
 	if (status === 'error') return <AlertTriangle size={13} className='text-loophole-warning flex-shrink-0' />;
 	return <Loader2 size={13} className='text-loophole-fg-4 animate-spin flex-shrink-0' />;
 };
 
-export const ToolCard = ({ tool }: { tool: ServeToolState }) => {
+export const ToolCard = ({ tool }: { tool: CliToolState }) => {
 	const running = tool.status === 'running' || tool.status === 'input';
 	const [isOpen, setIsOpen] = useState(running);
 	const title = titleOfToolName(tool.name);
@@ -131,7 +131,7 @@ export const ToolCard = ({ tool }: { tool: ServeToolState }) => {
 
 // Compact banner for session.compaction.* (context compaction). Text is the
 // summary stream; empty until the server emits it.
-export const CompactionBanner = ({ compaction }: { compaction: ServeCompactionState }) => {
+export const CompactionBanner = ({ compaction }: { compaction: CliCompactionState }) => {
 	const [isOpen, setIsOpen] = useState(compaction.phase === 'streaming');
 	const { text, truncated } = truncate(compaction.text ?? '', 3000);
 	const label = compaction.phase === 'failed' ? 'Compaction failed'

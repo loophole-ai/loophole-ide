@@ -333,8 +333,8 @@ const ApplyButtonsForEdit = ({
 	const notificationService = accessor.get('INotificationService')
 
 	const settingsState = useSettingsState()
-	const serveEnabled = accessor.get('IConfigurationService').getValue<boolean>('loophole.serve.enabled') === true
-	const isDisabled = (!serveEnabled && !!isFeatureNameDisabled('Apply', settingsState)) || !applyBoxId
+	const cliEnabled = accessor.get('IConfigurationService').getValue<boolean>('loophole.cli.enabled') === true
+	const isDisabled = (!cliEnabled && !!isFeatureNameDisabled('Apply', settingsState)) || !applyBoxId
 
 	const { currStreamStateRef, setApplying } = useApplyStreamState({ applyBoxId })
 
@@ -470,7 +470,7 @@ export const EditToolAcceptRejectButtonsHTML = ({
 	const chatThreadsStreamState = useChatThreadsStreamState(threadId)
 	const isRunning = chatThreadsStreamState?.isRunning
 
-	const isDisabled = (!accessor.get('IConfigurationService').getValue<boolean>('loophole.serve.enabled') && !!isFeatureNameDisabled('Chat', settingsState)) || !applyBoxId
+	const isDisabled = (!accessor.get('IConfigurationService').getValue<boolean>('loophole.cli.enabled') && !!isFeatureNameDisabled('Chat', settingsState)) || !applyBoxId
 
 	const onAccept = useCallback(() => {
 		editCodeService.acceptOrRejectAllDiffAreas({ uri, behavior: 'accept', removeCtrlKs: false })

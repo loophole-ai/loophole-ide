@@ -25,6 +25,8 @@ import { registerSingleton, InstantiationType } from '../../../../platform/insta
 import { createDecorator, ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js'
 import { Disposable } from '../../../../base/common/lifecycle.js'
 import { INotificationService } from '../../../../platform/notification/common/notification.js'
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js'
+import { isLoopholeNotificationEnabled } from './loopholeNotifications.js'
 
 interface ModelOptions {
 	modelSelection: ModelSelection | null
@@ -58,7 +60,8 @@ class GenerateCommitMessageService extends Disposable implements IGenerateCommit
 		@IConvertToLLMMessageService private readonly convertToLLMMessageService: IConvertToLLMMessageService,
 		@ILLMMessageService private readonly llmMessageService: ILLMMessageService,
 		@IContextKeyService private readonly contextKeyService: IContextKeyService,
-		@INotificationService private readonly notificationService: INotificationService
+		@INotificationService private readonly notificationService: INotificationService,
+		@IConfigurationService private readonly configurationService: IConfigurationService
 	) {
 		super()
 		this.loadingContextKey = this.contextKeyService.createKey(loadingContextKey, false)
@@ -200,7 +203,9 @@ class GenerateCommitMessageService extends Disposable implements IGenerateCommit
 	private onError(error: unknown) {
 		if (!isCancellationError(error)) {
 			console.error(error)
-			this.notificationService.error(localize2('voidFailedToGenerateCommitMessage', 'Failed to generate commit message.').value)
+			if (isLoopholeNotificationEnabled(this.configurationService, 'commitMessages')) {
+				this.notificationService.error(localize2('voidFailedToGenerateCommitMessage', 'Failed to generate commit message.').value)
+			}
 		}
 	}
 }

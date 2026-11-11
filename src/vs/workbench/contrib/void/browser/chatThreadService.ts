@@ -12,7 +12,7 @@ import { URI } from '../../../../base/common/uri.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { chat_userMessageContent, isABuiltinToolName } from '../common/prompt/prompts.js';
-import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj, ServeCompactionState, ServePermissionRequest, ServeToolState, ServeUsage } from '../common/sendLLMMessageTypes.js';
+import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj, CliCompactionState, CliPermissionRequest, CliToolState, CliUsage } from '../common/sendLLMMessageTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
@@ -41,6 +41,8 @@ import { IFileService } from '../../../../platform/files/common/files.js';
 import { IMCPService } from '../common/mcpService.js';
 import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
 import { ITokenUsageService } from '../common/tokenUsageService.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { isLoopholeNotificationEnabled } from './loopholeNotifications.js';
 
 
 // related to retrying when LLM message has error
@@ -136,10 +138,10 @@ export type ThreadType = {
 
 		cumulativeTokenCount: number; // inputTokens from the latest API call — represents current context size
 
-		// Loophole Serve (optional, additive — old threads lack these): the server
+		// Loophole CLI (optional, additive — old threads lack these): the server
 		// session this Void thread is bound to, plus its cumulative usage for the chip.
-		serveSessionId?: string;
-		serveUsage?: ServeUsage;
+		cliSessionId?: string;
+		cliUsage?: CliUsage;
 
 		mountedInfo?: {
 			whenMounted: Promise<WhenMounted>
@@ -182,10 +184,10 @@ export type ThreadStreamState = {
 			displayContentSoFar: string;
 			reasoningSoFar: string;
 			toolCallSoFar: RawToolCallObj | null;
-			// Loophole Serve server-side tool calls + compaction snapshot (optional;
-			// only populated when streaming via Loophole Serve).
-			serveTools?: ServeToolState[];
-			compaction?: ServeCompactionState;
+			// Loophole CLI server-side tool calls + compaction snapshot (optional;
+			// only populated when streaming via Loophole CLI).
+			cliTools?: CliToolState[];
+			compaction?: CliCompactionState;
 		};
 		toolInfo?: undefined;
 		interrupt: Promise<() => void>; // calling this should have no effect on state - would be too confusing. it just cancels the tool
@@ -248,19 +250,20 @@ export interface IChatThreadService {
 
 	onDidChangeCurrentThread: Event<void>;
 	onDidChangeStreamState: Event<{ threadId: string }>
-	// Loophole Serve permission requests per thread (transient, never persisted).
-	onDidChangeServePermissions: Event<{ threadId: string }>
-	getServePermissions: (threadId: string) => ServePermissionRequest[]
-	setServePermissions: (threadId: string, permissions: ServePermissionRequest[]) => void;
-	clearServePermission: (threadId: string, requestID: string) => void
+	// Loophole CLI permission requests per thread (transient, never persisted).
+	onDidChangeCliPermissions: Event<{ threadId: string }>
+	getCliPermissions: (threadId: string) => CliPermissionRequest[]
+	setCliPermissions: (threadId: string, permissions: CliPermissionRequest[]) => void;
+	clearCliPermission: (threadId: string, requestID: string) => void
 
 	getCurrentThread(): ThreadType;
 	openNewThread(): void;
 	switchToThread(threadId: string): void;
 
-	// Loophole Serve session binding (optional, additive — only populated in serve mode).
-	setServeSessionId: (threadId: string, serveSessionId: string) => void;
-	updateServeUsage: (threadId: string, usage: ServeUsage) => void;
+	// Loophole CLI session binding (optional, additive — only populated when using the CLI).
+	setCliSessionId: (threadId: string, cliSessionId: string) => void;
+	clearCliSessionId: (threadId: string) => void;
+	updateCliUsage: (threadId: string, usage: CliUsage) => void;
 
 	// thread selector
 	deleteThread(threadId: string): void;
@@ -327,9 +330,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	readonly onDidChangeStreamState: Event<{ threadId: string }> = this._onDidChangeStreamState.event;
 
 	// Pending server-side tool permission requests (permission.asked), keyed by thread.
-	private readonly _servePermissions: { [threadId: string]: ServePermissionRequest[] } = {};
-	private readonly _onDidChangeServePermissions = new Emitter<{ threadId: string }>();
-	readonly onDidChangeServePermissions: Event<{ threadId: string }> = this._onDidChangeServePermissions.event;
+	private readonly _cliPermissions: { [threadId: string]: CliPermissionRequest[] } = {};
+	private readonly _onDidChangeCliPermissions = new Emitter<{ threadId: string }>();
+	readonly onDidChangeCliPermissions: Event<{ threadId: string }> = this._onDidChangeCliPermissions.event;
 
 	readonly streamState: ThreadStreamState = {}
 	state: ThreadsState // allThreads is persisted, currentThread is not
@@ -356,6 +359,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IFileService private readonly _fileService: IFileService,
 		@IMCPService private readonly _mcpService: IMCPService,
 		@ITokenUsageService private readonly _tokenUsageService: ITokenUsageService,
+		@IConfigurationService private readonly _configurationService: IConfigurationService,
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
@@ -514,54 +518,62 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	}
 
 
-	// Loophole Serve: merge tool/compaction snapshots into the live LLM stream
+	// Loophole CLI: merge tool/compaction snapshots into the live LLM stream
 	// state without clobbering streamed text/reasoning (onTool fires in between
 	// onText deltas, so the snapshot must be layered on top).
-	private _mergeServeStreamState = (threadId: string, patch: { serveTools?: ServeToolState[]; compaction?: ServeCompactionState }) => {
+	private _mergeCliStreamState = (threadId: string, patch: { cliTools?: CliToolState[]; compaction?: CliCompactionState }) => {
 		const state = this.streamState[threadId]
 		if (state?.isRunning !== 'LLM') return
 		this._setStreamState(threadId, { ...state, llmInfo: { ...state.llmInfo, ...patch } })
 	}
 
 
-	// ---------- Loophole Serve: sessions / history / permissions / usage ----------
+	// ---------- Loophole CLI: sessions / history / permissions / usage ----------
 
-	getServePermissions = (threadId: string): ServePermissionRequest[] => {
-		return this._servePermissions[threadId] ?? []
+	getCliPermissions = (threadId: string): CliPermissionRequest[] => {
+		return this._cliPermissions[threadId] ?? []
 	}
 
 	// Replace the pending list (used to backfill from GET permission list so
 	// requests that fired before the SSE subscription aren't lost).
-	setServePermissions = (threadId: string, permissions: ServePermissionRequest[]) => {
-		this._servePermissions[threadId] = [...permissions]
-		this._onDidChangeServePermissions.fire({ threadId })
+	setCliPermissions = (threadId: string, permissions: CliPermissionRequest[]) => {
+		this._cliPermissions[threadId] = [...permissions]
+		this._onDidChangeCliPermissions.fire({ threadId })
 	}
 
-	private _addServePermission = (threadId: string, permission: ServePermissionRequest) => {
-		const list = this._servePermissions[threadId] ?? []
+	private _addCliPermission = (threadId: string, permission: CliPermissionRequest) => {
+		const list = this._cliPermissions[threadId] ?? []
 		if (list.some((p) => p.id === permission.id)) return
-		this._servePermissions[threadId] = [...list, permission]
-		this._onDidChangeServePermissions.fire({ threadId })
+		this._cliPermissions[threadId] = [...list, permission]
+		this._onDidChangeCliPermissions.fire({ threadId })
 	}
 
-	clearServePermission = (threadId: string, requestID: string) => {
-		const list = this._servePermissions[threadId]
+	clearCliPermission = (threadId: string, requestID: string) => {
+		const list = this._cliPermissions[threadId]
 		if (!list) return
 		const next = list.filter((p) => p.id !== requestID)
 		if (next.length === list.length) return
-		this._servePermissions[threadId] = next
-		this._onDidChangeServePermissions.fire({ threadId })
+		this._cliPermissions[threadId] = next
+		this._onDidChangeCliPermissions.fire({ threadId })
 	}
 
-	setServeSessionId = (threadId: string, serveSessionId: string) => {
+	setCliSessionId = (threadId: string, cliSessionId: string) => {
 		if (!this.state.allThreads[threadId]) return
-		if (this.state.allThreads[threadId].state.serveSessionId === serveSessionId) return
-		this._setThreadState(threadId, { serveSessionId })
+		if (this.state.allThreads[threadId].state.cliSessionId === cliSessionId) return
+		this._setThreadState(threadId, { cliSessionId })
 	}
 
-	updateServeUsage = (threadId: string, usage: ServeUsage) => {
+	clearCliSessionId = (threadId: string) => {
+		const thread = this.state.allThreads[threadId]
+		if (!thread?.state.cliSessionId) return
+		const next = { ...thread.state }
+		delete next.cliSessionId
+		this._setThreadState(threadId, next)
+	}
+
+	updateCliUsage = (threadId: string, usage: CliUsage) => {
 		if (!this.state.allThreads[threadId]) return
-		this._setThreadState(threadId, { serveUsage: usage })
+		this._setThreadState(threadId, { cliUsage: usage })
 	}
 
 
@@ -640,8 +652,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 		// add assistant message
 		if (this.streamState[threadId]?.isRunning === 'LLM') {
-			const { displayContentSoFar, reasoningSoFar, toolCallSoFar, serveTools, compaction } = this.streamState[threadId].llmInfo
-			this._addMessageToThread(threadId, { role: 'assistant', displayContent: displayContentSoFar, reasoning: reasoningSoFar, anthropicReasoning: null, serveTools, compaction })
+			const { displayContentSoFar, reasoningSoFar, toolCallSoFar, cliTools, compaction } = this.streamState[threadId].llmInfo
+			this._addMessageToThread(threadId, { role: 'assistant', displayContent: displayContentSoFar, reasoning: reasoningSoFar, anthropicReasoning: null, cliTools, compaction })
 			if (toolCallSoFar) this._addMessageToThread(threadId, { role: 'interrupted_streaming_tool', name: toolCallSoFar.name, mcpServerName: this._computeMCPServerOfToolName(toolCallSoFar.name) })
 		}
 		// add tool that's running
@@ -875,7 +887,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				nAttempts += 1
 
 				type ResTypes =
-					| { type: 'llmDone', toolCall?: RawToolCallObj, info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null, serveTools?: ServeToolState[], compaction?: ServeCompactionState } }
+					| { type: 'llmDone', toolCall?: RawToolCallObj, info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null, cliTools?: CliToolState[], compaction?: CliCompactionState } }
 					| { type: 'llmError', error?: { message: string; fullError: Error | null; } }
 					| { type: 'llmAborted' }
 
@@ -891,28 +903,28 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					overridesOfModel,
 					logging: { loggingName: `Chat - ${chatMode}`, loggingExtras: { threadId, nMessagesSent, chatMode } },
 					separateSystemMessage: separateSystemMessage,
-					// Loophole Serve thread binding (serve-only; undefined for direct-LLM).
-					serveSessionId: this.state.allThreads[threadId]?.state.serveSessionId,
+					// Loophole CLI thread binding (CLI-only; undefined for direct-LLM).
+					cliSessionId: this.state.allThreads[threadId]?.state.cliSessionId,
 					onText: ({ fullText, fullReasoning, toolCall }) => {
 						const prevState = this.streamState[threadId]
-						const serve = prevState?.isRunning === 'LLM' ? prevState.llmInfo : undefined
-						this._setStreamState(threadId, { isRunning: 'LLM', llmInfo: { displayContentSoFar: fullText, reasoningSoFar: fullReasoning, toolCallSoFar: toolCall ?? null, serveTools: serve?.serveTools, compaction: serve?.compaction }, interrupt: Promise.resolve(() => { if (llmCancelToken) this._llmMessageService.abort(llmCancelToken) }) })
+						const info = prevState?.isRunning === 'LLM' ? prevState.llmInfo : undefined
+						this._setStreamState(threadId, { isRunning: 'LLM', llmInfo: { displayContentSoFar: fullText, reasoningSoFar: fullReasoning, toolCallSoFar: toolCall ?? null, cliTools: info?.cliTools, compaction: info?.compaction }, interrupt: Promise.resolve(() => { if (llmCancelToken) this._llmMessageService.abort(llmCancelToken) }) })
 					},
-					// Loophole Serve tool/compaction snapshots (never called by the direct-LLM path)
+					// Loophole CLI tool/compaction snapshots (never called by the direct-LLM path)
 					onTool: ({ tools }) => {
-						this._mergeServeStreamState(threadId, { serveTools: tools })
+						this._mergeCliStreamState(threadId, { cliTools: tools })
 					},
 					onCompaction: ({ compaction }) => {
-						this._mergeServeStreamState(threadId, { compaction })
+						this._mergeCliStreamState(threadId, { compaction })
 					},
-					onServeSession: ({ serveSessionId }) => {
-						this.setServeSessionId(threadId, serveSessionId)
+					onCliSession: ({ cliSessionId }) => {
+						this.setCliSessionId(threadId, cliSessionId)
 					},
 					onPermission: ({ permission }) => {
-						this._addServePermission(threadId, permission)
+						this._addCliPermission(threadId, permission)
 					},
 					onUsage: ({ usage }) => {
-						this.updateServeUsage(threadId, usage)
+						this.updateCliUsage(threadId, usage)
 					},
 					onFinalMessage: async ({ fullText, fullReasoning, toolCall, anthropicReasoning, tokenUsage }) => {
 						// Track token usage if available
@@ -925,8 +937,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 							}
 						}
 						const finalState = this.streamState[threadId]
-						const finalServe = finalState?.isRunning === 'LLM' ? finalState.llmInfo : undefined
-						resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText, fullReasoning, anthropicReasoning, serveTools: finalServe?.serveTools, compaction: finalServe?.compaction } }) // resolve with tool calls
+						const finalCli = finalState?.isRunning === 'LLM' ? finalState.llmInfo : undefined
+						resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText, fullReasoning, anthropicReasoning, cliTools: finalCli?.cliTools, compaction: finalCli?.compaction } }) // resolve with tool calls
 					},
 					onError: async (error) => {
 						resMessageIsDonePromise({ type: 'llmError', error: error })
@@ -975,8 +987,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					// error, but too many attempts
 					else {
 						const { error } = llmRes
-						const { displayContentSoFar, reasoningSoFar, toolCallSoFar, serveTools, compaction } = this.streamState[threadId].llmInfo
-						this._addMessageToThread(threadId, { role: 'assistant', displayContent: displayContentSoFar, reasoning: reasoningSoFar, anthropicReasoning: null, serveTools, compaction })
+						const { displayContentSoFar, reasoningSoFar, toolCallSoFar, cliTools, compaction } = this.streamState[threadId].llmInfo
+						this._addMessageToThread(threadId, { role: 'assistant', displayContent: displayContentSoFar, reasoning: reasoningSoFar, anthropicReasoning: null, cliTools, compaction })
 						if (toolCallSoFar) this._addMessageToThread(threadId, { role: 'interrupted_streaming_tool', name: toolCallSoFar.name, mcpServerName: this._computeMCPServerOfToolName(toolCallSoFar.name) })
 
 						this._setStreamState(threadId, { isRunning: undefined, error })
@@ -988,7 +1000,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				// llm res success
 				const { toolCall, info } = llmRes
 
-				this._addMessageToThread(threadId, { role: 'assistant', displayContent: info.fullText, reasoning: info.fullReasoning, anthropicReasoning: info.anthropicReasoning, serveTools: info.serveTools, compaction: info.compaction })
+				this._addMessageToThread(threadId, { role: 'assistant', displayContent: info.fullText, reasoning: info.fullReasoning, anthropicReasoning: info.anthropicReasoning, cliTools: info.cliTools, compaction: info.compaction })
 
 				this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative for clarity
 
@@ -1304,6 +1316,8 @@ We only need to do it for files that were edited since `from`, ie files between 
 			if (!userMsg) return
 			if (userMsg.role !== 'user') return
 			const messageContent = truncate(userMsg.displayContent, 50, '...')
+
+			if (error && !isLoopholeNotificationEnabled(this._configurationService, 'chatErrors')) return
 
 			this._notificationService.notify({
 				severity: error ? Severity.Warning : Severity.Info,
@@ -1769,8 +1783,8 @@ We only need to do it for files that were edited since `from`, ie files between 
 		const newThreads = { ...currentThreads };
 		delete newThreads[threadId];
 
-		// Loophole Serve: drop pending permission state (thread is gone).
-		delete this._servePermissions[threadId]
+		// Loophole CLI: drop pending permission state (thread is gone).
+		delete this._cliPermissions[threadId]
 
 		// store the updated threads
 		this._storeAllThreads(newThreads);
@@ -1781,15 +1795,15 @@ We only need to do it for files that were edited since `from`, ie files between 
 		const { allThreads: currentThreads } = this.state
 		const threadToDuplicate = currentThreads[threadId]
 		if (!threadToDuplicate) return
-		// Loophole Serve: the duplicate must not share the source thread's server
-		// session — it creates its own on first serve turn (history already copied
-		// into Void messages, which serve flattens to the last user text anyway).
+		// Loophole CLI: the duplicate must not share the source thread's server
+		// session - it creates its own on the first CLI turn (history already copied
+		// into messages, which the CLI flattens to the last user text anyway).
 		const newThread = {
 			...deepClone(threadToDuplicate),
 			id: generateUuid(),
 		}
-		delete newThread.state.serveSessionId
-		delete newThread.state.serveUsage
+		delete newThread.state.cliSessionId
+		delete newThread.state.cliUsage
 		const newThreads = {
 			...currentThreads,
 			[newThread.id]: newThread,

@@ -9,7 +9,7 @@
 // a live checklist (TodoChip panel), so this re-implements that look in React.
 import React, { useState } from 'react';
 import { Check, ChevronRight, Circle, Loader2, X } from 'lucide-react';
-import type { ServeToolState } from '../../../../../common/sendLLMMessageTypes.js';
+import type { CliToolState } from '../../../../../common/sendLLMMessageTypes.js';
 
 export type TodoItemLike = {
 	content: string;
@@ -21,7 +21,7 @@ export const isTodoToolName = (name: string): boolean => /todo/i.test(name);
 
 // Prefer the parsed call input (live), then the result metadata (canonical),
 // then the streamed raw input text as a fallback.
-export const todoItemsOfTool = (tool: ServeToolState): TodoItemLike[] => {
+export const todoItemsOfTool = (tool: CliToolState): TodoItemLike[] => {
 	const read = (value: unknown): TodoItemLike[] | undefined => {
 		if (!Array.isArray(value)) return undefined;
 		const items: TodoItemLike[] = [];
@@ -53,7 +53,7 @@ export const todoItemsOfTool = (tool: ServeToolState): TodoItemLike[] => {
 	return [];
 };
 
-export const TodoListCard = ({ tool }: { tool: ServeToolState }) => {
+export const TodoListCard = ({ tool }: { tool: CliToolState }) => {
 	const [isOpen, setIsOpen] = useState(true);
 	const items = todoItemsOfTool(tool);
 	const live = items.filter((i) => i.status !== 'cancelled');

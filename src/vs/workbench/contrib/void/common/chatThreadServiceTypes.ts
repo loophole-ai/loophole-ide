@@ -5,7 +5,7 @@
 
 import { URI } from '../../../../base/common/uri.js';
 import { VoidFileSnapshot } from './editCodeServiceTypes.js';
-import { AnthropicReasoning, RawToolParamsObj, ServeCompactionState, ServeToolState } from './sendLLMMessageTypes.js';
+import { AnthropicReasoning, RawToolParamsObj, CliCompactionState, CliToolState } from './sendLLMMessageTypes.js';
 import { ToolCallParams, ToolName, ToolResult } from './toolsServiceTypes.js';
 
 export type ToolMessage<T extends ToolName> = {
@@ -64,11 +64,11 @@ export type ChatMessage =
 
 		anthropicReasoning: AnthropicReasoning[] | null; // anthropic reasoning
 
-		// Loophole Serve: server-side tool calls + compaction snapshot for this
+		// Loophole CLI: server-side tool calls + compaction snapshot for this
 		// turn (optional, additive — old threads simply lack these fields). The
 		// direct-LLM path never sets them.
-		serveTools?: ServeToolState[];
-		compaction?: ServeCompactionState;
+		cliTools?: CliToolState[];
+		compaction?: CliCompactionState;
 	}
 	| ToolMessage<ToolName>
 	| DecorativeCanceledTool

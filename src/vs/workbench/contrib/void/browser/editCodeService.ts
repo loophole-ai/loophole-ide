@@ -39,6 +39,8 @@ import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { LLMChatMessage } from '../common/sendLLMMessageTypes.js';
 import { IMetricsService } from '../common/metricsService.js';
 import { ITokenUsageService } from '../common/tokenUsageService.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { isLoopholeNotificationEnabled } from './loopholeNotifications.js';
 import { IEditCodeService, AddCtrlKOpts, StartApplyingOpts, CallBeforeStartApplyingOpts, } from './editCodeServiceInterface.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { FeatureName } from '../common/voidSettingsTypes.js';
@@ -198,6 +200,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		@IVoidModelService private readonly _voidModelService: IVoidModelService,
 		@IConvertToLLMMessageService private readonly _convertToLLMMessageService: IConvertToLLMMessageService,
 		@ITokenUsageService private readonly _tokenUsageService: ITokenUsageService,
+		@IConfigurationService private readonly _configurationService: IConfigurationService,
 	) {
 		super();
 
@@ -1978,7 +1981,9 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 						const blocks = extractSearchReplaceBlocks(fullText)
 						if (blocks.length === 0) {
-							this._notificationService.info(`Loophole: We ran Fast Apply, but the LLM didn't output any changes.`)
+							if (isLoopholeNotificationEnabled(this._configurationService, 'applyChanges')) {
+								this._notificationService.info(`Loophole: We ran Fast Apply, but the LLM didn't output any changes.`)
+							}
 						}
 						this._writeURIText(uri, originalFileCode, 'wholeFileRange', { shouldRealignDiffAreas: true })
 

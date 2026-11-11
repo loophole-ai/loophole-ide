@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-// Phase 2: chat transport via Loophole Serve (behind `loophole.serve.enabled`).
+// Phase 2: chat transport via Loophole CLI (behind `loophole.cli.enabled`).
 //
 // Protocol (packages/protocol):
 //   POST /api/session { model?: { id, providerID }, title? } -> { data: { id, ... } }
@@ -18,7 +18,7 @@
 //   session.step.failed     { sessionID, assistantMessageID, error, ... }
 //   session.execution.succeeded / .failed / .interrupted (sessionID (+ error/reason))
 //
-// Tool UI (Phase 3 — Kilo-style cards, emitted via onTool as an ordered list):
+// Tool UI (Phase 3 - tool cards, emitted via onTool as an ordered list):
 //   session.tool.input.started/ended { sessionID, assistantMessageID, id, name | text }
 //   session.tool.input.delta         { sessionID, assistantMessageID, id, delta } (ephemeral)
 //   session.tool.called              { sessionID, assistantMessageID, id, input, executed }
@@ -40,17 +40,17 @@
 // - Tool input deltas are accumulated per call id and re-emitted as the full list;
 //   file (non-text) content parts are dropped, only text output is kept for cards.
 
-import type { LLMChatMessage, OnCompaction, OnError, OnFinalMessage, OnPermission, OnServeSession, OnText, OnTool, OnUsage, ServeCompactionState, ServePermissionRequest, ServeToolState, ServeUsage } from '../../common/sendLLMMessageTypes.js';
-import type { LoopholeServeModelRef } from '../../common/loopholeServeTypes.js';
-import { getLoopholeServeChannel } from '../loopholeServeChannel.js';
+import type { LLMChatMessage, OnCompaction, OnError, OnFinalMessage, OnPermission, OnCliSession, OnText, OnTool, OnUsage, CliCompactionState, CliPermissionRequest, CliToolState, CliUsage } from '../../common/sendLLMMessageTypes.js';
+import type { LoopholeCliModelRef } from '../../common/loopholeCliTypes.js';
+import { getLoopholeCliChannel } from '../loopholeCliChannel.js';
 
-export type LoopholeServeChatParams = {
+export type LoopholeCliChatParams = {
 	messages: LLMChatMessage[];
 	separateSystemMessage: string | undefined;
-	modelRef?: LoopholeServeModelRef | null;
+	modelRef?: LoopholeCliModelRef | null;
 	// When set, reuse this server session instead of creating one (thread binding).
-	serveSessionId?: string;
-	onServeSession?: OnServeSession;
+	cliSessionId?: string;
+	onCliSession?: OnCliSession;
 	onPermission?: OnPermission;
 	onUsage?: OnUsage;
 	onText: OnText;
@@ -99,15 +99,15 @@ const buildPromptText = (messages: LLMChatMessage[], separateSystemMessage: stri
 	return system ? `${system}\n\n${lastUserText}` : lastUserText;
 };
 
-export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, modelRef, serveSessionId, onServeSession, onPermission, onUsage, onText, onFinalMessage, onError, onTool, onCompaction, _setAborter }: LoopholeServeChatParams): Promise<void> => {
-	const channel = getLoopholeServeChannel();
+export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, modelRef, cliSessionId, onCliSession, onPermission, onUsage, onText, onFinalMessage, onError, onTool, onCompaction, _setAborter }: LoopholeCliChatParams): Promise<void> => {
+	const channel = getLoopholeCliChannel();
 	if (!channel) {
-		onError({ message: 'Loophole Serve channel is unavailable.', fullError: null });
+		onError({ message: 'Loophole CLI channel is unavailable.', fullError: null });
 		return;
 	}
 	const connection = channel.connectionInfo();
 	if (!connection) {
-		onError({ message: 'Loophole Serve is not connected. Connect it in Loophole Settings (Loophole Serve).', fullError: null });
+		onError({ message: 'Loophole CLI is not connected. Connect it in Loophole Settings (Loophole CLI).', fullError: null });
 		return;
 	}
 
@@ -115,20 +115,20 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 	// create a fresh session and report it so the thread can rebind to it.
 	// (Only the new user turn is prompted — the server owns the full history.)
 	let sessionID: string;
-	if (serveSessionId) {
-		sessionID = serveSessionId;
+	if (cliSessionId) {
+		sessionID = cliSessionId;
 	} else {
 		try {
-			const session = await channel.serveApi<{ id: string }>('POST', '/api/session', {
+			const session = await channel.cliApi<{ id: string }>('POST', '/api/session', {
 				...(modelRef ? { model: { id: modelRef.modelID, providerID: modelRef.providerID } } : {}),
 				title: 'Loophole',
 			});
 			sessionID = session.id;
 		} catch (e) {
-			onError({ message: `Loophole Serve: failed to create session (${e instanceof Error ? e.message : String(e)})`, fullError: null });
+			onError({ message: `Loophole CLI: failed to create session (${e instanceof Error ? e.message : String(e)})`, fullError: null });
 			return;
 		}
-		if (onServeSession) onServeSession({ serveSessionId: sessionID });
+		if (onCliSession) onCliSession({ cliSessionId: sessionID });
 	}
 
 	const text = buildPromptText(messages, separateSystemMessage);
@@ -164,7 +164,7 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 		// abort: stop the SSE stream + ask the server to interrupt the turn
 		try { reader?.cancel().catch(() => { /* best effort */ }); } catch { /* best effort */ }
 		eventController.abort();
-		channel.serveApi('POST', `/api/session/${encodeURIComponent(sessionID)}/interrupt`, undefined).catch(() => { /* best effort */ });
+		channel.cliApi('POST', `/api/session/${encodeURIComponent(sessionID)}/interrupt`, undefined).catch(() => { /* best effort */ });
 	});
 
 	let fullText = '';
@@ -172,18 +172,18 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 
 	// Tool cards + compaction snapshots, merged per tool call id and emitted as
 	// one ordered list so the renderer can replace its state wholesale.
-	const toolsById = new Map<string, ServeToolState>();
+	const toolsById = new Map<string, CliToolState>();
 	const emitTools = () => {
 		if (onTool) onTool({ tools: [...toolsById.values()] });
 	};
-	const upsertTool = (id: string, patch: Partial<ServeToolState>) => {
+	const upsertTool = (id: string, patch: Partial<CliToolState>) => {
 		const prev = toolsById.get(id) ?? { id, name: typeof patch.name === 'string' ? patch.name : '', status: 'input' as const };
-		const next: ServeToolState = { ...prev, ...patch, id };
+		const next: CliToolState = { ...prev, ...patch, id };
 		toolsById.set(id, next);
 		emitTools();
 	};
-	let compaction: ServeCompactionState | undefined = undefined;
-	const emitCompaction = (patch: ServeCompactionState) => {
+	let compaction: CliCompactionState | undefined = undefined;
+	const emitCompaction = (patch: CliCompactionState) => {
 		compaction = { ...(compaction ?? { phase: patch.phase }), ...patch, phase: patch.phase };
 		if (onCompaction) onCompaction({ compaction });
 	};
@@ -296,10 +296,10 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 			// Server-side tool permission request (packages/schema/src/permission.ts):
 			// `data` is the full Permission.Request (id + sessionID/action/resources/...).
 			// The server pauses execution until the client replies via
-			// POST /api/session/:id/permission/:requestID/reply (see LoopholeServeService.permissionReply).
+			// POST /api/session/:id/permission/:requestID/reply (see LoopholeCliService.permissionReply).
 			const id = typeof data.id === 'string' ? data.id : '';
 			if (id && onPermission) {
-				const permission: ServePermissionRequest = {
+				const permission: CliPermissionRequest = {
 					id,
 					sessionID: sessionID,
 					action: typeof data.action === 'string' ? data.action : 'unknown',
@@ -319,7 +319,7 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 			if (tokens && cost !== undefined && onUsage) {
 				const num = (v: unknown): number => typeof v === 'number' ? v : 0;
 				const cache = (tokens.cache && typeof tokens.cache === 'object') ? tokens.cache as Record<string, unknown> : {};
-				const usage: ServeUsage = {
+				const usage: CliUsage = {
 					cost,
 					tokens: {
 						input: num(tokens.input),
@@ -338,7 +338,7 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 		else if (evt.type === 'session.step.failed' || evt.type === 'session.execution.failed') {
 			const err = data.error as { message?: unknown } | undefined;
 			if (err && typeof err.message === 'string') fail(err.message);
-			else fail(`Loophole Serve: generation failed (${evt.type}).`);
+			else fail(`Loophole CLI: generation failed (${evt.type}).`);
 		}
 		else if (evt.type === 'session.execution.interrupted') {
 			// abortRef already swallowed the abort; treat as a plain stop without an error
@@ -356,7 +356,7 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 				signal: eventController.signal,
 			});
 			if (!response.ok || !response.body) {
-				fail(`Loophole Serve: event stream failed (${response.status}).`);
+				fail(`Loophole CLI: event stream failed (${response.status}).`);
 				return;
 			}
 			reader = response.body.getReader();
@@ -379,10 +379,10 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 					if (settled) break;
 				}
 			}
-			if (!settled) fail('Loophole Serve: event stream ended before completion.');
+			if (!settled) fail('Loophole CLI: event stream ended before completion.');
 		} catch (e) {
 			if (!settled && !eventController.signal.aborted) {
-				fail(`Loophole Serve: event stream error (${e instanceof Error ? e.message : String(e)})`);
+				fail(`Loophole CLI: event stream error (${e instanceof Error ? e.message : String(e)})`);
 			}
 		}
 	};
@@ -393,14 +393,14 @@ export const sendLoopholeServeChat = async ({ messages, separateSystemMessage, m
 	await new Promise((resolve) => setTimeout(resolve, 100));
 	if (settled) return;
 	try {
-		await channel.serveApi('POST', `/api/session/${encodeURIComponent(sessionID)}/prompt`, { text });
+		await channel.cliApi('POST', `/api/session/${encodeURIComponent(sessionID)}/prompt`, { text });
 	} catch (e) {
-		fail(`Loophole Serve: failed to send prompt (${e instanceof Error ? e.message : String(e)})`);
+		fail(`Loophole CLI: failed to send prompt (${e instanceof Error ? e.message : String(e)})`);
 		return;
 	}
 	// guard: no completion 5 minutes after the prompt (same spirit as AUTOCOMPLETE TIMEOUT_TIME, longer for chat)
 	setTimeout(() => {
-		if (!settled) fail(`Loophole Serve: timed out after ${Math.round((Date.now() - started) / 1000)}s without a completion event.`);
+		if (!settled) fail(`Loophole CLI: timed out after ${Math.round((Date.now() - started) / 1000)}s without a completion event.`);
 	}, 5 * 60 * 1000);
 	await streamPromise;
 };

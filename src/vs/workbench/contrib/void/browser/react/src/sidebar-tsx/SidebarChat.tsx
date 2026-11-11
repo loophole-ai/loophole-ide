@@ -6,13 +6,13 @@
 import React, { ButtonHTMLAttributes, FormEvent, FormHTMLAttributes, Fragment, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
-import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useServePermissions } from '../util/services.js';
+import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useCliPermissions } from '../util/services.js';
 import { useLocalVoiceModel, useLocalVoiceRecorder } from '../util/localVoiceModel.js';
 import { localVoiceModelService } from '../../../localVoiceModelService.js';
-import { ServePermissionCard } from './ServePermissionCard.js';
-import { ServeUsageChip } from './ServeUsageChip.js';
-import { ServeSlashMenu, filterServeSlashEntries, useServeSlashEntries } from './ServeSlashMenu.js';
-import { ServeMicButton, useServeVoiceRecorder } from './ServeVoiceButton.js';
+import { CliPermissionCard } from './CliPermissionCard.js';
+import { CliUsageChip } from './CliUsageChip.js';
+import { CliSlashMenu, filterCliSlashEntries, useCliSlashEntries } from './CliSlashMenu.js';
+import { CliMicButton, useCliVoiceRecorder } from './CliVoiceButton.js';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
 
 import { ChatMarkdownRender, ChatMessageLocation, getApplyBoxId } from '../markdown/ChatMarkdownRender.js';
@@ -20,7 +20,7 @@ import { URI } from '../../../../../../../base/common/uri.js';
 import { IDisposable } from '../../../../../../../base/common/lifecycle.js';
 import { ErrorDisplay } from './ErrorDisplay.js';
 import { BlockCode, TextAreaFns, VoidCustomDropdownBox, VoidInputBox2, VoidSlider, VoidSwitch, VoidDiffEditor } from '../util/inputs.js';
-import { ServeModelPicker } from '../void-settings-tsx/serve-settings/ServeModelPicker.js';
+import { CliModelPicker } from '../void-settings-tsx/cli-settings/CliModelPicker.js';
 import { PastThreadsList } from './SidebarThreadSelector.js';
 import { VOID_CTRL_L_ACTION_ID } from '../../../actionIDs.js';
 import { VOID_OPEN_SETTINGS_ACTION_ID } from '../../../voidSettingsPane.js';
@@ -500,6 +500,17 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 	tokenCount,
 	contextWindow,
 }) => {
+	const accessor = useAccessor()
+	const configService = accessor.get('IConfigurationService')
+	const [cliEnabled, setCliEnabled] = useState(() => configService.getValue<boolean>('loophole.cli.enabled') !== false)
+	useEffect(() => {
+		const disposable = configService.onDidChangeConfiguration((event) => {
+			if (!event.affectsConfiguration('loophole.cli.enabled')) return
+			setCliEnabled(configService.getValue<boolean>('loophole.cli.enabled') !== false)
+		})
+		return () => disposable.dispose()
+	}, [configService])
+
 	return (
 		<div
 			ref={divRef}
@@ -547,11 +558,11 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 			<div className='flex flex-row justify-between items-end gap-1'>
 				{showModelDropdown && (
 					<div className='flex flex-col gap-y-1'>
-						<ReasoningOptionSlider featureName={featureName} />
+						{!cliEnabled && <ReasoningOptionSlider featureName={featureName} />}
 
 						<div className='flex items-center flex-wrap gap-x-2 gap-y-1 text-nowrap '>
 							{featureName === 'Chat' && <ChatModeDropdown className='text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-2 rounded py-0.5 px-1' />}
-							<ServeModelPicker className='text-xs text-loophole-fg-3 bg-loophole-bg-1 rounded' />
+							<CliModelPicker className='text-xs text-loophole-fg-3 bg-loophole-bg-1 rounded' />
 							{featureName === 'Chat' && <AttachFileButton className='text-loophole-fg-3' />}
 						</div>
 					</div>
@@ -1492,11 +1503,11 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 
 	const reasoningStr = chatMessage.reasoning?.trim() || null
 	const hasReasoning = !!reasoningStr
-	// Loophole Serve server-side tool calls for this turn (Kilo-style cards).
-	const serveTools = chatMessage.serveTools ?? []
-	// Kilo behavior: reasoning stays open while streaming, then auto-collapses
+	// Loophole CLI tool calls for this turn.
+	const cliTools = chatMessage.cliTools ?? []
+	// Reasoning stays open while streaming, then auto-collapses
 	// once the turn moves on to tool calls or final text (re-expandable).
-	const hasFollowup = serveTools.length > 0 || !!chatMessage.displayContent
+	const hasFollowup = cliTools.length > 0 || !!chatMessage.displayContent
 	const thread = chatThreadsService.getCurrentThread()
 
 
@@ -1505,11 +1516,11 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 		messageIdx: messageIdx,
 	}
 
-	const isEmpty = !chatMessage.displayContent && !chatMessage.reasoning && serveTools.length === 0 && !chatMessage.compaction
+	const isEmpty = !chatMessage.displayContent && !chatMessage.reasoning && cliTools.length === 0 && !chatMessage.compaction
 	if (isEmpty) return null
 
 	return <>
-		{/* compaction banner (Loophole Serve session.compaction.*) */}
+		{/* compaction banner (Loophole CLI session.compaction.*) */}
 		{chatMessage.compaction &&
 			<div className={`${isCheckpointGhost ? 'opacity-50' : ''}`}>
 				<CompactionBanner compaction={chatMessage.compaction} />
@@ -1523,10 +1534,10 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 			</div>
 		}
 
-		{/* server-side tool calls (Loophole Serve); todo tools get a checklist */}
-		{serveTools.length > 0 &&
+		{/* server-side tool calls (Loophole CLI); todo tools get a checklist */}
+		{cliTools.length > 0 &&
 			<div className={`flex flex-col gap-1 ${isCheckpointGhost ? 'opacity-50' : ''}`}>
-				{serveTools.map(tool => (
+				{cliTools.map(tool => (
 					<React.Fragment key={tool.id}>
 						{isTodoToolName(tool.name)
 							? <TodoListCard tool={tool} />
@@ -3136,22 +3147,22 @@ export const SidebarChat = () => {
 	const chatThreadsService = accessor.get('IChatThreadService')
 
 	const settingsState = useSettingsState()
-	// Loophole Serve (behind `loophole.serve.enabled`; direct-LLM path untouched).
+	// Loophole CLI (behind `loophole.cli.enabled`; direct-LLM path untouched).
 	const configService = accessor.get('IConfigurationService')
-	const serveEnabled = configService.getValue<boolean>('loophole.serve.enabled') === true
-	const serveService = accessor.get('ILoopholeServeService')
+	const cliEnabled = configService.getValue<boolean>('loophole.cli.enabled') === true
+	const cliService = accessor.get('ILoopholeCliService')
 	// The server is the default transport; start it when the chat surface mounts.
 	useEffect(() => {
-		if (!serveEnabled) return
+		if (!cliEnabled) return
 		let cancelled = false
-		serveService.status()
+		cliService.status()
 			.then((status) => {
 				if (cancelled) return
-				if (status.status === 'disconnected' || status.status === 'error') void serveService.connect()
+				if (status.status === 'disconnected' || status.status === 'error') void cliService.connect()
 			})
 			.catch(() => undefined)
 		return () => { cancelled = true }
-	}, [serveEnabled, serveService])
+	}, [cliEnabled, cliService])
 	const voiceState = useLocalVoiceModel()
 	const selectedVoiceModelId = settingsState.globalSettings.localVoiceModelId
 	const selectedVoiceModelStatus = selectedVoiceModelId === null
@@ -3166,10 +3177,10 @@ export const SidebarChat = () => {
 		textAreaFnsRef.current?.insertTextAtCursor(text)
 	}, [])
 	const voiceRecorder = useLocalVoiceRecorder(isVoiceModelReady ? selectedVoiceModelId : null, onVoiceTranscript)
-	// Server-side voice (serve mode only; click-driven, no polling). Live transcripts
-	// insert into the composer; Enter/stop sends through the normal serve chat path.
-	const serveVoiceBaseline = useCallback(() => textAreaRef.current?.value ?? '', [])
-	const serveVoice = useServeVoiceRecorder(serveEnabled, textAreaFnsRef, serveVoiceBaseline)
+	// CLI voice (CLI mode only; click-driven, no polling). Live transcripts
+	// insert into the composer; Enter/stop sends through the normal CLI chat path.
+	const cliVoiceBaseline = useCallback(() => textAreaRef.current?.value ?? '', [])
+	const cliVoice = useCliVoiceRecorder(cliEnabled, textAreaFnsRef, cliVoiceBaseline)
 	// ----- HIGHER STATE -----
 
 	// threads state
@@ -3185,18 +3196,18 @@ export const SidebarChat = () => {
 	const currThreadStreamState = useChatThreadsStreamState(chatThreadsState.currentThreadId)
 	const isRunning = currThreadStreamState?.isRunning
 	const latestError = currThreadStreamState?.error
-	const { displayContentSoFar, toolCallSoFar, reasoningSoFar, serveTools, compaction } = currThreadStreamState?.llmInfo ?? {}
-	const servePermissions = useServePermissions(chatThreadsState.currentThreadId)
+	const { displayContentSoFar, toolCallSoFar, reasoningSoFar, cliTools, compaction } = currThreadStreamState?.llmInfo ?? {}
+	const cliPermissions = useCliPermissions(chatThreadsState.currentThreadId)
 	// Backfill pending permissions from the GET list on bind (permission.asked can
 	// fire before the SSE subscription is established).
-	const serveSessionId = chatThreadsState.allThreads[chatThreadsState.currentThreadId]?.state.serveSessionId
+	const cliSessionId = chatThreadsState.allThreads[chatThreadsState.currentThreadId]?.state.cliSessionId
 	useEffect(() => {
-		if (!serveEnabled || !serveSessionId) return;
+		if (!cliEnabled || !cliSessionId) return;
 		let cancelled = false;
-		serveService.permissionList(serveSessionId)
+		cliService.permissionList(cliSessionId)
 			.then((list) => {
 				if (cancelled) return;
-				// Map to ServePermissionRequest (same shape as the SSE event payload).
+				// Map to CliPermissionRequest (same shape as the SSE event payload).
 				const mapped = (Array.isArray(list) ? list : []).map((p) => ({
 					id: p.id,
 					sessionID: p.sessionID,
@@ -3204,53 +3215,53 @@ export const SidebarChat = () => {
 					resources: p.resources ?? [],
 					...(p.message ? { message: p.message } : {}),
 				}));
-				if (mapped.length > 0) chatThreadsService.setServePermissions(chatThreadsState.currentThreadId, mapped);
+				if (mapped.length > 0) chatThreadsService.setCliPermissions(chatThreadsState.currentThreadId, mapped);
 			})
 			.catch(() => { /* best effort — live SSE still works */ });
 		return () => { cancelled = true; }
-	}, [serveService, chatThreadsService, serveEnabled, serveSessionId, chatThreadsState.currentThreadId])
-	// Slash commands + skills (serve mode only). `/` in the composer opens the menu;
+	}, [cliService, chatThreadsService, cliEnabled, cliSessionId, chatThreadsState.currentThreadId])
+	// Slash commands + skills (CLI mode only). `/` in the composer opens the menu;
 	// selecting inserts `/name ` (or runs immediately below on submit).
-	const serveSlashEntries = useServeSlashEntries(serveEnabled)
+	const cliSlashEntries = useCliSlashEntries(cliEnabled)
 	const [slashIndex, setSlashIndex] = useState(0)
 	const [slashOpen, setSlashOpen] = useState(false)
-	const ensureServeSession = useCallback(async (): Promise<string | undefined> => {
+	const ensureCliSession = useCallback(async (): Promise<string | undefined> => {
 		const thread = chatThreadsService.state.allThreads[chatThreadsService.state.currentThreadId]
 		if (!thread) return undefined
-		const bound = thread.state.serveSessionId
+		const bound = thread.state.cliSessionId
 		if (bound) return bound
 		try {
-			const created = await serveService.createSession({})
+			const created = await cliService.createSession({})
 			if (created?.id) {
-				chatThreadsService.setServeSessionId(thread.id, created.id)
+				chatThreadsService.setCliSessionId(thread.id, created.id)
 				return created.id
 			}
 		} catch { /* caller falls back to normal chat submit */ }
 		return undefined
-	}, [chatThreadsService, serveService])
+	}, [chatThreadsService, cliService])
 
 	const runSlashSubmit = useCallback(async (rawText: string): Promise<boolean> => {
-		if (!serveEnabled) return false
+		if (!cliEnabled) return false
 		const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(rawText.trim())
 		if (!match) return false
 		const name = match[1]
 		const args = match[2] ?? ''
-		const entry = serveSlashEntries.find((e) => e.name === name)
+		const entry = cliSlashEntries.find((e) => e.name === name)
 		if (!entry) return false
-		const sessionID = await ensureServeSession()
+		const sessionID = await ensureCliSession()
 		if (!sessionID) return false
 		try {
 			if (entry.kind === 'skill' && entry.skillId) {
-				await serveService.activateSkill(sessionID, entry.skillId)
+				await cliService.activateSkill(sessionID, entry.skillId)
 			} else {
-				await serveService.runCommand(sessionID, name, args)
+				await cliService.runCommand(sessionID, name, args)
 			}
 			return true
 		} catch (e) {
-			console.error('Error while running serve command:', e)
+			console.error('Error while running CLI command:', e)
 			return false
 		}
-	}, [serveEnabled, serveSlashEntries, ensureServeSession, serveService])
+	}, [cliEnabled, cliSlashEntries, ensureCliSession, cliService])
 
 	// this is just if it's currently being generated, NOT if it's currently running
 	const toolIsGenerating = toolCallSoFar && !toolCallSoFar.isDone // show loading for slow tools (right now just edit)
@@ -3262,7 +3273,7 @@ export const SidebarChat = () => {
 	const [instructionsAreEmpty, setInstructionsAreEmpty] = useState(!initVal)
 	const [tokenEstimate, setTokenEstimate] = useState(0)
 
-	const isDisabled = instructionsAreEmpty || (!serveEnabled && !!isFeatureNameDisabled('Chat', settingsState))
+	const isDisabled = instructionsAreEmpty || (!cliEnabled && !!isFeatureNameDisabled('Chat', settingsState))
 
 	const chatModelSelection = settingsState.modelSelectionOfFeature['Chat']
 	const chatContextWindow = chatModelSelection
@@ -3282,8 +3293,8 @@ export const SidebarChat = () => {
 		// send message to LLM
 		const userMessage = _forceSubmit || textAreaRef.current?.value || ''
 
-		// Serve slash commands: `/name args` runs server-side instead of chat.
-		if (!_forceSubmit && serveEnabled) {
+		// CLI slash commands: `/name args` runs in the CLI instead of chat.
+		if (!_forceSubmit && cliEnabled) {
 			const handled = await runSlashSubmit(userMessage)
 			if (handled) {
 				setSelections([])
@@ -3294,7 +3305,7 @@ export const SidebarChat = () => {
 		}
 
 		// Enter (or stop) while server voice is live: stop dictation first, then send normally.
-		if (serveVoice.isRecording) serveVoice.stop()
+		if (cliVoice.isRecording) cliVoice.stop()
 
 		try {
 			await chatThreadsService.addUserMessageAndStreamResponse({ userMessage, threadId })
@@ -3306,7 +3317,7 @@ export const SidebarChat = () => {
 		textAreaFnsRef.current?.setValue('')
 		textAreaRef.current?.focus() // focus input after submit
 
-	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState, voiceRecorder.isRecording, voiceRecorder.isTranscribing, serveEnabled, runSlashSubmit, serveVoice])
+	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState, voiceRecorder.isRecording, voiceRecorder.isTranscribing, cliEnabled, runSlashSubmit, cliVoice])
 
 	const onAbort = async () => {
 		const threadId = currentThread.id
@@ -3352,7 +3363,7 @@ export const SidebarChat = () => {
 	}, [previousMessages, threadId, currCheckpointIdx, isRunning])
 
 	const streamingChatIdx = previousMessagesHTML.length
-	const currStreamingMessageHTML = reasoningSoFar || displayContentSoFar || isRunning || (serveTools?.length ?? 0) > 0 || compaction ?
+	const currStreamingMessageHTML = reasoningSoFar || displayContentSoFar || isRunning || (cliTools?.length ?? 0) > 0 || compaction ?
 		<ChatBubble
 			key={'curr-streaming-msg'}
 			currCheckpointIdx={currCheckpointIdx}
@@ -3361,7 +3372,7 @@ export const SidebarChat = () => {
 				displayContent: displayContentSoFar ?? '',
 				reasoning: reasoningSoFar ?? '',
 				anthropicReasoning: null,
-				serveTools,
+				cliTools,
 				compaction,
 			}}
 			messageIdx={streamingChatIdx}
@@ -3426,13 +3437,13 @@ export const SidebarChat = () => {
 	const onChangeText = useCallback((newStr: string) => {
 		setInstructionsAreEmpty(!newStr)
 		setTokenEstimate(estimateTokens(newStr))
-		// Serve slash menu: live `/query` detection (only when text starts with `/`).
-		if (serveEnabled) {
+		// CLI slash menu: live `/query` detection (only when text starts with `/`).
+		if (cliEnabled) {
 			const match = /^\/(\S*)$/.exec(newStr)
-			setSlashOpen(!!match && serveSlashEntries.length > 0)
+			setSlashOpen(!!match && cliSlashEntries.length > 0)
 			setSlashIndex(0)
 		}
-	}, [setInstructionsAreEmpty, setTokenEstimate, serveEnabled, serveSlashEntries])
+	}, [setInstructionsAreEmpty, setTokenEstimate, cliEnabled, cliSlashEntries])
 	const onPickSlash = useCallback((entry: { name: string }) => {
 		// Insert `/name ` and keep focus; Enter runs it (or submits args via runSlashSubmit).
 		textAreaFnsRef.current?.setValue(`/${entry.name} `)
@@ -3441,8 +3452,8 @@ export const SidebarChat = () => {
 		textAreaRef.current?.focus()
 	}, [textAreaFnsRef])
 	const onKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
-		if (serveEnabled && slashOpen) {
-			const filtered = filterServeSlashEntries(serveSlashEntries, ((textAreaRef.current?.value ?? '').match(/^\/(\S*)$/) ?? [])[1] ?? '')
+		if (cliEnabled && slashOpen) {
+			const filtered = filterCliSlashEntries(cliSlashEntries, ((textAreaRef.current?.value ?? '').match(/^\/(\S*)$/) ?? [])[1] ?? '')
 			if (e.key === 'ArrowDown') {
 				e.preventDefault()
 				setSlashIndex((prev) => (filtered.length > 0 ? (prev + 1) % filtered.length : 0))
@@ -3472,12 +3483,12 @@ export const SidebarChat = () => {
 		} else if (e.key === 'Escape' && isRunning) {
 			onAbort()
 		}
-	}, [onSubmit, onAbort, isRunning, serveEnabled, slashOpen, serveSlashEntries, slashIndex, onPickSlash])
+	}, [onSubmit, onAbort, isRunning, cliEnabled, slashOpen, cliSlashEntries, slashIndex, onPickSlash])
 
 	// Sized and styled like the attach button next to it. The icon never changes:
 	// dictating only tints it red, so the button does not resize or swap glyphs
 	// under the cursor mid-sentence.
-	// Serve mode -> server voice (click-driven); otherwise keep the local model button.
+	// CLI mode -> CLI voice (click-driven); otherwise keep the local model button.
 	const localVoiceButton = isVoiceModelReady && !isRunning ? <button
 		type='button'
 		className={`flex items-center justify-center transition-colors ${voiceRecorder.isRecording ? 'text-red-500' : 'text-loophole-fg-2 opacity-60 hover:opacity-100'} ${voiceRecorder.isTranscribing ? 'cursor-wait opacity-50' : 'cursor-pointer'}`}
@@ -3493,14 +3504,14 @@ export const SidebarChat = () => {
 	>
 		<Mic size={13} strokeWidth={2} />
 	</button> : undefined
-	const voiceButton = serveEnabled
-		? (!isRunning ? <ServeMicButton voice={serveVoice} /> : undefined)
+	const voiceButton = cliEnabled
+		? (!isRunning ? <CliMicButton voice={cliVoice} /> : undefined)
 		: localVoiceButton
 
-	const slashMenuHTML = serveEnabled && slashOpen ? <div className='px-2 pb-1'>
-		<ServeSlashMenu
+	const slashMenuHTML = cliEnabled && slashOpen ? <div className='px-2 pb-1'>
+		<CliSlashMenu
 			query={(textAreaRef.current?.value ?? '').replace(/^\//, '').split(/\s/)[0] ?? ''}
-			entries={serveSlashEntries}
+			entries={cliSlashEntries}
 			index={slashIndex}
 			onHover={(idx) => setSlashIndex(idx)}
 			onPick={onPickSlash}
@@ -3536,14 +3547,14 @@ export const SidebarChat = () => {
 
 	</VoidChatArea>
 
-	// Serve header: usage chip (serve mode only).
-	const serveHeaderHTML = serveEnabled ? <div className='flex items-center gap-2 px-3 pt-2'>
+	// CLI header: usage chip (CLI mode only).
+	const cliHeaderHTML = cliEnabled ? <div className='flex items-center gap-2 px-3 pt-2'>
 		<div className='flex-1' />
-		<ServeUsageChip threadId={threadId} />
+		<CliUsageChip threadId={threadId} />
 	</div> : null
 
-	const permissionHTML = serveEnabled && servePermissions.length > 0 ? <div className='px-2 pb-1'>
-		<ServePermissionCard threadId={threadId} />
+	const permissionHTML = cliEnabled && cliPermissions.length > 0 ? <div className='px-2 pb-1'>
+		<CliPermissionCard threadId={threadId} />
 	</div> : null
 
 
@@ -3581,7 +3592,7 @@ export const SidebarChat = () => {
 
 	const landingPageInput = <div>
 		<div className='pt-8'>
-			{serveHeaderHTML}
+			{cliHeaderHTML}
 			{permissionHTML}
 			{slashMenuHTML}
 			{inputChatArea}
@@ -3628,7 +3639,7 @@ export const SidebarChat = () => {
 		className='w-full h-full flex flex-col overflow-hidden'
 	>
 
-		{serveHeaderHTML}
+		{cliHeaderHTML}
 		<ErrorBoundary>
 			{messagesHTML}
 		</ErrorBoundary>

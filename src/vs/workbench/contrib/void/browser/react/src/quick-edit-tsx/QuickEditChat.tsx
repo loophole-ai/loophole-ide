@@ -26,7 +26,7 @@ export const QuickEditChat = ({
 	const accessor = useAccessor()
 	const editCodeService = accessor.get('IEditCodeService')
 	const configService = accessor.get('IConfigurationService')
-	const serveEnabled = configService.getValue<boolean>('loophole.serve.enabled') === true
+	const cliEnabled = configService.getValue<boolean>('loophole.cli.enabled') === true
 	const sizerRef = useRef<HTMLDivElement | null>(null)
 	const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
 	const textAreaFnsRef = useRef<TextAreaFns | null>(null)
@@ -49,7 +49,7 @@ export const QuickEditChat = ({
 
 	// state of current message
 	const [instructionsAreEmpty, setInstructionsAreEmpty] = useState(!(initText ?? '')) // the user's instructions
-	const isDisabled = instructionsAreEmpty || (!serveEnabled && !!isFeatureNameDisabled('Ctrl+K', settingsState))
+	const isDisabled = instructionsAreEmpty || (!cliEnabled && !!isFeatureNameDisabled('Ctrl+K', settingsState))
 
 
 	const [isStreamingRef, setIsStreamingRef] = useRefState(editCodeService.isCtrlKZoneStreaming({ diffareaid }))

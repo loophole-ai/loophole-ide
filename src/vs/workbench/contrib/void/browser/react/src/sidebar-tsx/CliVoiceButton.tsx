@@ -8,11 +8,11 @@ import { Mic } from 'lucide-react';
 import { useAccessor } from '../util/services.js';
 import type { TextAreaFns } from '../util/inputs.js';
 import { Severity } from '../../../../../../../platform/notification/common/notification.js';
-import type { LoopholeServeVoiceModel } from '../../../../common/loopholeServeTypes.js';
+import type { LoopholeCliVoiceModel } from '../../../../common/loopholeCliTypes.js';
 
 const VOICE_SAMPLE_RATE = 16_000;
 
-type ServeVoiceState = {
+type CliVoiceState = {
 	isRecording: boolean;
 	error: string | undefined;
 	start: () => Promise<void>;
@@ -20,7 +20,7 @@ type ServeVoiceState = {
 	clearError: () => void;
 };
 
-const pickModel = (models: LoopholeServeVoiceModel[], fallback?: string): string | null => {
+const pickModel = (models: LoopholeCliVoiceModel[], fallback?: string): string | null => {
 	const available = models.filter((m) => m.available && m.transports.includes('websocket'));
 	if (fallback && available.some((m) => m.model === fallback)) return fallback;
 	const preferred = ['gpt-realtime-2.1', 'gemini-3.8-live', 'grok-voice-3.0'];
@@ -58,21 +58,22 @@ const extractTranscript = (value: unknown): { interim?: string; final?: string }
 	return {};
 };
 
-// Server-side voice dictation over WebSocket (Loophole Serve voice session).
+// CLI voice dictation over WebSocket.
 // Flow: GET /api/experimental/voice/models -> POST /api/experimental/voice/session
 // ({ transport: { type: 'websocket' } }) -> main-process WS proxy dials `url` with
 // the ephemeral `token` (browser WebSocket cannot set Authorization headers) ->
 // mic PCM16/base64 chunks flow renderer -> proxy -> provider; transcripts flow
 // provider -> proxy -> renderer and are inserted into the composer live.
 // WebRTC-only models (e.g. gpt-live-1) are skipped — no WebSocket transport.
-export const useServeVoiceRecorder = (
-	serveEnabled: boolean,
+export const useCliVoiceRecorder = (
+	cliEnabled: boolean,
 	textAreaFnsRef: { current: TextAreaFns | null },
 	getBaseline: () => string,
-): ServeVoiceState => {
+): CliVoiceState => {
 	const accessor = useAccessor()
-	const serveService = accessor.get('ILoopholeServeService')
+	const cliService = accessor.get('ILoopholeCliService')
 	const notificationService = accessor.get('INotificationService')
+	const configService = accessor.get('IConfigurationService')
 	const [isRecording, setIsRecording] = useState(false)
 	const [error, setError] = useState<string | undefined>()
 	const streamRef = useRef<MediaStream | null>(null)
@@ -109,9 +110,9 @@ export const useServeVoiceRecorder = (
 		void ctx?.close().catch(() => { /* best effort */ })
 		const requestId = wsRequestIdRef.current;
 		wsRequestIdRef.current = null
-		if (requestId) serveService.voiceWsClose(requestId);
+		if (requestId) cliService.voiceWsClose(requestId);
 		if (mountedRef.current) setIsRecording(false)
-	}, [serveService]);
+	}, [cliService]);
 
 	const stop = useCallback(() => { release(); }, [release]);
 
@@ -123,17 +124,19 @@ export const useServeVoiceRecorder = (
 		}
 		setError(undefined)
 		try {
-			const { models, default: fallback } = await serveService.voiceModels();
-			const model = pickModel(Array.isArray(models) ? models : [], fallback);
+			const { models, default: fallback } = await cliService.voiceModels();
+			const configured = configService.getValue<string>('loophole.cli.models.speechToText') ?? ''
+			const preferred = configured.includes('/') ? configured.slice(configured.lastIndexOf('/') + 1) : configured
+			const model = pickModel(Array.isArray(models) ? models : [], preferred || fallback);
 			if (!model) {
-				setError('No WebSocket voice model is available on the server. Add a provider API key (OpenAI, xAI, or Google) in Loophole Serve settings.');
+				setError('No realtime voice model is available from the Loophole CLI. Add a provider API key in Settings > Providers.');
 				return;
 			}
 			const voiceModel = models.find((m) => m.model === model);
 			providerRef.current = voiceModel?.provider ?? '';
-			const { transport } = await serveService.voiceSession({ model, transport: { type: 'websocket' } });
+			const { transport } = await cliService.voiceSession({ model, transport: { type: 'websocket' } });
 			if (transport.type !== 'websocket') {
-				setError('Server returned a non-WebSocket voice transport.');
+				setError('The CLI returned a non-WebSocket voice transport.');
 				return;
 			}
 			const stream = await navigator.mediaDevices.getUserMedia({
@@ -147,10 +150,10 @@ export const useServeVoiceRecorder = (
 			textRef.current = '';
 			finalRef.current = '';
 
-			// Main-process WS proxy carries the ephemeral token (see loopholeServeChannel).
+			// Main-process WS proxy carries the ephemeral token (see loopholeCliChannel).
 			const requestId = `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
 			wsRequestIdRef.current = requestId;
-			serveService.voiceWsConnect(requestId, transport.url, transport.token, providerRef.current, {
+			cliService.voiceWsConnect(requestId, transport.url, transport.token, providerRef.current, {
 				onMessage: (text) => {
 					let data: unknown;
 					try {
@@ -198,7 +201,7 @@ export const useServeVoiceRecorder = (
 						? { audio: { data: toBase64(new Uint8Array(pcm.buffer)), mime_type: 'audio/pcm;rate=16000' } }
 						: { type: 'input_audio_buffer.append', audio: toBase64(new Uint8Array(pcm.buffer)) };
 					const id = wsRequestIdRef.current;
-					if (id) serveService.voiceWsSend(id, JSON.stringify(message));
+					if (id) cliService.voiceWsSend(id, JSON.stringify(message));
 				};
 				if (rate === VOICE_SAMPLE_RATE) {
 					send(input);
@@ -226,13 +229,15 @@ export const useServeVoiceRecorder = (
 				const text = 'Microphone access denied. Enable the mic permission for Loophole (browser / OS privacy settings) to use voice input.';
 				setError(text);
 				try {
-					notificationService.notify({ severity: Severity.Warning, message: text, source: 'Voice input', sticky: true });
+					if (configService.getValue<boolean>('loophole.notifications.voice') !== false) {
+						notificationService.notify({ severity: Severity.Warning, message: text, source: 'Voice input', sticky: true });
+					}
 				} catch { /* best effort */ }
 			} else {
 				setError(message);
 			}
 		}
-	}, [isRecording, serveService, release, applyTranscript, getBaseline, notificationService]);
+	}, [isRecording, cliService, release, applyTranscript, getBaseline, notificationService, configService]);
 
 	useEffect(() => {
 		mountedRef.current = true;
@@ -242,22 +247,22 @@ export const useServeVoiceRecorder = (
 		};
 	}, [release]);
 
-	// Voice is purely click-driven; nothing when serve is disabled.
-	if (!serveEnabled) {
+	// Voice is purely click-driven; nothing when the CLI is disabled.
+	if (!cliEnabled) {
 		return { isRecording, error, start: stop, stop: () => { }, clearError: () => setError(undefined) };
 	}
 
 	return { isRecording, error, start, stop, clearError: () => setError(undefined) };
 };
 
-export const ServeMicButton = ({ voice }: { voice: ServeVoiceState }) => {
+export const CliMicButton = ({ voice }: { voice: CliVoiceState }) => {
 	if (!navigator.mediaDevices?.getUserMedia) return null;
 	return <button
 		type='button'
 		className={`flex items-center justify-center transition-colors ${voice.isRecording ? 'text-red-500' : 'text-loophole-fg-2 opacity-60 hover:opacity-100 cursor-pointer'}`}
 		aria-label={voice.isRecording ? 'Stop dictation' : 'Start dictation'}
 		aria-pressed={voice.isRecording}
-		title={voice.error || (voice.isRecording ? 'Stop dictation' : 'Dictate with server voice')}
+		title={voice.error || (voice.isRecording ? 'Stop dictation' : 'Dictate with CLI voice')}
 		onMouseDown={(event) => event.preventDefault()}
 		onClick={() => {
 			if (voice.isRecording) voice.stop();

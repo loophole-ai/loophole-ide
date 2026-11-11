@@ -6,9 +6,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import { VoidButtonBgDarken, VoidSimpleInputBox } from '../../util/inputs.js'
-import { ServeProviderConnectDialog } from './ServeProviderConnectDialog.js'
-import { ServeStatusCard } from './ServeStatusCard.js'
-import type { LoopholeServeIntegrationConnection, LoopholeServeIntegrationInfo, LoopholeServeProviderInfo } from '../../../../../common/loopholeServeTypes.js'
+import { CliProviderConnectDialog } from './CliProviderConnectDialog.js'
+import { CliStatusCard } from './CliStatusCard.js'
+import { SettingsList, SettingsNote, SettingsRow, SettingsSection } from './CliSettingsRows.js'
+import type { LoopholeCliIntegrationConnection, LoopholeCliIntegrationInfo, LoopholeCliProviderInfo } from '../../../../../common/loopholeCliTypes.js'
 
 // Providers worth surfacing before the full integration catalog. Any missing id is simply ignored.
 const popularIntegrationIDs = new Set([
@@ -25,38 +26,38 @@ const popularIntegrationIDs = new Set([
 	'deepseek',
 ])
 
-const hasConnectMethod = (integration: LoopholeServeIntegrationInfo) =>
+const hasConnectMethod = (integration: LoopholeCliIntegrationInfo) =>
 	integration.methods.some((method) => method.type === 'key' || method.type === 'oauth')
 
-const isRemovable = (connection: LoopholeServeIntegrationConnection): connection is LoopholeServeIntegrationConnection & { id: string } =>
+const isRemovable = (connection: LoopholeCliIntegrationConnection): connection is LoopholeCliIntegrationConnection & { id: string } =>
 	connection.type === 'credential' && typeof connection.id === 'string'
 
-/** Connected providers plus the connectable integration catalog. */
-export const ServeProvidersTab = () => {
+/** Connected providers plus the connectable integration catalog, both owned by the CLI. */
+export const CliProvidersTab = () => {
 	const accessor = useAccessor()
-	const serveService = accessor.get('ILoopholeServeService')
+	const cliService = accessor.get('ILoopholeCliService')
 
-	const [providers, setProviders] = useState<LoopholeServeProviderInfo[]>([])
-	const [integrations, setIntegrations] = useState<LoopholeServeIntegrationInfo[]>([])
+	const [providers, setProviders] = useState<LoopholeCliProviderInfo[]>([])
+	const [integrations, setIntegrations] = useState<LoopholeCliIntegrationInfo[]>([])
 	const [search, setSearch] = useState('')
 	const [loading, setLoading] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const [busy, setBusy] = useState<string | null>(null)
-	const [connecting, setConnecting] = useState<LoopholeServeIntegrationInfo | null>(null)
+	const [connecting, setConnecting] = useState<LoopholeCliIntegrationInfo | null>(null)
 
 	const load = useCallback(async () => {
 		setLoading(true)
 		setError(null)
 		try {
-			const status = await serveService.status()
+			const status = await cliService.status()
 			if (status.status !== 'connected') {
 				setProviders([])
 				setIntegrations([])
 				return
 			}
 			const [nextProviders, nextIntegrations] = await Promise.all([
-				serveService.providers(),
-				serveService.integrations(),
+				cliService.providers(),
+				cliService.integrations(),
 			])
 			setProviders(nextProviders)
 			setIntegrations(nextIntegrations)
@@ -65,7 +66,7 @@ export const ServeProvidersTab = () => {
 		} finally {
 			setLoading(false)
 		}
-	}, [serveService])
+	}, [cliService])
 
 	useEffect(() => { void load() }, [load])
 
@@ -90,21 +91,18 @@ export const ServeProvidersTab = () => {
 		return [...popular, ...rest]
 	}, [integrations, connectedIntegrationIDs, search])
 
-	const integrationOfProvider = (provider: LoopholeServeProviderInfo) =>
-		integrations.find((integration) => integration.id === (provider.integrationID ?? provider.id))
-
-	const onDisconnect = useCallback(async (provider: LoopholeServeProviderInfo) => {
+	const onDisconnect = useCallback(async (provider: LoopholeCliProviderInfo) => {
 		setBusy(provider.id)
 		setError(null)
 		try {
-			const integration = integrations.find((integration) => integration.id === (provider.integrationID ?? provider.id))
+			const integration = integrations.find((entry) => entry.id === (provider.integrationID ?? provider.id))
 			const credentials = (integration?.connections ?? []).filter(isRemovable)
 			if (credentials.length === 0) {
-				setError(`${provider.name} is configured by the server environment and cannot be disconnected here.`)
+				setError(`${provider.name} is configured by the CLI environment and cannot be disconnected here.`)
 				return
 			}
 			for (const credential of credentials) {
-				await serveService.credentialRemove(credential.id)
+				await cliService.credentialRemove(credential.id)
 			}
 			await load()
 		} catch (e) {
@@ -112,72 +110,62 @@ export const ServeProvidersTab = () => {
 		} finally {
 			setBusy(null)
 		}
-	}, [serveService, load, integrations])
+	}, [cliService, load, integrations])
 
-	return <div>
-		<ServeStatusCard onChange={load} />
-
-		{error ? <div className='text-xs text-red-500 my-2'>{error}</div> : null}
-		{loading ? <div className='text-xs text-loophole-fg-3 my-2'>Loading providers...</div> : null}
+	return <SettingsSection
+		title='Providers'
+		description='Providers and API keys are owned by the Loophole CLI.'
+	>
+		<CliStatusCard onChange={load} />
+		{error ? <SettingsNote>{error}</SettingsNote> : null}
+		{loading ? <SettingsNote>Loading providers from the CLI...</SettingsNote> : null}
 
 		<h4 className='text-base mt-4 mb-2'>Connected</h4>
-		<div className='border border-loophole-border-2 bg-loophole-bg-1 rounded-sm'>
+		<SettingsList>
 			{providers.length === 0
-				? <div className='text-sm text-loophole-fg-3 p-3'>No providers connected on the server.</div>
+				? <SettingsRow label='No providers connected' description='Connect one below to use its models.' />
 				: providers.map((provider) => {
-					const integration = integrationOfProvider(provider)
+					const integration = integrations.find((entry) => entry.id === (provider.integrationID ?? provider.id))
 					const credential = (integration?.connections ?? []).find(isRemovable)
-					return <div key={provider.id} className='flex flex-wrap items-center justify-between gap-2 p-3 border-b border-loophole-border-2 last:border-b-0'>
-						<div className='min-w-0'>
-							<div className='text-sm font-medium text-loophole-fg-1 truncate'>{provider.name}</div>
-							<div className='text-xs text-loophole-fg-3 truncate'>
-								{provider.id}
-								{credential?.label ? ` · ${credential.label}` : ''}
-							</div>
-						</div>
+					return <SettingsRow
+						key={provider.id}
+						label={<span className='flex items-center gap-2'><span className='w-2 h-2 rounded-full bg-loophole-fg-1' />{provider.name}</span>}
+						description={<>{provider.id}{credential?.label ? ` · ${credential.label}` : ''}</>}
+					>
 						{credential
-							? <VoidButtonBgDarken
-								className='px-3 py-1'
-								onClick={() => { void onDisconnect(provider) }}
-								disabled={busy === provider.id}
-							>
+							? <VoidButtonBgDarken className='px-3 py-1' onClick={() => { void onDisconnect(provider) }} disabled={busy === provider.id}>
 								{busy === provider.id ? 'Disconnecting...' : 'Disconnect'}
 							</VoidButtonBgDarken>
-							: <span className='text-xs text-loophole-fg-3'>Server environment</span>}
-					</div>
+							: <span className='text-xs text-loophole-fg-3'>CLI environment</span>}
+					</SettingsRow>
 				})}
-		</div>
+		</SettingsList>
 
 		<h4 className='text-base mt-6 mb-2'>Add provider</h4>
 		<div className='mb-2 max-w-sm'>
 			<VoidSimpleInputBox value={search} onChangeValue={setSearch} placeholder='Search providers' compact={true} />
 		</div>
-		<div className='border border-loophole-border-2 bg-loophole-bg-1 rounded-sm'>
+		<SettingsList>
 			{catalog.length === 0
-				? <div className='text-sm text-loophole-fg-3 p-3'>
-					{search ? 'No matching providers.' : 'No additional providers available from the server.'}
-				</div>
+				? <SettingsRow label={search ? 'No matching providers' : 'No additional providers'} />
 				: catalog.map((integration) => {
 					const oauthOnly = !integration.methods.some((method) => method.type === 'key')
-					return <div key={integration.id} className='flex flex-wrap items-center justify-between gap-2 p-3 border-b border-loophole-border-2 last:border-b-0'>
-						<div className='min-w-0'>
-							<div className='text-sm font-medium text-loophole-fg-1 truncate'>{integration.name}</div>
-							<div className='text-xs text-loophole-fg-3 truncate'>
-								{integration.id}
-								{oauthOnly ? ' · OAuth sign-in' : ''}
-							</div>
-						</div>
+					return <SettingsRow
+						key={integration.id}
+						label={integration.name}
+						description={<>{integration.id}{oauthOnly ? ' · OAuth sign-in' : ''}</>}
+					>
 						<VoidButtonBgDarken className='px-3 py-1' onClick={() => setConnecting(integration)}>
 							{oauthOnly ? 'Details' : 'Connect'}
 						</VoidButtonBgDarken>
-					</div>
+					</SettingsRow>
 				})}
-		</div>
+		</SettingsList>
 
-		{connecting ? <ServeProviderConnectDialog
+		{connecting ? <CliProviderConnectDialog
 			integration={connecting}
 			onClose={() => setConnecting(null)}
 			onConnected={() => { void load() }}
 		/> : null}
-	</div>
+	</SettingsSection>
 }

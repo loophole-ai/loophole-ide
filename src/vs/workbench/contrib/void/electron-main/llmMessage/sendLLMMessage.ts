@@ -7,7 +7,7 @@ import { SendLLMMessageParams, OnText, OnFinalMessage, OnError } from '../../com
 import { IMetricsService } from '../../common/metricsService.js';
 import { displayInfoOfProviderName } from '../../common/voidSettingsTypes.js';
 import { sendLLMMessageToProviderImplementation } from './sendLLMMessage.impl.js';
-import { sendLoopholeServeChat } from './loopholeServeChat.js';
+import { sendLoopholeCliChat } from './loopholeCliChat.js';
 
 
 export const sendLLMMessage = async ({
@@ -18,8 +18,8 @@ export const sendLLMMessage = async ({
 	onError: onError_,
 	onTool: onTool_,
 	onCompaction: onCompaction_,
-	serveSessionId: serveSessionId_,
-	onServeSession: onServeSession_,
+	cliSessionId: cliSessionId_,
+	onCliSession: onCliSession_,
 	onPermission: onPermission_,
 	onUsage: onUsage_,
 	abortRef: abortRef_,
@@ -31,21 +31,21 @@ export const sendLLMMessage = async ({
 	chatMode,
 	separateSystemMessage,
 	mcpTools,
-	serve,
-}: SendLLMMessageParams & Partial<{ serve: { enabled: boolean; model?: { providerID: string; modelID: string } | null } }>,
+	cli,
+}: SendLLMMessageParams & Partial<{ cli: { enabled: boolean; model?: { providerID: string; modelID: string } | null } }>,
 
 	metricsService: IMetricsService
 ) => {
 
-	// Phase 2: Loophole Serve transport (behind `loophole.serve.enabled`).
-	// modelSelection may be null here because serve models come from the server (Phase 1).
-	if (serve?.enabled && messagesType === 'chatMessages') {
-		await sendLoopholeServeChat({
+	// Phase 2: Loophole CLI transport (behind `loophole.cli.enabled`).
+	// modelSelection may be null here because CLI models come from the CLI.
+	if (cli?.enabled && messagesType === 'chatMessages') {
+		await sendLoopholeCliChat({
 			messages: messages_,
 			separateSystemMessage,
-			modelRef: serve.model ?? null,
-			serveSessionId: serveSessionId_,
-			onServeSession: onServeSession_,
+			modelRef: cli.model ?? null,
+			cliSessionId: cliSessionId_,
+			onCliSession: onCliSession_,
 			onPermission: onPermission_,
 			onUsage: onUsage_,
 			onText: onText_,

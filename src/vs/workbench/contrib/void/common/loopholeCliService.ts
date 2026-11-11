@@ -9,77 +9,79 @@ import { registerSingleton, InstantiationType } from '../../../../platform/insta
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import { Emitter, type Event } from '../../../../base/common/event.js';
 import type { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
-import type { LoopholeServeConfigUpdateParams, LoopholeServeConnectKeyParams, LoopholeServeConnectParams, LoopholeServeFimEvent, LoopholeServeFimParams, LoopholeServeIntegrationInfo, LoopholeServeModelInfo, LoopholeServeProviderInfo, LoopholeServeStatus, LoopholeServeVoiceWsEvent } from './loopholeServeTypes.js';
-import type { LoopholeServeCommandInfo, LoopholeServePermissionDecision, LoopholeServePermissionRequest, LoopholeServeRevert, LoopholeServeSessionInfo, LoopholeServeSessionMessage, LoopholeServeSkillInfo, LoopholeServeVoiceModel, LoopholeServeVoiceTransport } from './loopholeServeTypes.js';
+import type { LoopholeCliConfig, LoopholeCliConfigUpdateParams, LoopholeCliConnectKeyParams, LoopholeCliConnectParams, LoopholeCliFimEvent, LoopholeCliFimParams, LoopholeCliIntegrationInfo, LoopholeCliModelInfo, LoopholeCliProviderInfo, LoopholeCliStatus, LoopholeCliVoiceWsEvent } from './loopholeCliTypes.js';
+import type { LoopholeCliCommandInfo, LoopholeCliPermissionDecision, LoopholeCliPermissionRequest, LoopholeCliRevert, LoopholeCliSessionInfo, LoopholeCliSessionMessage, LoopholeCliSkillInfo, LoopholeCliVoiceModel, LoopholeCliVoiceTransport } from './loopholeCliTypes.js';
 
-/** Loophole Serve (opencode) backend connection. See LOOPSERVE.md. */
-export const ILoopholeServeService = createDecorator<ILoopholeServeService>('loopholeServeService');
+/** Loophole CLI (opencode) backend connection. See LOOPHOLECLI.md. */
+export const ILoopholeCliService = createDecorator<ILoopholeCliService>('loopholeCliService');
 
-export interface ILoopholeServeService {
+export interface ILoopholeCliService {
 	readonly _serviceBrand: undefined;
-	/** Spawn/attach to the bundled `loophole serve` and wait until it responds. */
-	connect: (params?: LoopholeServeConnectParams) => Promise<LoopholeServeStatus>;
+	/** Spawn the bundled Loophole CLI and wait until its local API responds. */
+	connect: (params?: LoopholeCliConnectParams) => Promise<LoopholeCliStatus>;
 	/** Stop the server process we spawned (attach-mode servers are left alone). */
 	disconnect: () => Promise<void>;
-	status: () => Promise<LoopholeServeStatus>;
-	/** `GET /api/provider` on the running server. */
-	providers: () => Promise<LoopholeServeProviderInfo[]>;
-	/** `GET /api/model` on the running server. */
-	models: () => Promise<LoopholeServeModelInfo[]>;
-	/** `GET /api/model/default` on the running server (may be empty). */
-	defaultModel: () => Promise<LoopholeServeModelInfo | null>;
+	status: () => Promise<LoopholeCliStatus>;
+	/** Version line printed by the configured binary (`--version`). */
+	version: () => Promise<string>;
+	/** `GET /api/config` on the running CLI. */
+	config: () => Promise<LoopholeCliConfig>;
+	/** `GET /api/provider` on the running CLI. */
+	providers: () => Promise<LoopholeCliProviderInfo[]>;
+	/** `GET /api/model` on the running CLI. */
+	models: () => Promise<LoopholeCliModelInfo[]>;
 	/** `GET /api/integration` — connectable integrations and their auth methods/connections. */
-	integrations: () => Promise<LoopholeServeIntegrationInfo[]>;
-	/** `PATCH /api/experimental/config` (Config.Patch — only `shell` is supported). */
-	configUpdate: (params: LoopholeServeConfigUpdateParams) => Promise<void>;
+	integrations: () => Promise<LoopholeCliIntegrationInfo[]>;
+	/** `PATCH /api/config` — persists Context and Commit Message settings. */
+	configUpdate: (params: LoopholeCliConfigUpdateParams) => Promise<void>;
 	/** `POST /api/integration/:integrationID/connect/key` — stores a provider API key server-side. */
-	connectKey: (params: LoopholeServeConnectKeyParams) => Promise<void>;
+	connectKey: (params: LoopholeCliConnectKeyParams) => Promise<void>;
 	/** `DELETE /api/credential/:credentialID` — removes a stored credential (disconnect). */
 	credentialRemove: (credentialID: string) => Promise<void>;
 	/** Start a direct Inception FIM completion. Progress arrives via `onFimEvent`; cancel with `fimAbort`. */
-	fim: (params: Omit<LoopholeServeFimParams, 'requestId'>, hooks: { onChunk?: (text: string) => void; onFinal: (text: string) => void; onError: (error: string) => void }) => string;
+	fim: (params: Omit<LoopholeCliFimParams, 'requestId'>, hooks: { onChunk?: (text: string) => void; onFinal: (text: string) => void; onError: (error: string) => void }) => string;
 	/** Cancel an in-flight FIM request started with `fim`. */
 	fimAbort: (requestId: string) => void;
-	/** Raw channel events from the main process (currently `LoopholeServeFimEvent`s). */
-	onFimEvent: Event<LoopholeServeFimEvent>;
-	/** `GET /api/session` — serve session list (newest first). */
-	sessions: (opts?: { limit?: number; search?: string; archived?: boolean }) => Promise<LoopholeServeSessionInfo[]>;
+	/** Raw channel events from the main process (currently `LoopholeCliFimEvent`s). */
+	onFimEvent: Event<LoopholeCliFimEvent>;
+	/** `GET /api/session` - CLI session list (newest first). */
+	sessions: (opts?: { limit?: number; search?: string; archived?: boolean }) => Promise<LoopholeCliSessionInfo[]>;
 	/** `GET /api/session/:id` — one session (cumulative `cost`/`tokens` + staged `revert`). */
-	session: (sessionID: string) => Promise<LoopholeServeSessionInfo>;
+	session: (sessionID: string) => Promise<LoopholeCliSessionInfo>;
 	/** `GET /api/session/:id/message` — first page of projected messages (newest first). */
-	sessionMessages: (sessionID: string, opts?: { limit?: number; order?: 'asc' | 'desc' }) => Promise<LoopholeServeSessionMessage[]>;
+	sessionMessages: (sessionID: string, opts?: { limit?: number; order?: 'asc' | 'desc' }) => Promise<LoopholeCliSessionMessage[]>;
 	/** `GET /api/session/:id/context` — active context window for history import (no pagination). */
-	sessionContext: (sessionID: string) => Promise<LoopholeServeSessionMessage[]>;
+	sessionContext: (sessionID: string) => Promise<LoopholeCliSessionMessage[]>;
 	/** `POST /api/session` — create a session. */
-	createSession: (payload?: Record<string, unknown>) => Promise<LoopholeServeSessionInfo>;
+	createSession: (payload?: Record<string, unknown>) => Promise<LoopholeCliSessionInfo>;
 	/** `DELETE /api/session/:id`. */
 	deleteSession: (sessionID: string) => Promise<void>;
 	/** `POST /api/session/:id/fork`. */
-	forkSession: (sessionID: string, before?: string) => Promise<LoopholeServeSessionInfo>;
+	forkSession: (sessionID: string, before?: string) => Promise<LoopholeCliSessionInfo>;
 	/** `PATCH /api/session/:id` with `{ title }`. */
 	renameSession: (sessionID: string, title: string) => Promise<void>;
 	/** `GET /api/command`. */
-	commands: () => Promise<LoopholeServeCommandInfo[]>;
+	commands: () => Promise<LoopholeCliCommandInfo[]>;
 	/** `GET /api/skill`. */
-	skills: () => Promise<LoopholeServeSkillInfo[]>;
+	skills: () => Promise<LoopholeCliSkillInfo[]>;
 	/** `POST /api/session/:id/command`. */
 	runCommand: (sessionID: string, name: string, text: string) => Promise<void>;
 	/** `POST /api/experimental/session/:id/skill`. */
 	activateSkill: (sessionID: string, id: string, resume?: boolean) => Promise<void>;
 	/** `POST /api/session/:id/revert/stage` — stage a reversible boundary (preview when `files` is false). */
-	revertStage: (sessionID: string, messageID: string, files?: boolean) => Promise<LoopholeServeRevert>;
+	revertStage: (sessionID: string, messageID: string, files?: boolean) => Promise<LoopholeCliRevert>;
 	/** `DELETE /api/session/:id/revert`. */
 	revertClear: (sessionID: string) => Promise<void>;
 	/** `POST /api/session/:id/revert/commit`. */
 	revertCommit: (sessionID: string) => Promise<void>;
 	/** `GET /api/session/:id/permission` — pending permission requests for a session. */
-	permissionList: (sessionID: string) => Promise<LoopholeServePermissionRequest[]>;
+	permissionList: (sessionID: string) => Promise<LoopholeCliPermissionRequest[]>;
 	/** `POST /api/session/:id/permission/:requestID/reply`. */
-	permissionReply: (sessionID: string, requestID: string, decision: LoopholeServePermissionDecision, message?: string) => Promise<void>;
+	permissionReply: (sessionID: string, requestID: string, decision: LoopholeCliPermissionDecision, message?: string) => Promise<void>;
 	/** `GET /api/experimental/voice/models`. */
-	voiceModels: () => Promise<{ models: LoopholeServeVoiceModel[]; default?: string }>;
+	voiceModels: () => Promise<{ models: LoopholeCliVoiceModel[]; default?: string }>;
 	/** `POST /api/experimental/voice/session` — returns WebRTC SDP or WebSocket URL+ephemeral token. */
-	voiceSession: (payload: { model: string; session?: Record<string, unknown>; transport: { type: string; sdp?: string; dcid?: number } }) => Promise<{ transport: LoopholeServeVoiceTransport }>;
+	voiceSession: (payload: { model: string; session?: Record<string, unknown>; transport: { type: string; sdp?: string; dcid?: number } }) => Promise<{ transport: LoopholeCliVoiceTransport }>;
 	/** Dial the provider realtime WebSocket (main-process proxy — browsers cannot set Authorization headers). */
 	voiceWsConnect: (requestId: string, url: string, token: string, provider?: string, hooks?: { onMessage?: (text: string) => void; onError?: (error: string) => void; onClose?: () => void }) => void;
 	/** Send one raw text frame over a proxied voice WebSocket. */
@@ -87,30 +89,30 @@ export interface ILoopholeServeService {
 	/** Close a proxied voice WebSocket. */
 	voiceWsClose: (requestId: string) => void;
 	/** Raw voice WebSocket channel events. */
-	onVoiceWsEvent: Event<LoopholeServeVoiceWsEvent>;
+	onVoiceWsEvent: Event<LoopholeCliVoiceWsEvent>;
 }
 
-export class LoopholeServeService extends Disposable implements ILoopholeServeService {
+export class LoopholeCliService extends Disposable implements ILoopholeCliService {
 
 	readonly _serviceBrand: undefined;
 	private readonly channel: IChannel;
 
-	// requestId -> callbacks for in-flight FIM requests (progress arrives over `onEvent_loopholeServe`)
+	// requestId -> callbacks for in-flight FIM requests (progress arrives over `onEvent_loopholeCli`)
 	private readonly _fimHooks: { [requestId: string]: { onChunk?: (text: string) => void; onFinal: (text: string) => void; onError: (error: string) => void } } = {};
 	private readonly _fimBuffers: { [requestId: string]: string } = {};
-	private readonly _onFimEvent = new Emitter<LoopholeServeFimEvent>();
+	private readonly _onFimEvent = new Emitter<LoopholeCliFimEvent>();
 
 	// requestId -> callbacks for proxied voice WebSockets (provider realtime audio)
 	private readonly _voiceWsHooks: { [requestId: string]: { onMessage?: (text: string) => void; onError?: (error: string) => void; onClose?: () => void } } = {};
-	private readonly _onVoiceWsEvent = new Emitter<LoopholeServeVoiceWsEvent>();
+	private readonly _onVoiceWsEvent = new Emitter<LoopholeCliVoiceWsEvent>();
 
 	constructor(
 		@IMainProcessService private readonly mainProcessService: IMainProcessService,
 	) {
 		super();
-		this.channel = this.mainProcessService.getChannel('void-channel-loopholeServe');
+		this.channel = this.mainProcessService.getChannel('void-channel-loopholeCli');
 
-		this._register((this.channel.listen('onEvent_loopholeServe') satisfies Event<LoopholeServeFimEvent>)((e) => {
+		this._register((this.channel.listen('onEvent_loopholeCli') satisfies Event<LoopholeCliFimEvent>)((e) => {
 			if (!e || e.kind !== 'fim') return;
 			this._onFimEvent.fire(e);
 			const hooks = this._fimHooks[e.requestId];
@@ -131,9 +133,9 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 				hooks.onError(e.error ?? 'FIM request failed.');
 			}
 		}));
-		this._register((this.channel.listen('onEvent_loopholeServe') satisfies Event<LoopholeServeVoiceWsEvent>)((e) => {
+		this._register((this.channel.listen('onEvent_loopholeCli') satisfies Event<LoopholeCliVoiceWsEvent>)((e) => {
 			if (!e || (e as { kind?: string }).kind !== 'voiceWs') return;
-			const ve = e as LoopholeServeVoiceWsEvent;
+			const ve = e as LoopholeCliVoiceWsEvent;
 			this._onVoiceWsEvent.fire(ve);
 			const hooks = this._voiceWsHooks[ve.requestId];
 			if (!hooks) return;
@@ -147,16 +149,16 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 	}
 
 	// Raw channel events forwarded from the main process (currently FIM progress).
-	get onFimEvent(): Event<LoopholeServeFimEvent> {
+	get onFimEvent(): Event<LoopholeCliFimEvent> {
 		return this._onFimEvent.event;
 	}
 
 	// Raw voice WebSocket channel events forwarded from the main process.
-	get onVoiceWsEvent(): Event<LoopholeServeVoiceWsEvent> {
+	get onVoiceWsEvent(): Event<LoopholeCliVoiceWsEvent> {
 		return this._onVoiceWsEvent.event;
 	}
 
-	async connect(params: LoopholeServeConnectParams = {}): Promise<LoopholeServeStatus> {
+	async connect(params: LoopholeCliConnectParams = {}): Promise<LoopholeCliStatus> {
 		return this.channel.call('connect', params);
 	}
 
@@ -164,31 +166,35 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 		await this.channel.call('disconnect');
 	}
 
-	async status(): Promise<LoopholeServeStatus> {
+	async status(): Promise<LoopholeCliStatus> {
 		return this.channel.call('status');
 	}
 
-	async providers(): Promise<LoopholeServeProviderInfo[]> {
+	async version(): Promise<string> {
+		return this.channel.call('version');
+	}
+
+	async config(): Promise<LoopholeCliConfig> {
+		return this.channel.call('config');
+	}
+
+	async providers(): Promise<LoopholeCliProviderInfo[]> {
 		return this.channel.call('providers');
 	}
 
-	async models(): Promise<LoopholeServeModelInfo[]> {
+	async models(): Promise<LoopholeCliModelInfo[]> {
 		return this.channel.call('models');
 	}
 
-	async defaultModel(): Promise<LoopholeServeModelInfo | null> {
-		return this.channel.call('defaultModel');
-	}
-
-	async integrations(): Promise<LoopholeServeIntegrationInfo[]> {
+	async integrations(): Promise<LoopholeCliIntegrationInfo[]> {
 		return this.channel.call('integrations');
 	}
 
-	async configUpdate(params: LoopholeServeConfigUpdateParams): Promise<void> {
+	async configUpdate(params: LoopholeCliConfigUpdateParams): Promise<void> {
 		await this.channel.call('configUpdate', params);
 	}
 
-	async connectKey(params: LoopholeServeConnectKeyParams): Promise<void> {
+	async connectKey(params: LoopholeCliConnectKeyParams): Promise<void> {
 		await this.channel.call('connectKey', params);
 	}
 
@@ -196,11 +202,11 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 		await this.channel.call('credentialRemove', { credentialID });
 	}
 
-	fim(params: Omit<LoopholeServeFimParams, 'requestId'>, hooks: { onChunk?: (text: string) => void; onFinal: (text: string) => void; onError: (error: string) => void }): string {
+	fim(params: Omit<LoopholeCliFimParams, 'requestId'>, hooks: { onChunk?: (text: string) => void; onFinal: (text: string) => void; onError: (error: string) => void }): string {
 		const requestId = `${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
 		this._fimHooks[requestId] = hooks;
 		this._fimBuffers[requestId] = '';
-		// fire-and-forget: progress + terminal states are delivered via `onEvent_loopholeServe`.
+		// fire-and-forget: progress + terminal states are delivered via `onEvent_loopholeCli`.
 		this.channel.call('fim', { ...params, requestId }).catch((e) => {
 			const h = this._fimHooks[requestId];
 			if (h) {
@@ -220,23 +226,23 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 
 	// ---- sessions / messages / commands / skills / revert / permission / voice ----
 
-	async sessions(opts?: { limit?: number; search?: string; archived?: boolean }): Promise<LoopholeServeSessionInfo[]> {
+	async sessions(opts?: { limit?: number; search?: string; archived?: boolean }): Promise<LoopholeCliSessionInfo[]> {
 		return this.channel.call('sessions', opts ?? {});
 	}
 
-	async session(sessionID: string): Promise<LoopholeServeSessionInfo> {
+	async session(sessionID: string): Promise<LoopholeCliSessionInfo> {
 		return this.channel.call('sessionGet', { sessionID });
 	}
 
-	async sessionMessages(sessionID: string, opts?: { limit?: number; order?: 'asc' | 'desc' }): Promise<LoopholeServeSessionMessage[]> {
+	async sessionMessages(sessionID: string, opts?: { limit?: number; order?: 'asc' | 'desc' }): Promise<LoopholeCliSessionMessage[]> {
 		return this.channel.call('sessionMessages', { sessionID, ...(opts ?? {}) });
 	}
 
-	async sessionContext(sessionID: string): Promise<LoopholeServeSessionMessage[]> {
+	async sessionContext(sessionID: string): Promise<LoopholeCliSessionMessage[]> {
 		return this.channel.call('sessionContext', { sessionID });
 	}
 
-	async createSession(payload?: Record<string, unknown>): Promise<LoopholeServeSessionInfo> {
+	async createSession(payload?: Record<string, unknown>): Promise<LoopholeCliSessionInfo> {
 		return this.channel.call('sessionCreate', payload ?? {});
 	}
 
@@ -244,7 +250,7 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 		await this.channel.call('sessionDelete', { sessionID });
 	}
 
-	async forkSession(sessionID: string, before?: string): Promise<LoopholeServeSessionInfo> {
+	async forkSession(sessionID: string, before?: string): Promise<LoopholeCliSessionInfo> {
 		return this.channel.call('sessionFork', { sessionID, ...(before ? { before } : {}) });
 	}
 
@@ -252,11 +258,11 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 		await this.channel.call('sessionRename', { sessionID, title });
 	}
 
-	async commands(): Promise<LoopholeServeCommandInfo[]> {
+	async commands(): Promise<LoopholeCliCommandInfo[]> {
 		return this.channel.call('commands');
 	}
 
-	async skills(): Promise<LoopholeServeSkillInfo[]> {
+	async skills(): Promise<LoopholeCliSkillInfo[]> {
 		return this.channel.call('skills');
 	}
 
@@ -268,7 +274,7 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 		await this.channel.call('activateSkill', { sessionID, id, ...(resume !== undefined ? { resume } : {}) });
 	}
 
-	async revertStage(sessionID: string, messageID: string, files?: boolean): Promise<LoopholeServeRevert> {
+	async revertStage(sessionID: string, messageID: string, files?: boolean): Promise<LoopholeCliRevert> {
 		return this.channel.call('revertStage', { sessionID, messageID, ...(files !== undefined ? { files } : {}) });
 	}
 
@@ -280,19 +286,19 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 		await this.channel.call('revertCommit', { sessionID });
 	}
 
-	async permissionList(sessionID: string): Promise<LoopholeServePermissionRequest[]> {
+	async permissionList(sessionID: string): Promise<LoopholeCliPermissionRequest[]> {
 		return this.channel.call('permissionList', { sessionID });
 	}
 
-	async permissionReply(sessionID: string, requestID: string, decision: LoopholeServePermissionDecision, message?: string): Promise<void> {
+	async permissionReply(sessionID: string, requestID: string, decision: LoopholeCliPermissionDecision, message?: string): Promise<void> {
 		await this.channel.call('permissionReply', { sessionID, requestID, decision, ...(message ? { message } : {}) });
 	}
 
-	async voiceModels(): Promise<{ models: LoopholeServeVoiceModel[]; default?: string }> {
+	async voiceModels(): Promise<{ models: LoopholeCliVoiceModel[]; default?: string }> {
 		return this.channel.call('voiceModels');
 	}
 
-	async voiceSession(payload: { model: string; session?: Record<string, unknown>; transport: { type: string; sdp?: string; dcid?: number } }): Promise<{ transport: LoopholeServeVoiceTransport }> {
+	async voiceSession(payload: { model: string; session?: Record<string, unknown>; transport: { type: string; sdp?: string; dcid?: number } }): Promise<{ transport: LoopholeCliVoiceTransport }> {
 		return this.channel.call('voiceSession', payload);
 	}
 
@@ -317,4 +323,4 @@ export class LoopholeServeService extends Disposable implements ILoopholeServeSe
 	}
 }
 
-registerSingleton(ILoopholeServeService, LoopholeServeService, InstantiationType.Eager);
+registerSingleton(ILoopholeCliService, LoopholeCliService, InstantiationType.Eager);

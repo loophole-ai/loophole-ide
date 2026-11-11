@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-export interface LoopholeServeConnectParams {
+export interface LoopholeCliConnectParams {
 	// override the bundled binary path; undefined = bundled <app>/resources/app/bin/loophole[.exe], then $PATH
 	binaryPath?: string;
 	// workspace to run the server in (cwd for sessions); undefined = first workspace folder
@@ -12,7 +12,7 @@ export interface LoopholeServeConnectParams {
 	env?: { [key: string]: string | undefined };
 }
 
-export interface LoopholeServeStatus {
+export interface LoopholeCliStatus {
 	status: 'disconnected' | 'starting' | 'connected' | 'error';
 	port?: number;
 	error?: string;
@@ -22,7 +22,7 @@ export interface LoopholeServeStatus {
 }
 
 /** Subset of the server's `Provider.Info` (packages/schema/src/provider.ts). */
-export interface LoopholeServeProviderInfo {
+export interface LoopholeCliProviderInfo {
 	id: string;
 	name: string;
 	integrationID?: string;
@@ -30,7 +30,7 @@ export interface LoopholeServeProviderInfo {
 }
 
 /** Subset of `Integration.Method` (packages/schema/src/integration.ts). */
-export interface LoopholeServeIntegrationMethod {
+export interface LoopholeCliIntegrationMethod {
 	/** `oauth`, `command`, `key`, `external`, or `env` today. */
 	type: string;
 	label?: string;
@@ -38,7 +38,7 @@ export interface LoopholeServeIntegrationMethod {
 }
 
 /** Subset of `Connection.Info` (packages/schema/src/connection.ts). */
-export interface LoopholeServeIntegrationConnection {
+export interface LoopholeCliIntegrationConnection {
 	type: 'credential' | 'env';
 	id?: string;
 	label?: string;
@@ -52,16 +52,16 @@ export interface LoopholeServeIntegrationConnection {
 }
 
 /** Subset of `Integration.Info` (packages/schema/src/integration.ts). */
-export interface LoopholeServeIntegrationInfo {
+export interface LoopholeCliIntegrationInfo {
 	id: string;
 	name: string;
 	metadata?: Record<string, unknown>;
-	methods: LoopholeServeIntegrationMethod[];
-	connections: LoopholeServeIntegrationConnection[];
+	methods: LoopholeCliIntegrationMethod[];
+	connections: LoopholeCliIntegrationConnection[];
 }
 
 /** Subset of the server's `Model.Info` (packages/schema/src/model.ts). */
-export interface LoopholeServeModelInfo {
+export interface LoopholeCliModelInfo {
 	id: string;
 	modelID: string;
 	providerID: string;
@@ -69,30 +69,47 @@ export interface LoopholeServeModelInfo {
 	family?: string;
 }
 
-/** Server model selection: an opencode `Model.Ref` without the optional variant. */
-export interface LoopholeServeModelRef {
+/** CLI model selection: a `Model.Ref` without the optional variant. */
+export interface LoopholeCliModelRef {
 	providerID: string;
 	modelID: string;
 }
 
+/** Subset of the CLI's `Config.Info` used by the Context and Commit Message pages. */
+export interface LoopholeCliCompactionConfig {
+	auto?: boolean;
+	threshold_percent?: number | null;
+	prune?: boolean;
+}
+
+export interface LoopholeCliConfig {
+	model?: string | null;
+	small_model?: string | null;
+	subagent_model?: string | null;
+	compaction?: LoopholeCliCompactionConfig;
+	commit_message?: {
+		prompt?: string;
+	};
+}
+
 /**
- * `Config.Patch` (packages/schema/src/config.ts) only supports the shell field,
- * so provider keys must NOT go through configUpdate. They are stored via
- * `POST /api/integration/:integrationID/connect/key` instead (see connectKey* below).
+ * `PATCH /api/config` body. Provider keys must NOT go through this endpoint;
+ * they are stored via `POST /api/integration/:integrationID/connect/key`
+ * instead (see connectKey below).
  */
-export interface LoopholeServeConfigUpdateParams {
+export interface LoopholeCliConfigUpdateParams extends LoopholeCliConfig {
 	shell?: string | null;
 }
 
 /** `POST /api/integration/:integrationID/connect/key` body (packages/protocol/src/groups/integration.ts). */
-export interface LoopholeServeConnectKeyParams {
+export interface LoopholeCliConnectKeyParams {
 	integrationID: string;
 	key: string;
 	label?: string;
 }
 
-/** Direct Inception FIM completion (loophole serve has no FIM endpoint). */
-export interface LoopholeServeFimParams {
+/** Direct Inception FIM completion (the CLI has no FIM endpoint). */
+export interface LoopholeCliFimParams {
 	requestId: string;
 	prefix: string;
 	suffix: string;
@@ -102,12 +119,12 @@ export interface LoopholeServeFimParams {
 	temperature?: number;
 }
 
-export interface LoopholeServeFimResult {
+export interface LoopholeCliFimResult {
 	text: string;
 }
 
-/** Channel event emitted while a `fim` command streams (see `onEvent_loopholeServe`). */
-export interface LoopholeServeFimEvent {
+/** Channel event emitted while a `fim` command streams (see `onEvent_loopholeCli`). */
+export interface LoopholeCliFimEvent {
 	kind: 'fim';
 	requestId: string;
 	type: 'chunk' | 'final' | 'error';
@@ -115,28 +132,28 @@ export interface LoopholeServeFimEvent {
 	error?: string;
 }
 
-// ---- Loophole Serve sessions / messages / commands / skills / permissions /
+// ---- Loophole CLI sessions / messages / commands / skills / permissions /
 // ---- usage / revert / voice (all shapes mirror packages/schema + protocol) ----
 
 /** Subset of the server's `Session.Info` (packages/schema/src/session.ts). */
-export interface LoopholeServeSessionInfo {
+export interface LoopholeCliSessionInfo {
 	id: string;
 	parentID?: string;
 	title?: string;
 	cost: number;
-	tokens: LoopholeServeTokenUsage;
+	tokens: LoopholeCliTokenUsage;
 	time: {
 		created: number;
 		updated: number;
 		busy?: number;
 		idle?: number;
 	};
-	revert?: LoopholeServeRevert;
+	revert?: LoopholeCliRevert;
 	[key: string]: unknown;
 }
 
 /** `TokenUsage.Info` (packages/schema/src/token-usage.ts). */
-export interface LoopholeServeTokenUsage {
+export interface LoopholeCliTokenUsage {
 	input: number;
 	output: number;
 	reasoning: number;
@@ -147,15 +164,15 @@ export interface LoopholeServeTokenUsage {
 }
 
 /** Minimal projected message (packages/schema/src/session-message.ts); extra fields pass through. */
-export type LoopholeServeSessionMessage = {
+export type LoopholeCliSessionMessage = {
 	id: string;
 	type: string;
 	text?: string;
-	content?: Array<LoopholeServeAssistantContent>;
+	content?: Array<LoopholeCliAssistantContent>;
 	[key: string]: unknown;
 };
 
-export type LoopholeServeAssistantContent = {
+export type LoopholeCliAssistantContent = {
 	type: string;
 	text?: string;
 	// tool part: { id, name, state: { status, input?, content?, error? } }
@@ -172,13 +189,13 @@ export type LoopholeServeAssistantContent = {
 };
 
 /** `Command.Info` (packages/schema/src/command.ts). */
-export interface LoopholeServeCommandInfo {
+export interface LoopholeCliCommandInfo {
 	name: string;
 	description?: string;
 }
 
 /** `Skill.Info` (packages/schema/src/skill.ts). */
-export interface LoopholeServeSkillInfo {
+export interface LoopholeCliSkillInfo {
 	id: string;
 	name: string;
 	description?: string;
@@ -188,7 +205,7 @@ export interface LoopholeServeSkillInfo {
 }
 
 /** `Permission.Request` subset (packages/schema/src/permission.ts); reply is `once | always | reject`. */
-export interface LoopholeServePermissionRequest {
+export interface LoopholeCliPermissionRequest {
 	id: string;
 	sessionID: string;
 	action: string;
@@ -199,10 +216,10 @@ export interface LoopholeServePermissionRequest {
 	[key: string]: unknown;
 }
 
-export type LoopholeServePermissionDecision = 'once' | 'always' | 'reject';
+export type LoopholeCliPermissionDecision = 'once' | 'always' | 'reject';
 
 /** `Session.Revert` (packages/schema/src/session-revert.ts). */
-export interface LoopholeServeRevert {
+export interface LoopholeCliRevert {
 	messageID: string;
 	snapshot?: string;
 	files?: Array<{
@@ -217,19 +234,19 @@ export interface LoopholeServeRevert {
 }
 
 /** `VoiceModel` (packages/protocol/src/groups/voice.ts). */
-export interface LoopholeServeVoiceModel {
+export interface LoopholeCliVoiceModel {
 	model: string;
 	provider: string;
 	transports: string[];
 	available: boolean;
 }
 
-export type LoopholeServeVoiceTransport =
+export type LoopholeCliVoiceTransport =
 	| { type: 'webrtc'; sdp: string }
 	| { type: 'websocket'; url: string; token: string; expiresAt: number };
 
-/** Channel event for a proxied voice WebSocket (see `onEvent_loopholeServe`). */
-export interface LoopholeServeVoiceWsEvent {
+/** Channel event for a proxied voice WebSocket (see `onEvent_loopholeCli`). */
+export interface LoopholeCliVoiceWsEvent {
 	kind: 'voiceWs';
 	requestId: string;
 	type: 'message' | 'error' | 'close';

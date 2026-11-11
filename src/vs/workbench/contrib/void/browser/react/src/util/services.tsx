@@ -52,12 +52,13 @@ import { ITerminalService } from '../../../../../terminal/browser/terminal.js'
 import { ISearchService } from '../../../../../../services/search/common/search.js'
 import { IExtensionManagementService } from '../../../../../../../platform/extensionManagement/common/extensionManagement.js'
 import { IMCPService } from '../../../../common/mcpService.js';
-import { ILoopholeServeService } from '../../../../common/loopholeServeService.js';
+import { ILoopholeCliService } from '../../../../common/loopholeCliService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
 import { ITokenUsageService } from '../../../../common/tokenUsageService.js'
 import { IDailyActivityService } from '../../../../common/dailyActivityService.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IFileDialogService } from '../../../../../../../platform/dialogs/common/dialogs.js'
+import { IProductService } from '../../../../../../../platform/product/common/productService.js'
 
 
 // normally to do this you'd use a useEffect that calls .onDidChangeState(), but useEffect mounts too late and misses initial state changes
@@ -251,7 +252,8 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		ITokenUsageService: accessor.get(ITokenUsageService),
 		IFileDialogService: accessor.get(IFileDialogService),
 		IDailyActivityService: accessor.get(IDailyActivityService),
-		ILoopholeServeService: accessor.get(ILoopholeServeService),
+		ILoopholeCliService: accessor.get(ILoopholeCliService),
+		IProductService: accessor.get(IProductService),
 
 	} as const
 	return reactAccessor
@@ -338,30 +340,30 @@ export const useFullChatThreadsStreamState = () => {
 	return s
 };
 
-// Loophole Serve pending permission requests for one thread (permission.asked).
-let servePermissionsVersion = 0
-const servePermissionsListeners: Set<() => void> = new Set()
+// Loophole CLI pending permission requests for one thread (permission.asked).
+let cliPermissionsVersion = 0
+const cliPermissionsListeners: Set<() => void> = new Set()
 
-export const useServePermissions = (threadId: string) => {
+export const useCliPermissions = (threadId: string) => {
 	const accessor = useAccessor()
 	const chatThreadsService = accessor.get('IChatThreadService')
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	const [_version, setVersion] = useState(servePermissionsVersion)
+	const [_version, setVersion] = useState(cliPermissionsVersion)
 	useEffect(() => {
-		setVersion(servePermissionsVersion)
-		const listener = () => setVersion(servePermissionsVersion)
-		servePermissionsListeners.add(listener)
-		return () => { servePermissionsListeners.delete(listener) }
+		setVersion(cliPermissionsVersion)
+		const listener = () => setVersion(cliPermissionsVersion)
+		cliPermissionsListeners.add(listener)
+		return () => { cliPermissionsListeners.delete(listener) }
 	}, [])
 	// keep the module mirror fresh from the service event
 	useEffect(() => {
-		const d = chatThreadsService.onDidChangeServePermissions(() => {
-			servePermissionsVersion += 1
-			servePermissionsListeners.forEach(l => l())
+		const d = chatThreadsService.onDidChangeCliPermissions(() => {
+			cliPermissionsVersion += 1
+			cliPermissionsListeners.forEach(l => l())
 		})
 		return () => { try { (d as { dispose?: () => void })?.dispose?.() } catch { /* best effort */ } }
 	}, [chatThreadsService])
-	return chatThreadsService.getServePermissions(threadId)
+	return chatThreadsService.getCliPermissions(threadId)
 }
 
 

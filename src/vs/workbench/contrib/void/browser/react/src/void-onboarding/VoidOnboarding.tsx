@@ -283,8 +283,8 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 					<PreviousButton onClick={() => setPageIndex(pageIndex - 1)} />
 					<NextButton
 						onClick={() => {
-							const serveEnabled = accessor.get('IConfigurationService').getValue<boolean>('loophole.serve.enabled') === true
-							const isDisabled = !serveEnabled && isFeatureNameDisabled('Chat', settingsState)
+							const cliEnabled = accessor.get('IConfigurationService').getValue<boolean>('loophole.cli.enabled') === true
+							const isDisabled = !cliEnabled && isFeatureNameDisabled('Chat', settingsState)
 							if (!isDisabled) {
 								setPageIndex(pageIndex + 1);
 								setErrorMessage(null);

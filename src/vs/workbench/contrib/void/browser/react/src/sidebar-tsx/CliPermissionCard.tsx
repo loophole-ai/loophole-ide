@@ -4,30 +4,30 @@
  *--------------------------------------------------------------------------------------*/
 
 import { useState } from 'react';
-import { useAccessor, useChatThreadsState, useServePermissions } from '../util/services.js';
-import type { LoopholeServePermissionDecision } from '../../../../../../../workbench/contrib/void/common/loopholeServeTypes.js';
+import { useAccessor, useChatThreadsState, useCliPermissions } from '../util/services.js';
+import type { LoopholeCliPermissionDecision } from '../../../../../../../workbench/contrib/void/common/loopholeCliTypes.js';
 
-// Server-side tool approval card (Loophole Serve `permission.asked`).
+// Tool approval card for the Loophole CLI (`permission.asked`).
 // Wired to POST /api/session/:id/permission/:requestID/reply via
-// ILoopholeServeService.permissionReply; decision maps once/always/reject.
-export const ServePermissionCard = ({ threadId }: { threadId: string }) => {
+// ILoopholeCliService.permissionReply; decision maps once/always/reject.
+export const CliPermissionCard = ({ threadId }: { threadId: string }) => {
 	const accessor = useAccessor()
 	const chatThreadsService = accessor.get('IChatThreadService')
-	const serveService = accessor.get('ILoopholeServeService')
+	const cliService = accessor.get('ILoopholeCliService')
 	const threadsState = useChatThreadsState()
-	const permissions = useServePermissions(threadId)
-	const sessionID = threadsState.allThreads[threadId]?.state.serveSessionId
+	const permissions = useCliPermissions(threadId)
+	const sessionID = threadsState.allThreads[threadId]?.state.cliSessionId
 	const [busyId, setBusyId] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 
 	if (!sessionID || permissions.length === 0) return null;
 
-	const reply = async (requestID: string, decision: LoopholeServePermissionDecision) => {
+	const reply = async (requestID: string, decision: LoopholeCliPermissionDecision) => {
 		setBusyId(requestID)
 		setError(null)
 		try {
-			await serveService.permissionReply(sessionID, requestID, decision)
-			chatThreadsService.clearServePermission(threadId, requestID)
+			await cliService.permissionReply(sessionID, requestID, decision)
+			chatThreadsService.clearCliPermission(threadId, requestID)
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e))
 		} finally {

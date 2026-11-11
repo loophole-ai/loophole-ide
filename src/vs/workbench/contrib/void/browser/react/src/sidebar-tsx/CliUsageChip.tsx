@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAccessor, useChatThreadsState } from '../util/services.js';
-import type { ServeUsage } from '../../../../common/sendLLMMessageTypes.js';
+import type { CliUsage } from '../../../../common/sendLLMMessageTypes.js';
 
 const formatTokens = (n: number): string => {
 	if (n < 1000) return `${Math.round(n)}`;
@@ -18,30 +18,30 @@ const formatCost = (n: number): string => {
 	return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 6 }).format(n);
 };
 
-// Compact token/cost chip for the active serve session (Kilo TaskUsage look).
+// Compact token/cost chip for the active CLI session.
 // Data path: Session.Info (cumulative) on bind + live `session.usage.updated`
-// via chatThreadService.updateServeUsage; rendered from thread state.
-export const ServeUsageChip = ({ threadId }: { threadId: string }) => {
+// via chatThreadService.updateCliUsage; rendered from thread state.
+export const CliUsageChip = ({ threadId }: { threadId: string }) => {
 	const accessor = useAccessor()
-	const serveService = accessor.get('ILoopholeServeService')
+	const cliService = accessor.get('ILoopholeCliService')
 	const configService = accessor.get('IConfigurationService')
 	const chatThreadsService = accessor.get('IChatThreadService')
 	const threadsState = useChatThreadsState()
-	const serveEnabled = configService.getValue<boolean>('loophole.serve.enabled') === true
-	const serveSessionId = threadsState.allThreads[threadId]?.state.serveSessionId
-	const usage = threadsState.allThreads[threadId]?.state.serveUsage as ServeUsage | undefined
+	const cliEnabled = configService.getValue<boolean>('loophole.cli.enabled') === true
+	const cliSessionId = threadsState.allThreads[threadId]?.state.cliSessionId
+	const usage = threadsState.allThreads[threadId]?.state.cliUsage as CliUsage | undefined
 	const [loading, setLoading] = useState(false)
 
 	// Refresh cumulative usage from Session.Info whenever the bound session changes.
 	useEffect(() => {
-		if (!serveEnabled || !serveSessionId) return;
+		if (!cliEnabled || !cliSessionId) return;
 		let cancelled = false;
 		setLoading(true)
-		serveService.session(serveSessionId)
+		cliService.session(cliSessionId)
 			.then((info) => {
 				if (cancelled) return;
 				if (info && info.tokens) {
-					chatThreadsService.updateServeUsage(threadId, {
+					chatThreadsService.updateCliUsage(threadId, {
 						cost: typeof info.cost === 'number' ? info.cost : 0,
 						tokens: {
 							input: info.tokens.input ?? 0,
@@ -55,10 +55,10 @@ export const ServeUsageChip = ({ threadId }: { threadId: string }) => {
 			.catch(() => { /* best effort — live usage.updated still updates the chip */ })
 			.finally(() => { if (!cancelled) setLoading(false); })
 		return () => { cancelled = true; }
-	}, [serveService, chatThreadsService, serveEnabled, serveSessionId, threadId])
+	}, [cliService, chatThreadsService, cliEnabled, cliSessionId, threadId])
 
-	if (!serveEnabled) return null;
-	if (!serveSessionId || !usage) {
+	if (!cliEnabled) return null;
+	if (!cliSessionId || !usage) {
 		return loading ? <span className='text-loophole-fg-4 text-xs'>…</span> : null;
 	}
 

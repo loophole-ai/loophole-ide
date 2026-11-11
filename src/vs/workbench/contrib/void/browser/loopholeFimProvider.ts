@@ -5,7 +5,7 @@
 
 // Phase 3: Loophole FIM autocomplete (Kilo-grade).
 //
-// Direct Inception FIM POST (loophole serve has no FIM endpoint):
+// Direct Inception FIM POST (the CLI has no FIM endpoint):
 //   POST https://api.inceptionlabs.ai/v1/fim/completions
 //   { model, prompt: prefix, suffix, max_tokens: 256, temperature: 0 }
 //   Authorization: Bearer <loophole.fim.apiKey>
@@ -23,7 +23,7 @@ import { Position } from '../../../../editor/common/core/position.js';
 import { Range } from '../../../../editor/common/core/range.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
-import { ILoopholeServeService } from '../common/loopholeServeService.js';
+import { ILoopholeCliService } from '../common/loopholeCliService.js';
 import { extractCodeFromRegular } from '../common/helpers/extractCodeFromResult.js';
 
 // --- completion stats shared with the status bar ---
@@ -60,7 +60,7 @@ export class LoopholeFimProvider extends Disposable implements IWorkbenchContrib
 
 	constructor(
 		@ILanguageFeaturesService private readonly _languageFeaturesService: ILanguageFeaturesService,
-		@ILoopholeServeService private readonly _serveService: ILoopholeServeService,
+		@ILoopholeCliService private readonly _cliService: ILoopholeCliService,
 		@IConfigurationService private readonly _configurationService: IConfigurationService,
 	) {
 		super();
@@ -101,7 +101,7 @@ export class LoopholeFimProvider extends Disposable implements IWorkbenchContrib
 
 		// debounce ~500ms, cancel prior request (abort on retype)
 		if (this._activeRequestId) {
-			this._serveService.fimAbort(this._activeRequestId);
+			this._cliService.fimAbort(this._activeRequestId);
 			this._activeRequestId = null;
 		}
 		const startedAt = Date.now();
@@ -113,7 +113,7 @@ export class LoopholeFimProvider extends Disposable implements IWorkbenchContrib
 		const accumulated = { text: '' };
 		const result = await new Promise<string | null>((resolve) => {
 			let done = false;
-			const requestId = this._serveService.fim(
+			const requestId = this._cliService.fim(
 				{ prefix, suffix, apiKey, model: fimModel, maxTokens: MAX_TOKENS, temperature: FIM_TEMPERATURE },
 				{
 					onChunk: (chunk) => { accumulated.text += chunk; },

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 // Direct-provider setup sections kept for the onboarding flow. The main Settings pane
-// exposes only Loophole Serve providers/models.
+// exposes only Loophole CLI providers/models.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { ProviderName, SettingName, displayInfoOfSettingName, providerNames, VoidStatefulModelInfo, customSettingNamesOfProvider, displayInfoOfProviderName, isProviderNameDisabled, subTextMdOfProviderName } from '../../../../common/voidSettingsTypes.js'

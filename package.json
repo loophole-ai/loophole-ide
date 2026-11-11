@@ -322,15 +322,65 @@
 			"title": "Loophole",
 			"type": "object",
 			"properties": {
-				"loophole.serve.enabled": {
+				"loophole.cli.enabled": {
 					"type": "boolean",
 					"default": true,
-					"description": "When enabled, Loophole uses the bundled Loophole Serve backend for providers, models, and chat transport (behind the Loophole Serve settings section)."
+					"description": "When enabled, Loophole uses the Loophole CLI for providers, models, and chat."
 				},
-				"loophole.serve.model": {
+				"loophole.cli.model": {
 					"type": "string",
 					"default": "",
-					"description": "Server model used by Loophole Serve for chat, as \"providerID/modelID\". Empty uses the server default model."
+					"description": "Fallback CLI model, as \"providerID/modelID\". Prefer the per-role Models settings."
+				},
+				"loophole.cli.models.default": {
+					"type": "string",
+					"default": "",
+					"description": "Model used by chat, agents, apply, and every request without a more specific role."
+				},
+				"loophole.cli.models.small": {
+					"type": "string",
+					"default": "",
+					"description": "Fast model used for small background tasks such as titles and summaries."
+				},
+				"loophole.cli.models.subagent": {
+					"type": "string",
+					"default": "",
+					"description": "Default model used by task-tool subagents."
+				},
+				"loophole.cli.models.autocompletion": {
+					"type": "string",
+					"default": "",
+					"description": "Model used for inline autocomplete suggestions."
+				},
+				"loophole.cli.models.speechToText": {
+					"type": "string",
+					"default": "",
+					"description": "Model used to transcribe speech to text."
+				},
+				"loophole.cli.models.commitMessage": {
+					"type": "string",
+					"default": "",
+					"description": "Model used by the commit message generator."
+				},
+				"loophole.notifications.chatErrors": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show a notification when a chat response fails."
+				},
+				"loophole.notifications.applyChanges": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show a notification when applying an edit fails."
+				},
+				"loophole.notifications.commitMessages": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show a notification when a commit message cannot be generated."
+				},
+				"loophole.notifications.voice": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show a notification when voice input fails."
 				},
 				"loophole.fim.enabled": {
 					"type": "boolean",

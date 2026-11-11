@@ -106,36 +106,36 @@ export type OnAbort = () => void
 export type AbortRef = { current: (() => void) | null }
 
 
-// Loophole Serve (server-side agent loop, Phase 3: tool UI). The server runs
+// Loophole CLI (server-side agent loop, Phase 3: tool UI). The server runs
 // tools itself and streams their lifecycle as session.tool.* events; these
 // hooks carry snapshots back to the renderer. All fields are JSON-safe for IPC.
-export type ServeToolStatus = 'input' | 'running' | 'done' | 'error'
-export type ServeToolState = {
+export type CliToolStatus = 'input' | 'running' | 'done' | 'error'
+export type CliToolState = {
 	id: string; // opencode tool call id (session.tool.* `id`)
 	name: string; // opencode tool name (e.g. 'edit', 'bash', 'todowrite')
-	status: ServeToolStatus;
+	status: CliToolStatus;
 	input?: Record<string, unknown>; // parsed call input (session.tool.called `input`)
 	inputText?: string; // raw input JSON fragments (session.tool.input.delta, ephemeral)
 	outputText?: string; // concatenated text content (session.tool.success `content`)
 	error?: string; // failure message (session.tool.failed `error.message`)
 	metadata?: Record<string, unknown>; // UI metadata (session.tool.success/failed `metadata`)
 }
-export type OnTool = (p: { tools: ServeToolState[] }) => void
-export type ServeCompactionPhase = 'started' | 'streaming' | 'done' | 'failed'
-export type ServeCompactionState = {
-	phase: ServeCompactionPhase;
+export type OnTool = (p: { tools: CliToolState[] }) => void
+export type CliCompactionPhase = 'started' | 'streaming' | 'done' | 'failed'
+export type CliCompactionState = {
+	phase: CliCompactionPhase;
 	reason?: string; // 'auto' | 'manual' (session.compaction.* `reason`)
 	text?: string; // summary text (session.compaction.delta / .ended `text`)
 	error?: string; // failure message (session.compaction.failed `error.message`)
 }
-export type OnCompaction = (p: { compaction: ServeCompactionState }) => void
+export type OnCompaction = (p: { compaction: CliCompactionState }) => void
 
-// Loophole Serve session binding + permission + usage (optional; serve-only).
+// Loophole CLI session binding + permission + usage (optional; CLI-only).
 // The server owns the agent loop, so the IDE reuses one session per thread:
-// the first serve turn creates it and reports it here so chatThreadService can
-// persist it onto the Void thread; later turns pass it back via `serveSessionId`.
-export type OnServeSession = (p: { serveSessionId: string }) => void
-export type ServePermissionRequest = {
+// the first CLI turn creates it and reports it here so chatThreadService can
+// persist it onto the Void thread; later turns pass it back via `cliSessionId`.
+export type OnCliSession = (p: { cliSessionId: string }) => void
+export type CliPermissionRequest = {
 	id: string; // Permission.ID (permission.asked `id`)
 	sessionID: string;
 	action: string; // tool action e.g. 'edit' | 'bash'
@@ -144,12 +144,12 @@ export type ServePermissionRequest = {
 	save?: string[];
 	metadata?: Record<string, unknown>;
 }
-export type OnPermission = (p: { permission: ServePermissionRequest }) => void
-export type ServeUsage = {
+export type OnPermission = (p: { permission: CliPermissionRequest }) => void
+export type CliUsage = {
 	cost: number; // USD, cumulative for the session (Session.Info + session.usage.updated)
 	tokens: { input: number; output: number; reasoning: number; cache: { read: number; write: number } };
 }
-export type OnUsage = (p: { usage: ServeUsage }) => void
+export type OnUsage = (p: { usage: CliUsage }) => void
 
 
 // service types
@@ -168,14 +168,14 @@ export type ServiceSendLLMMessageParams = {
 	onText: OnText;
 	onFinalMessage: OnFinalMessage;
 	onError: OnError;
-	// Loophole Serve tool/compaction UI (optional; only set in serve mode, the
+	// Loophole CLI tool/compaction UI (optional; only set in CLI mode, the
 	// direct-LLM path never calls them).
 	onTool?: OnTool;
 	onCompaction?: OnCompaction;
-	// Loophole Serve session binding (optional, serve-only): reuses the thread's
-	// server session when set; the main process reports the created id via onServeSession.
-	serveSessionId?: string;
-	onServeSession?: OnServeSession;
+	// Loophole CLI session binding (optional, CLI-only): reuses the thread's
+	// server session when set; the main process reports the created id via onCliSession.
+	cliSessionId?: string;
+	onCliSession?: OnCliSession;
 	onPermission?: OnPermission;
 	onUsage?: OnUsage;
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
@@ -192,8 +192,8 @@ export type SendLLMMessageParams = {
 	onError: OnError;
 	onTool?: OnTool;
 	onCompaction?: OnCompaction;
-	serveSessionId?: string;
-	onServeSession?: OnServeSession;
+	cliSessionId?: string;
+	onCliSession?: OnCliSession;
 	onPermission?: OnPermission;
 	onUsage?: OnUsage;
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
@@ -209,17 +209,17 @@ export type SendLLMMessageParams = {
 
 
 
-// Loophole Serve overrides the provider-backed transport (Phase 2). When set, the
-// main process routes chat to the serve server instead of `modelSelection`'s provider.
-export type ServeOverrides = {
+// Loophole CLI overrides the provider-backed transport (Phase 2). When set, the
+// main process routes chat to the CLI instead of `modelSelection`'s provider.
+export type CliOverrides = {
 	enabled: boolean;
-	// server model (Phase 1 picker / default); undefined = server's own default
+	// CLI model (picker / default); undefined = server's own default
 	model?: { providerID: string; modelID: string } | null;
 }
 
 // can't send functions across a proxy, use listeners instead
-export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'onTool' | 'onCompaction' | 'onServeSession' | 'onPermission' | 'onUsage' | 'abortRef'
-export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams | 'modelSelection'> & { requestId: string, modelSelection: ModelSelection | null, serve?: ServeOverrides } & SendLLMType
+export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'onTool' | 'onCompaction' | 'onCliSession' | 'onPermission' | 'onUsage' | 'abortRef'
+export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams | 'modelSelection'> & { requestId: string, modelSelection: ModelSelection | null, cli?: CliOverrides } & SendLLMType
 
 export type MainLLMMessageAbortParams = { requestId: string }
 
@@ -228,7 +228,7 @@ export type EventLLMMessageOnFinalMessageParams = Parameters<OnFinalMessage>[0] 
 export type EventLLMMessageOnErrorParams = Parameters<OnError>[0] & { requestId: string }
 export type EventLLMMessageOnToolParams = Parameters<OnTool>[0] & { requestId: string }
 export type EventLLMMessageOnCompactionParams = Parameters<OnCompaction>[0] & { requestId: string }
-export type EventLLMMessageOnServeSessionParams = Parameters<OnServeSession>[0] & { requestId: string }
+export type EventLLMMessageOnCliSessionParams = Parameters<OnCliSession>[0] & { requestId: string }
 export type EventLLMMessageOnPermissionParams = Parameters<OnPermission>[0] & { requestId: string }
 export type EventLLMMessageOnUsageParams = Parameters<OnUsage>[0] & { requestId: string }
 

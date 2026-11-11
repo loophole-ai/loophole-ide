@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-// Workbench settings for Loophole Serve (Phase 1/2) and Loophole FIM autocomplete (Phase 3).
+// Workbench settings for the Loophole CLI backend and Loophole FIM autocomplete.
 // Registered via ConfigurationRegistry, matching how VS Code core declares its settings
 // (e.g. `chat.agentHost.mistralAgent.*` in chat.shared.contribution.ts).
 
@@ -11,11 +11,29 @@ import * as nls from '../../../../nls.js';
 import { Extensions as ConfigurationExtensions, ConfigurationScope, type IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 
-export const LoopholeServeEnabledSettingId = 'loophole.serve.enabled';
-export const LoopholeServeModelSettingId = 'loophole.serve.model';
+export const LoopholeCliEnabledSettingId = 'loophole.cli.enabled';
+/** Legacy single-model setting; kept as the fallback when a role has no explicit model. */
+export const LoopholeCliModelSettingId = 'loophole.cli.model';
+
+export type LoopholeCliModelRole = 'default' | 'small' | 'subagent' | 'autocompletion' | 'speechToText' | 'commitMessage';
+
+export const loopholeCliModelSettingId = (role: LoopholeCliModelRole) => `loophole.cli.models.${role}`;
+
+export const LoopholeNotificationCategorySettingId = (category: 'chatErrors' | 'applyChanges' | 'commitMessages' | 'voice') =>
+	`loophole.notifications.${category}`;
+
 export const LoopholeFimEnabledSettingId = 'loophole.fim.enabled';
 export const LoopholeFimApiKeySettingId = 'loophole.fim.apiKey';
 export const LoopholeFimModelSettingId = 'loophole.fim.model';
+
+const roleProperties = {
+	'default': nls.localize('loophole.cli.models.default', 'Model used by chat, agents, apply, and every request without a more specific role.'),
+	'small': nls.localize('loophole.cli.models.small', 'Fast model used for small background tasks such as titles and summaries.'),
+	'subagent': nls.localize('loophole.cli.models.subagent', 'Default model used by task-tool subagents.'),
+	'autocompletion': nls.localize('loophole.cli.models.autocompletion', 'Model used for inline autocomplete suggestions.'),
+	'speechToText': nls.localize('loophole.cli.models.speechToText', 'Model used to transcribe speech to text.'),
+	'commitMessage': nls.localize('loophole.cli.models.commitMessage', 'Model used by the commit message generator.'),
+};
 
 const configurationRegistry = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration);
 configurationRegistry.registerConfiguration({
@@ -23,15 +41,65 @@ configurationRegistry.registerConfiguration({
 	title: nls.localize('loopholeConfigurationTitle', 'Loophole'),
 	type: 'object',
 	properties: {
-		[LoopholeServeEnabledSettingId]: {
+		[LoopholeCliEnabledSettingId]: {
 			type: 'boolean',
-			description: nls.localize('loophole.serve.enabled', 'When enabled, Loophole uses the bundled Loophole Serve backend for providers, models, and chat transport (behind the Loophole Serve settings section).'),
+			description: nls.localize('loophole.cli.enabled', 'When enabled, Loophole uses the Loophole CLI for providers, models, and chat.'),
 			default: true,
 		},
-		[LoopholeServeModelSettingId]: {
+		[LoopholeCliModelSettingId]: {
 			type: 'string',
-			description: nls.localize('loophole.serve.model', 'Server model used by Loophole Serve for chat, as "providerID/modelID". Empty uses the server default model.'),
+			description: nls.localize('loophole.cli.model', 'Fallback CLI model, as "providerID/modelID". Prefer the per-role Models settings.'),
 			default: '',
+		},
+		[loopholeCliModelSettingId('default')]: {
+			type: 'string',
+			description: roleProperties['default'],
+			default: '',
+		},
+		[loopholeCliModelSettingId('small')]: {
+			type: 'string',
+			description: roleProperties['small'],
+			default: '',
+		},
+		[loopholeCliModelSettingId('subagent')]: {
+			type: 'string',
+			description: roleProperties['subagent'],
+			default: '',
+		},
+		[loopholeCliModelSettingId('autocompletion')]: {
+			type: 'string',
+			description: roleProperties['autocompletion'],
+			default: '',
+		},
+		[loopholeCliModelSettingId('speechToText')]: {
+			type: 'string',
+			description: roleProperties['speechToText'],
+			default: '',
+		},
+		[loopholeCliModelSettingId('commitMessage')]: {
+			type: 'string',
+			description: roleProperties['commitMessage'],
+			default: '',
+		},
+		[LoopholeNotificationCategorySettingId('chatErrors')]: {
+			type: 'boolean',
+			description: nls.localize('loophole.notifications.chatErrors', 'Show a notification when a chat response fails.'),
+			default: true,
+		},
+		[LoopholeNotificationCategorySettingId('applyChanges')]: {
+			type: 'boolean',
+			description: nls.localize('loophole.notifications.applyChanges', 'Show a notification when applying an edit fails.'),
+			default: true,
+		},
+		[LoopholeNotificationCategorySettingId('commitMessages')]: {
+			type: 'boolean',
+			description: nls.localize('loophole.notifications.commitMessages', 'Show a notification when a commit message cannot be generated.'),
+			default: true,
+		},
+		[LoopholeNotificationCategorySettingId('voice')]: {
+			type: 'boolean',
+			description: nls.localize('loophole.notifications.voice', 'Show a notification when voice input fails.'),
+			default: true,
 		},
 		[LoopholeFimEnabledSettingId]: {
 			type: 'boolean',
