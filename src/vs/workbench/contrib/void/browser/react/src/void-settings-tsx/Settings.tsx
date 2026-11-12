@@ -552,8 +552,8 @@ export const Settings = () => {
 								className={`
 									py-2 px-3 rounded-sm text-left text-sm border
 									${selectedSection === tab
-										? 'bg-loophole-bg-3 text-loophole-fg-1 border-loophole-border-1'
-										: 'bg-transparent text-loophole-fg-2 border-transparent hover:bg-loophole-bg-2'}
+										? 'bg-[#0e70c0]/80 text-white font-medium shadow-sm border-transparent'
+										: 'bg-loophole-bg-2 hover:bg-loophole-bg-2/80 text-loophole-fg-1 border-transparent'}
 								`}
 							>
 								{label}

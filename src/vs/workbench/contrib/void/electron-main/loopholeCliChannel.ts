@@ -5,7 +5,7 @@
 
 // registered in app.ts next to LLMMessageChannel; consumed by LoopholeCliService (renderer)
 
-import { execFile, spawn, type ChildProcess } from 'child_process';
+import { execFile, spawn, spawnSync, type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
 import { createServer, request, type IncomingMessage } from 'http';
 import { randomBytes } from 'crypto';
@@ -56,20 +56,44 @@ function freePort(): Promise<number> {
 	});
 }
 
-/** Bundled binary (Phase 4 packaging drops it here), then overrides, then PATH. */
+/** Bundled binary, then overrides, then PATH - but only if it really is the Loophole CLI. */
 function resolveBinary(explicit?: string): string {
 	if (explicit) return explicit;
 	if (process.env.LOOPHOLE_CLI_BIN) return process.env.LOOPHOLE_CLI_BIN;
 	const exe = process.platform === 'win32' ? 'loophole.exe' : 'loophole';
 	const cliExe = process.platform === 'win32' ? 'loophole-cli.exe' : 'loophole-cli';
-	// appRoot is <install>/resources/app in a packaged build (vs code app layout)
-	const appRoot = path.resolve(path.dirname(process.execPath), '..', '..', 'resources', 'app');
-	const bundled = path.join(appRoot, 'bin', exe);
-	if (existsSync(bundled)) return bundled;
-	// build/packaging (scripts/bundle-cli.sh) also drops the binary at <install>/resources/loophole-cli(.exe)
-	const sibling = path.join(appRoot, '..', cliExe);
-	if (existsSync(sibling)) return sibling;
-	return 'loophole';
+	// A packaged build puts the app in <install>/resources/app next to the
+	// executable, so every candidate is resolved from there - not from two
+	// directories above it, which only worked for the dev electron layout.
+	const dir = path.dirname(process.execPath);
+	const candidates = [
+		path.join(dir, 'resources', 'app', 'bin', cliExe),
+		path.join(dir, 'resources', 'app', 'bin', exe),
+		path.join(dir, 'resources', cliExe),
+		path.join(dir, 'resources', exe),
+		path.join(dir, 'bin', cliExe),
+	]
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) return candidate
+	}
+	// Nothing bundled: fall back to PATH, but the probe rejects the editor's own
+	// `loophole` shim, which shares the name and would exit 0 on `serve`.
+	const onPath = ['loophole-cli', exe, cliExe].find((name) => isLoopholeCli(name))
+	return onPath ?? cliExe
+}
+
+/**
+ * True when `binary` answers `--version` like the Loophole CLI.
+ *
+ * The editor ships its own `loophole` command (the VS Code CLI shim). Running
+ * `loophole serve` through that shim starts the editor CLI, which knows no
+ * `serve` subcommand and exits 0 - the exact "exited code 0" failure. Probing
+ * `--version` distinguishes them cheaply.
+ */
+function isLoopholeCli(binary: string): boolean {
+	const result = spawnSync(binary, ['--version'], { encoding: 'utf8', timeout: 8000, windowsHide: true })
+	const out = `${result.stdout ?? ''}${result.stderr ?? ''}`.toLowerCase()
+	return out.includes('loophole-cli')
 }
 
 export class LoopholeCliChannel implements IServerChannel {
@@ -264,7 +288,13 @@ export class LoopholeCliChannel implements IServerChannel {
 	private async _waitReady(port: number, password: string, proc: ChildProcess, deadlineMs: number): Promise<void> {
 		const start = Date.now();
 		while (Date.now() - start < deadlineMs) {
-			if (proc.exitCode !== null) throw new Error(`Loophole CLI exited with code ${proc.exitCode}`);
+			if (proc.exitCode !== null) {
+				throw new Error(
+					proc.exitCode === 0
+						? 'The resolved binary is not the Loophole CLI: it exited immediately. Install the Loophole CLI, or point LOOPHOLE_CLI_BIN at it.'
+						: `Loophole CLI exited with code ${proc.exitCode}`,
+				)
+			}
 			try {
 				// any answered request proves the server is up; 401 means auth works, 404 means the port is ours but route changed
 				const status = await this._httpGet(port, password, '/api/session/active');
