@@ -384,12 +384,10 @@ export class LoopholeCliChannel implements IServerChannel {
 	 */
 	private async _callWhenReady<T>(read: () => Promise<T>): Promise<T> {
 		const deadline = Date.now() + 20_000;
-		let last: unknown
 		for (;;) {
 			try {
 				return await read()
 			} catch (e) {
-				last = e
 				const message = e instanceof Error ? e.message : String(e)
 				const transient = /\(503\)/.test(message) || /did not finish activating/i.test(message)
 				if (!transient || Date.now() > deadline) throw e
