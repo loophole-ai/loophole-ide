@@ -22,11 +22,16 @@ import { EndOfLinePreference } from '../../../../editor/common/model.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IEditCodeService } from './editCodeServiceInterface.js';
 import { IVoidModelService } from '../common/voidModelService.js';
+import { LOOPHOLE_CLI_TRUNCATION_MARKER } from '../common/loopholeCliTypes.js';
 import type { CliToolState } from '../common/sendLLMMessageTypes.js';
 
 const EDIT_TOOL_NAMES = new Set(['write', 'edit', 'patch', 'apply_patch', 'multiedit', 'multi_edit']);
 
 const isEditTool = (name: string): boolean => EDIT_TOOL_NAMES.has(name.toLowerCase());
+
+// The diff engine compares LF text; normalize both sides so CRLF files do not
+// look like every line changed.
+const normalizeEol = (text: string): string => text.replace(/\r\n/g, '\n');
 
 const textOf = (input: Record<string, unknown> | undefined, keys: string[]): string | undefined => {
 	if (!input) return undefined;
@@ -42,9 +47,9 @@ const textOf = (input: Record<string, unknown> | undefined, keys: string[]): str
 const pathOf = (tool: CliToolState): string | undefined => {
 	const direct = textOf(tool.input, ['filePath', 'file_path', 'path', 'filename', 'file']);
 	if (direct) return direct;
-	const patch = textOf(tool.input, ['patch', 'input']);
+	const patch = textOf(tool.input, ['patch', 'patchText', 'patch_text', 'input']);
 	if (!patch) return undefined;
-	const match = patch.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m);
+	const match = patch.match(/^\*\*\* (?:Update|Add|Delete|Move) File: (.+)$/m);
 	return match?.[1]?.trim();
 };
 
@@ -68,6 +73,7 @@ export class CliEditAcceptReject {
 	handle = (tools: CliToolState[]): void => {
 		for (const tool of tools) {
 			if (!isEditTool(tool.name)) continue;
+			if (this._handled.has(tool.id)) continue;
 			const path = pathOf(tool);
 			if (!path) continue;
 			const uri = this._uriOfPath(path);
@@ -79,7 +85,6 @@ export class CliEditAcceptReject {
 			}
 
 			if (tool.status !== 'done' && tool.status !== 'error') continue;
-			if (this._handled.has(tool.id)) continue;
 			this._handled.add(tool.id);
 			void this._settle(tool, uri);
 		}
@@ -169,10 +174,14 @@ export class CliEditAcceptReject {
 		}
 
 		// Last resort: rebuild the old side from the tool's unified-diff metadata.
+		// Prefer `filediff.patch` (untrimmed) over `diff` (indentation-trimmed).
 		const filediff = tool.metadata?.filediff;
-		const patch = textOf(tool.metadata, ['diff'])
-			?? (filediff && typeof filediff === 'object' ? textOf(filediff as Record<string, unknown>, ['patch']) : undefined);
-		return patch ? this._beforeFromPatch(after, patch) : null;
+		const patch = (filediff && typeof filediff === 'object' ? textOf(filediff as Record<string, unknown>, ['patch']) : undefined)
+			?? textOf(tool.metadata, ['diff']);
+		// A truncated patch cannot rebuild the old file; showing a partial "before"
+		// would let Reject corrupt it.
+		if (!patch || patch.includes(LOOPHOLE_CLI_TRUNCATION_MARKER)) return null;
+		return this._beforeFromPatch(after, patch);
 	}
 
 	// Reconstruct the old file from the new file plus the hunk headers. Context
@@ -202,6 +211,18 @@ export class CliEditAcceptReject {
 					afterIdx++;
 				}
 				else if (kind === '-') {
-					old.push(line.slice(1));
+					old.push(normalizeEol(line.slice(1)));
 				}
-				else if (kind === '+')
+				else if (kind === '+') {
+					afterIdx++;
+				}
+				// '\' ("no newline at end of file") and anything else is ignored.
+			}
+			i--; // the outer loop re-examines the next hunk header
+		}
+
+		if (!sawHunk) return null;
+		old.push(...afterLines.slice(afterIdx));
+		return old.join('\n');
+	}
+}

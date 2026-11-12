@@ -172,7 +172,8 @@ export const ToolCard = ({ tool }: { tool: CliToolState }) => {
 	const title = titleOfToolName(tool.name);
 	const subtitle = subtitleOf(tool);
 	const hasBody = !!tool.input || !!tool.inputText || !!tool.outputText || !!tool.error;
-	const resultSummary = tool.outputText ? summaryOfText(tool.outputText) : '';
+	const resultText = tool.outputText ?? tool.error ?? '';
+	const resultSummary = resultText ? summaryOfText(resultText) : '';
 	return <div className='w-full min-w-0 border border-loophole-border-3 rounded px-2 py-1 bg-loophole-bg-3 overflow-hidden'>
 		<div className={`select-none flex items-center min-h-[24px] min-w-0 ${hasBody ? 'cursor-pointer' : ''}`} onClick={hasBody ? () => setIsOpen(v => !v) : undefined}>
 			{hasBody && <ChevronRight className={`text-loophole-fg-3 mr-0.5 h-4 w-4 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'rotate-90' : ''}`} />}

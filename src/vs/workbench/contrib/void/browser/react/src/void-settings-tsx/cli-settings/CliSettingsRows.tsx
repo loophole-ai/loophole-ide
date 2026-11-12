@@ -15,7 +15,7 @@ export const SettingsSection = ({ title, description, children }: { title?: stri
 }
 
 /** One label/description row with its control on the right. */
-const SettingsRow = ({ label, description, children }: { label: React.ReactNode, description?: React.ReactNode, children?: React.ReactNode }) => {
+export const SettingsRow = ({ label, description, children }: { label: React.ReactNode, description?: React.ReactNode, children?: React.ReactNode }) => {
 	return <div className='flex flex-wrap items-center justify-between gap-3 py-3.5 px-4 border-b border-loophole-border-2 last:border-b-0'>
 		<div className='min-w-0'>
 			<div className='text-[15px] text-loophole-fg-1'>{label}</div>
