@@ -32,29 +32,34 @@ export const CliUsageChip = ({ threadId }: { threadId: string }) => {
 	const usage = threadsState.allThreads[threadId]?.state.cliUsage as CliUsage | undefined
 	const [loading, setLoading] = useState(false)
 
-	// Refresh cumulative usage from Session.Info whenever the bound session changes.
+	// Refresh cumulative usage from Session.Info whenever the bound session changes,
+	// and poll while it is bound: `session.usage.updated` can arrive before a thread
+	// is bound, which left the chip showing the previous session's numbers.
 	useEffect(() => {
 		if (!cliEnabled || !cliSessionId) return;
 		let cancelled = false;
+		const load = () => {
+			cliService.session(cliSessionId)
+				.then((info) => {
+					if (cancelled) return;
+					if (info && info.tokens) {
+						chatThreadsService.updateCliUsage(threadId, {
+							cost: typeof info.cost === 'number' ? info.cost : 0,
+							tokens: {
+								input: info.tokens.input ?? 0,
+								output: info.tokens.output ?? 0,
+								reasoning: info.tokens.reasoning ?? 0,
+								cache: { read: info.tokens.cache?.read ?? 0, write: info.tokens.cache?.write ?? 0 },
+							},
+						})
+					}
+				})
+				.catch(() => { /* best effort — live usage.updated still updates the chip */ })
+		}
 		setLoading(true)
-		cliService.session(cliSessionId)
-			.then((info) => {
-				if (cancelled) return;
-				if (info && info.tokens) {
-					chatThreadsService.updateCliUsage(threadId, {
-						cost: typeof info.cost === 'number' ? info.cost : 0,
-						tokens: {
-							input: info.tokens.input ?? 0,
-							output: info.tokens.output ?? 0,
-							reasoning: info.tokens.reasoning ?? 0,
-							cache: { read: info.tokens.cache?.read ?? 0, write: info.tokens.cache?.write ?? 0 },
-						},
-					})
-				}
-			})
-			.catch(() => { /* best effort — live usage.updated still updates the chip */ })
-			.finally(() => { if (!cancelled) setLoading(false); })
-		return () => { cancelled = true; }
+		load()
+		const timer = window.setInterval(load, 5000)
+		return () => { cancelled = true; window.clearInterval(timer); }
 	}, [cliService, chatThreadsService, cliEnabled, cliSessionId, threadId])
 
 	if (!cliEnabled) return null;

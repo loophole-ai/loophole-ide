@@ -550,7 +550,7 @@ export const Settings = () => {
 								key={tab}
 								onClick={() => setSelectedSection(tab)}
 								className={`
-									py-2 px-3 rounded-sm text-left text-sm border
+									py-2 px-3 rounded-md text-left text-[15px] border
 									${selectedSection === tab
 										? 'bg-[#0e70c0]/80 text-white font-medium shadow-sm border-transparent'
 										: 'bg-loophole-bg-2 hover:bg-loophole-bg-2/80 text-loophole-fg-1 border-transparent'}

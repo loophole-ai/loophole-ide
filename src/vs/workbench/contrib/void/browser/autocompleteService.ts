@@ -6,6 +6,7 @@
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { EndOfLinePreference, ITextModel } from '../../../../editor/common/model.js';
 import { Position } from '../../../../editor/common/core/position.js';
 import { InlineCompletion, } from '../../../../editor/common/languages.js';
@@ -634,6 +635,14 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		const isEnabled = this._settingsService.state.globalSettings.enableAutocomplete
 		if (!isEnabled) return []
 
+		// Inline completion is owned by the Loophole CLI FIM provider when that
+		// feature is on: it talks to the provider directly, so letting this legacy
+		// provider run as well would double-request and fail against a provider
+		// that no longer exists in CLI mode.
+		const fimEnabled = this._configService.getValue<boolean>('loophole.fim.enabled') !== false
+		const fimKey = this._configService.getValue<string>('loophole.fim.apiKey') ?? ''
+		if (fimEnabled && fimKey) return []
+
 		const testMode = false
 
 		const docUriStr = model.uri.fsPath;
@@ -888,7 +897,8 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		@ILanguageFeaturesService private _langFeatureService: ILanguageFeaturesService,
 		@ILLMMessageService private readonly _llmMessageService: ILLMMessageService,
 		@IVoidSettingsService private readonly _settingsService: IVoidSettingsService,
-		@IConvertToLLMMessageService private readonly _convertToLLMMessageService: IConvertToLLMMessageService
+		@IConvertToLLMMessageService private readonly _convertToLLMMessageService: IConvertToLLMMessageService,
+		@IConfigurationService private readonly _configService: IConfigurationService
 		// @IContextGatheringService private readonly _contextGatheringService: IContextGatheringService,
 	) {
 		super()

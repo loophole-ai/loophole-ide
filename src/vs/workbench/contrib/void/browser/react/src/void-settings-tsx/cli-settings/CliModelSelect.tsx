@@ -3,9 +3,9 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
-import { VoidCustomDropdownBox } from '../../util/inputs.js'
+import { VoidSimpleInputBox } from '../../util/inputs.js'
 import { LoopholeCliDisabledModelsSettingId, LoopholeCliCustomProvidersSettingId, type LoopholeCliCustomProvider } from './cliSettingIds.js'
 import type { LoopholeCliModelInfo } from '../../../../../common/loopholeCliTypes.js'
 
@@ -100,7 +100,13 @@ export const useCliModels = () => {
 	return { models, loading, error, reload }
 }
 
-/** Dropdown over the CLI model list with an optional Custom... entry. */
+/**
+ * Model picker with search.
+ *
+ * Every place that lists models uses this component, so the search box is
+ * consistent: type to filter provider, model id, and display name. Used by the
+ * Models / Autocomplete / Commit Message rows and by the composer.
+ */
 export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault = true, className }: {
 	value: string
 	models: LoopholeCliModelInfo[]
@@ -112,7 +118,7 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 	const options = useMemo(() => {
 		const list: CliModelOption[] = []
 		// With real models available the list is the models themselves; "default"
-		// only exists as a fallback so the dropdown is never empty.
+		// only exists as a fallback so the picker is never empty.
 		if (allowDefault && models.length === 0) list.push({ value: '', label: 'CLI default', detail: 'Let the CLI choose' })
 		for (const model of models) {
 			list.push({ value: cliModelRef(model), label: model.name ?? model.modelID, detail: model.providerID })
@@ -120,27 +126,66 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 		if (value && !list.some(option => option.value === value)) {
 			list.push({ value, label: value, detail: 'Custom model' })
 		}
-		if (onCustom) list.push({ value: '__custom__', label: 'Custom...', detail: 'Enter a model id and provider' })
+		if (onCustom) list.push({ value: '__custom__', label: 'Custom model...', detail: 'Enter a model id and provider' })
 		return list
 	}, [models, value, allowDefault, onCustom])
 
-	const selected = options.find(option => option.value === value) ?? options[0]
+	const [open, setOpen] = useState(false)
+	const [search, setSearch] = useState('')
+	const box = useRef<HTMLDivElement>(null)
 
-	return <VoidCustomDropdownBox
-		className={className ?? 'text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded p-0.5 px-1'}
-		options={options}
-		selectedOption={selected}
-		onChangeOption={(option) => {
-			if (option.value === '__custom__') {
-				onCustom?.()
-				return
-			}
-			onChange(option.value)
-		}}
-		getOptionDisplayName={(option) => option.label}
-		getOptionDropdownName={(option) => option.label}
-		getOptionDropdownDetail={(option) => option.detail ?? ''}
-		getOptionsEqual={(a, b) => a.value === b.value}
-		matchInputWidth={false}
-	/>
+	useEffect(() => {
+		if (!open) return
+		const close = (event: MouseEvent) => {
+			if (!box.current?.contains(event.target as Node)) setOpen(false)
+		}
+		window.addEventListener('mousedown', close)
+		return () => window.removeEventListener('mousedown', close)
+	}, [open])
+
+	const query = search.trim().toLowerCase()
+	const filtered = query
+		? options.filter((option) => `${option.value} ${option.label}`.toLowerCase().includes(query))
+		: options
+	const selected = options.find((option) => option.value === value)
+
+	const pick = (option: CliModelOption) => {
+		setOpen(false)
+		setSearch('')
+		if (option.value === '__custom__') {
+			onCustom?.()
+			return
+		}
+		onChange(option.value)
+	}
+
+	return <div ref={box} className='relative'>
+		<button
+			type='button'
+			onClick={() => setOpen((next) => !next)}
+			className={className ?? 'text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded-md px-2 py-1'}
+			title={selected?.label ?? value}
+		>
+			{selected?.label ?? (value || 'Select model')}
+		</button>
+
+		{open ? <div className='absolute right-0 z-[9999999] mt-1 w-[340px] max-w-[80vw] rounded-md border border-loophole-border-1 bg-loophole-bg-2-alt shadow-lg overflow-hidden'>
+			<div className='p-2 border-b border-loophole-border-2'>
+				<VoidSimpleInputBox value={search} onChangeValue={setSearch} placeholder='Search models' compact={true} />
+			</div>
+			<div className='max-h-[280px] overflow-y-auto py-1'>
+				{filtered.length === 0
+					? <div className='px-3 py-2 text-xs text-loophole-fg-3'>No matching models</div>
+					: filtered.map((option, index) => <button
+						key={`${option.value}:${index}`}
+						type='button'
+						onClick={() => pick(option)}
+						className={`w-full text-left px-3 py-1.5 hover:bg-loophole-bg-2 ${option.value === value ? 'text-loophole-fg-1' : 'text-loophole-fg-2'}`}
+					>
+						<div className='text-sm'>{option.label}</div>
+						{option.detail ? <div className='text-xs text-loophole-fg-3'>{option.detail}</div> : null}
+					</button>)}
+			</div>
+		</div> : null}
+	</div>
 }

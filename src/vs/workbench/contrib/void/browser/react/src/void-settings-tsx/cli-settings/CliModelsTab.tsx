@@ -100,11 +100,11 @@ export const CliModelsTab = () => {
 			<SettingsList>
 				{models
 					.filter((model) => !query || `${model.providerID}/${model.modelID} ${model.name ?? ''}`.toLowerCase().includes(query))
-					.map((model) => {
+					.map((model, index) => {
 					const ref = cliModelRef(model)
 					const on = !disabled.includes(ref)
 					return <SettingsRow
-						key={ref}
+						key={`${ref}:${index}`}
 						label={model.name ?? model.modelID}
 						description={<span className='text-loophole-fg-3'>{model.providerID} · {model.modelID}</span>}
 					>
