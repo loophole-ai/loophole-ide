@@ -21,9 +21,30 @@ export interface LoopholeCliStatus {
 	pid?: number;
 }
 
+/** Result of comparing the installed CLI with the published release. */
+export interface LoopholeCliUpdateInfo {
+	/** Version reported by the installed binary, e.g. "loophole-cli v1.1.5". */
+	current: string;
+	/** Latest published version, or empty when the check failed. */
+	latest: string;
+	updateAvailable: boolean;
+	/** Release notes for `latest`, from the GitHub release body. */
+	notes?: string;
+	/** Release page to open in a browser. */
+	url?: string;
+	/** Why the check failed, when it did. */
+	error?: string;
+}
+
+/** Result of running an upgrade. */
+export interface LoopholeCliUpdateResult {
+	ok: boolean;
+	version: string;
+	output: string;
+}
+
 /** Subset of the server's `Provider.Info` (packages/schema/src/provider.ts). */
-export interface LoopholeCliProviderInfo {
-	id: string;
+export interface LoopholeCliProviderInfo {	id: string;
 	name: string;
 	integrationID?: string;
 	activation?: string;

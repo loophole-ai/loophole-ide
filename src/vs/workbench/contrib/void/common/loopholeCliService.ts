@@ -10,7 +10,7 @@ import { IMainProcessService } from '../../../../platform/ipc/common/mainProcess
 import { Emitter, type Event } from '../../../../base/common/event.js';
 import type { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import type { LoopholeCliConfig, LoopholeCliConfigUpdateParams, LoopholeCliConnectKeyParams, LoopholeCliConnectParams, LoopholeCliFimEvent, LoopholeCliFimParams, LoopholeCliIntegrationInfo, LoopholeCliModelInfo, LoopholeCliProviderInfo, LoopholeCliStatus, LoopholeCliVoiceWsEvent } from './loopholeCliTypes.js';
-import type { LoopholeCliCommandInfo, LoopholeCliPermissionDecision, LoopholeCliPermissionRequest, LoopholeCliRevert, LoopholeCliSessionInfo, LoopholeCliSessionMessage, LoopholeCliSkillInfo, LoopholeCliVoiceModel, LoopholeCliVoiceTransport } from './loopholeCliTypes.js';
+import type { LoopholeCliCommandInfo, LoopholeCliPermissionDecision, LoopholeCliPermissionRequest, LoopholeCliRevert, LoopholeCliSessionInfo, LoopholeCliSessionMessage, LoopholeCliSkillInfo, LoopholeCliUpdateInfo, LoopholeCliUpdateResult, LoopholeCliVoiceModel, LoopholeCliVoiceTransport } from './loopholeCliTypes.js';
 
 /** Loophole CLI (opencode) backend connection. See LOOPHOLECLI.md. */
 export const ILoopholeCliService = createDecorator<ILoopholeCliService>('loopholeCliService');
@@ -24,6 +24,10 @@ export interface ILoopholeCliService {
 	status: () => Promise<LoopholeCliStatus>;
 	/** Version line printed by the configured binary (`--version`). */
 	version: () => Promise<string>;
+	/** Compare the installed CLI with the published release. */
+	updateCheck: () => Promise<LoopholeCliUpdateInfo>;
+	/** Install a release and restart the CLI. */
+	updateInstall: (params?: { version?: string }) => Promise<LoopholeCliUpdateResult>;
 	/** `GET /api/config` on the running CLI. */
 	config: () => Promise<LoopholeCliConfig>;
 	/** `GET /api/provider` on the running CLI. */
@@ -172,6 +176,14 @@ export class LoopholeCliService extends Disposable implements ILoopholeCliServic
 
 	async version(): Promise<string> {
 		return this.channel.call('version');
+	}
+
+	async updateCheck(): Promise<LoopholeCliUpdateInfo> {
+		return this.channel.call('updateCheck');
+	}
+
+	async updateInstall(params?: { version?: string }): Promise<LoopholeCliUpdateResult> {
+		return this.channel.call('updateInstall', params ?? {});
 	}
 
 	async config(): Promise<LoopholeCliConfig> {

@@ -6,7 +6,8 @@
 // registered in app.ts next to LLMMessageChannel; consumed by LoopholeCliService (renderer)
 
 import { execFile, spawn, spawnSync, type ChildProcess } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, readdirSync, statSync } from 'fs';
+import { homedir } from 'os';
 import { createServer, request, type IncomingMessage } from 'http';
 import { randomBytes } from 'crypto';
 import * as path from 'path';
@@ -14,7 +15,7 @@ import { WebSocket } from 'ws';
 import type { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { Emitter, type Event } from '../../../../base/common/event.js';
 import type { LoopholeCliConfig, LoopholeCliConfigUpdateParams, LoopholeCliConnectKeyParams, LoopholeCliConnectParams, LoopholeCliFimParams, LoopholeCliStatus, LoopholeCliVoiceWsEvent } from '../common/loopholeCliTypes.js';
-import type { LoopholeCliCommandInfo, LoopholeCliPermissionDecision, LoopholeCliPermissionRequest, LoopholeCliSessionInfo, LoopholeCliSessionMessage, LoopholeCliSkillInfo, LoopholeCliVoiceModel, LoopholeCliVoiceTransport, LoopholeCliRevert } from '../common/loopholeCliTypes.js';
+import type { LoopholeCliCommandInfo, LoopholeCliPermissionDecision, LoopholeCliPermissionRequest, LoopholeCliSessionInfo, LoopholeCliSessionMessage, LoopholeCliSkillInfo, LoopholeCliUpdateInfo, LoopholeCliUpdateResult, LoopholeCliVoiceModel, LoopholeCliVoiceTransport, LoopholeCliRevert } from '../common/loopholeCliTypes.js';
 
 // Direct Inception FIM endpoint (the CLI has no FIM endpoint).
 const INCEPTION_FIM_URL = 'https://api.inceptionlabs.ai/v1/fim/completions';
@@ -154,6 +155,8 @@ export class LoopholeCliChannel implements IServerChannel {
 		if (command === 'voiceWsConnect') return this._callVoiceWsConnect(params);
 		if (command === 'voiceWsSend') return this._callVoiceWsSend(params);
 		if (command === 'voiceWsClose') return this._callVoiceWsClose(params);
+		if (command === 'updateCheck') return this._callUpdateCheck();
+		if (command === 'updateInstall') return this._callUpdateInstall(params);
 		throw new Error(`LoopholeCli: command "${command}" not recognized.`);
 	}
 
@@ -182,8 +185,106 @@ export class LoopholeCliChannel implements IServerChannel {
 		});
 	}
 
+	/**
+	 * Pick the session database the CLI should open.
+	 *
+	 * `databasePath()` derives the file name from the build channel
+	 * (`loophole.db` for prod, `loophole-<channel>.db` otherwise), so a release
+	 * built on a different channel silently opens an empty database and every
+	 * session and statistic looks wiped after an update. Pinning `OPENCODE_DB` to
+	 * the existing file with the most data keeps history across upgrades and
+	 * across the CLI, desktop app and editor.
+	 */
+	private _resolveDatabase(): string | undefined {
+		try {
+			const dir = path.join(homedir(), '.local', 'share', 'loophole');
+			const files = readdirSync(dir)
+				.filter((name) => /^loophole.*\.db$/.test(name))
+				.map((name) => ({ name, size: statSync(path.join(dir, name)).size }))
+				.sort((a, b) => b.size - a.size);
+			return files[0]?.name;
+		} catch {
+			return undefined;
+		}
+	}
+
 	private async _callDisconnect(): Promise<void> {
 		this._teardown('disconnected');
+	}
+
+	/**
+	 * Compare the installed CLI with the latest published release.
+	 *
+	 * Reads the npm registry (the same source `upgrade` installs from) and the
+	 * GitHub release body for notes, so the editor can announce a new release
+	 * without bundling a changelog of its own.
+	 */
+	private async _callUpdateCheck(): Promise<LoopholeCliUpdateInfo> {
+		const current = await this._callVersion();
+		const match = /(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/.exec(current);
+		const installed = match ? match[1] : '';
+		try {
+			const response = await fetch('https://registry.npmjs.org/@loophole-ai/cli/latest', {
+				headers: { accept: 'application/json', 'user-agent': `loophole/${installed || 'unknown'}` },
+			});
+			if (!response.ok) throw new Error(`registry responded ${response.status}`);
+			const pkg = (await response.json()) as { version?: string };
+			const latest = pkg.version ?? '';
+			const updateAvailable = !!latest && !!installed && latest !== installed;
+			let notes: string | undefined;
+			if (updateAvailable) {
+				notes = await this._releaseNotes(latest, installed);
+			}
+			return {
+				current: installed || current,
+				latest,
+				updateAvailable,
+				notes,
+				url: latest ? `https://github.com/loophole-ai/cli/releases/tag/v${latest}` : undefined,
+			};
+		} catch (e) {
+			return {
+				current: installed || current,
+				latest: '',
+				updateAvailable: false,
+				error: e instanceof Error ? e.message : String(e),
+			};
+		}
+	}
+
+	/** Release body for a version; notes are optional, so failures are swallowed. */
+	private async _releaseNotes(version: string, installed: string): Promise<string | undefined> {
+		try {
+			const response = await fetch(`https://api.github.com/repos/loophole-ai/cli/releases/tags/v${version}`, {
+				headers: { accept: 'application/vnd.github+json', 'user-agent': `loophole/${installed || 'unknown'}` },
+			});
+			if (!response.ok) return undefined;
+			const body = (await response.json()) as { body?: string };
+			return body.body ?? undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/** Run `<binary> upgrade <version>` and restart the CLI so the new build takes over. */
+	private async _callUpdateInstall(params: { version?: string } = {}): Promise<LoopholeCliUpdateResult> {
+		const binary = resolveBinary();
+		const version = (params.version ?? '').trim();
+		const args = version ? ['upgrade', version] : ['upgrade'];
+		const output = await new Promise<string>((resolve) => {
+			execFile(binary, args, { windowsHide: true, timeout: 15 * 60_000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+				resolve(`${stdout ?? ''}${stderr ?? ''}${error ? `\n${error.message}` : ''}`.trim());
+			});
+		});
+		const failed = /\b(failed|timed out)\b/i.test(output);
+		if (!failed) {
+			// The running process still serves the old binary; restart it so the new
+			// version answers and the status page reflects reality.
+			const wasConnected = this.state === 'connected';
+			this._teardown('disconnected');
+			if (wasConnected) await this._callConnect({});
+		}
+		return { ok: !failed, version, output };
 	}
 
 	private _teardown(next: CliState) {
@@ -326,6 +427,10 @@ export class LoopholeCliChannel implements IServerChannel {
 		// with "Missing server password"), and every request is Basic-authenticated
 		// against it, so the same secret has to be handed to the child.
 		const env = { ...process.env, ...params.env, OPENCODE_SERVER_PASSWORD: password };
+		if (!env.OPENCODE_DB) {
+			const database = this._resolveDatabase();
+			if (database) env.OPENCODE_DB = database;
+		}
 
 		console.log(`[LoopholeCli] spawning ${binary} serve --port ${port} in ${cwd}`);
 
