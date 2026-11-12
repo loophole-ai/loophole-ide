@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import { VoidCustomDropdownBox } from '../../util/inputs.js'
+import { LoopholeCliDisabledModelsSettingId } from './cliSettingIds.js'
 import type { LoopholeCliModelInfo } from '../../../../../common/loopholeCliTypes.js'
 
 export type CliModelOption = {
@@ -15,6 +16,32 @@ export type CliModelOption = {
 }
 
 export const cliModelRef = (model: LoopholeCliModelInfo) => `${model.providerID}/${model.modelID}`
+
+/** Ids of models the user switched off in Settings > Models. */
+export const useDisabledCliModels = () => {
+	const accessor = useAccessor()
+	const configService = accessor.get('IConfigurationService')
+	const [disabled, setDisabled] = useState<string[]>(() =>
+		configService.getValue<string[]>(LoopholeCliDisabledModelsSettingId) ?? [],
+	)
+	useEffect(() => {
+		const disposable = configService.onDidChangeConfiguration((event) => {
+			if (!event.affectsConfiguration(LoopholeCliDisabledModelsSettingId)) return
+			setDisabled(configService.getValue<string[]>(LoopholeCliDisabledModelsSettingId) ?? [])
+		})
+		return () => disposable.dispose()
+	}, [configService])
+	const toggle = (ref: string) => {
+		const next = disabled.includes(ref) ? disabled.filter((id) => id !== ref) : [...disabled, ref]
+		configService.updateValue(LoopholeCliDisabledModelsSettingId, next)
+		setDisabled(next)
+	}
+	return { disabled, toggle }
+}
+
+/** Models the user has left enabled, i.e. what every picker should offer. */
+export const visibleCliModels = (models: LoopholeCliModelInfo[], disabled: string[]) =>
+	models.filter((model) => !disabled.includes(cliModelRef(model)))
 
 /** Model list + connection state shared by the Models, Autocomplete, and Commit Message pages. */
 export const useCliModels = () => {
@@ -72,7 +99,9 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 }) => {
 	const options = useMemo(() => {
 		const list: CliModelOption[] = []
-		if (allowDefault) list.push({ value: '', label: 'CLI default', detail: 'Let the CLI choose' })
+		// With real models available the list is the models themselves; "default"
+		// only exists as a fallback so the dropdown is never empty.
+		if (allowDefault && models.length === 0) list.push({ value: '', label: 'CLI default', detail: 'Let the CLI choose' })
 		for (const model of models) {
 			list.push({ value: cliModelRef(model), label: model.name ?? model.modelID, detail: model.providerID })
 		}

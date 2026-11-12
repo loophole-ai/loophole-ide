@@ -42,3 +42,22 @@ export const SettingsStatus = ({ ok, label }: { ok: boolean, label: string }) =>
 		<span>{label}</span>
 	</div>
 }
+
+/** Plain on/off slider, matching the chat auto-approve switch. */
+export const SettingsSlider = ({ checked, onChange, label }: { checked: boolean, onChange: (checked: boolean) => void, label: string }) => {
+	return <button
+		type='button'
+		role='switch'
+		aria-checked={checked}
+		aria-label={label}
+		onClick={() => onChange(!checked)}
+		className={`relative w-[34px] h-[18px] min-w-[34px] rounded-full border transition-colors ${checked
+			? 'bg-[#0e70c0] border-[#0e70c0]'
+			: 'bg-loophole-bg-2 border-loophole-border-2'}`}
+	>
+		<span
+			className='absolute top-[1px] left-[1px] w-[14px] h-[14px] rounded-full bg-white border border-black/20 transition-transform'
+			style={{ transform: checked ? 'translateX(16px)' : 'none' }}
+		/>
+	</button>
+}

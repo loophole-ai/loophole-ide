@@ -25,3 +25,6 @@ export type LoopholeNotificationCategory = 'chatErrors' | 'applyChanges' | 'comm
 
 export const loopholeNotificationCategorySettingId = (category: LoopholeNotificationCategory) =>
 	`loophole.notifications.${category}`
+
+/** Models switched off in Settings > Models; they disappear from every picker. */
+export const LoopholeCliDisabledModelsSettingId = 'loophole.cli.models.disabled'

@@ -362,6 +362,14 @@
 					"default": "",
 					"description": "Model used by the commit message generator."
 				},
+				"loophole.cli.models.disabled": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"description": "Models switched off in Settings > Models, as \"providerID/modelID\". They are hidden from every picker."
+				},
 				"loophole.notifications.chatErrors": {
 					"type": "boolean",
 					"default": true,

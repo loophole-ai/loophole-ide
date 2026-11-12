@@ -3,11 +3,11 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import type { IConfigurationService } from '../../../../../../../../platform/configuration/common/configuration.js'
 import { loopholeCliModelSettingId } from './cliSettingIds.js'
-import { CliModelSelect, useCliModels } from './CliModelSelect.js'
+import { CliModelSelect, useCliModels, useDisabledCliModels, visibleCliModels } from './CliModelSelect.js'
 import { CliCustomModelDialog } from './CliCustomModelDialog.js'
 
 const readDefaultModel = (configService: IConfigurationService) => {
@@ -21,6 +21,8 @@ export const CliModelPicker = ({ className }: { className?: string }) => {
 	const configService = accessor.get('IConfigurationService')
 	const chatThreadService = accessor.get('IChatThreadService')
 	const { models } = useCliModels()
+	const { disabled } = useDisabledCliModels()
+	const enabled = useMemo(() => visibleCliModels(models, disabled), [models, disabled])
 
 	const [value, setValue] = useState(() => readDefaultModel(configService))
 	const [custom, setCustom] = useState(false)
@@ -43,7 +45,7 @@ export const CliModelPicker = ({ className }: { className?: string }) => {
 	return <>
 		<CliModelSelect
 			value={value}
-			models={models}
+			models={enabled}
 			onChange={choose}
 			onCustom={() => setCustom(true)}
 			className={className ?? 'text-xs text-loophole-fg-3 bg-loophole-bg-1 rounded'}

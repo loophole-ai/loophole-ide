@@ -3,12 +3,12 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import { loopholeCliModelSettingId, type LoopholeCliModelRole } from './cliSettingIds.js'
-import { CliModelSelect, useCliModels } from './CliModelSelect.js'
+import { CliModelSelect, cliModelRef, useCliModels, useDisabledCliModels, visibleCliModels } from './CliModelSelect.js'
 import { CliCustomModelDialog } from './CliCustomModelDialog.js'
-import { SettingsList, SettingsNote, SettingsRow, SettingsSection } from './CliSettingsRows.js'
+import { SettingsList, SettingsNote, SettingsRow, SettingsSection, SettingsSlider } from './CliSettingsRows.js'
 
 const roles: { role: LoopholeCliModelRole, label: string, description: string }[] = [
 	{ role: 'default', label: 'Default', description: 'Chat, agents, and every request without a more specific role.' },
@@ -25,6 +25,8 @@ export const CliModelsTab = () => {
 	const chatThreadService = accessor.get('IChatThreadService')
 	const cliService = accessor.get('ILoopholeCliService')
 	const { models, loading, error, reload } = useCliModels()
+	const { disabled, toggle } = useDisabledCliModels()
+	const enabled = useMemo(() => visibleCliModels(models, disabled), [models, disabled])
 	const [saveError, setSaveError] = useState<string | null>(null)
 
 	const [values, setValues] = useState<Record<string, string>>(() => {
@@ -72,12 +74,30 @@ export const CliModelsTab = () => {
 			{roles.map(({ role, label, description }) => <SettingsRow key={role} label={label} description={description}>
 				<CliModelSelect
 					value={values[role] ?? ''}
-					models={models}
+					models={enabled}
 					onChange={(value) => save(role, value)}
 					onCustom={() => setEditing(role)}
 				/>
 			</SettingsRow>)}
 		</SettingsList>
+
+		{models.length > 0 ? <div className='mt-6'>
+			<div className='text-sm text-loophole-fg-1 mb-1'>Available models</div>
+			<div className='text-xs text-loophole-fg-3 mb-3'>Switch a model off to hide it from every picker. {enabled.length} of {models.length} shown.</div>
+			<SettingsList>
+				{models.map((model) => {
+					const ref = cliModelRef(model)
+					const on = !disabled.includes(ref)
+					return <SettingsRow
+						key={ref}
+						label={model.name ?? model.modelID}
+						description={<span className='text-loophole-fg-3'>{model.providerID} · {model.modelID}</span>}
+					>
+						<SettingsSlider checked={on} label={`Show ${model.name ?? model.modelID}`} onChange={() => toggle(ref)} />
+					</SettingsRow>
+				})}
+			</SettingsList>
+		</div> : null}
 
 		{editing ? <CliCustomModelDialog
 			value={values[editing] ?? ''}

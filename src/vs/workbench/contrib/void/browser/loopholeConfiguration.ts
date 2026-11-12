@@ -19,6 +19,9 @@ export type LoopholeCliModelRole = 'default' | 'small' | 'subagent' | 'autocompl
 
 export const loopholeCliModelSettingId = (role: LoopholeCliModelRole) => `loophole.cli.models.${role}`;
 
+/** Models switched off in Settings > Models; they disappear from every picker. */
+export const LoopholeCliDisabledModelsSettingId = 'loophole.cli.models.disabled';
+
 export const LoopholeNotificationCategorySettingId = (category: 'chatErrors' | 'applyChanges' | 'commitMessages' | 'voice') =>
 	`loophole.notifications.${category}`;
 
@@ -80,6 +83,12 @@ configurationRegistry.registerConfiguration({
 			type: 'string',
 			description: roleProperties['commitMessage'],
 			default: '',
+		},
+		[LoopholeCliDisabledModelsSettingId]: {
+			type: 'array',
+			items: { type: 'string' },
+			description: nls.localize('loophole.cli.models.disabled', 'Models switched off in Settings > Models, as "providerID/modelID". They are hidden from every picker.'),
+			default: [],
 		},
 		[LoopholeNotificationCategorySettingId('chatErrors')]: {
 			type: 'boolean',

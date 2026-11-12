@@ -395,16 +395,16 @@ const ContextWindowIndicator = ({ featureName }: { featureName: FeatureName }) =
 
 
 const nameOfChatMode = {
-	'normal': 'Chat',
+	'normal': 'Build',
 	'gather': 'Gather',
-	'agent': 'Agent',
+	'agent': 'Build',
 	'plan': 'Plan',
 }
 
 const detailOfChatMode = {
-	'normal': 'Normal chat',
+	'normal': 'Make changes and run tools',
 	'gather': 'Reads files, but can\'t edit',
-	'agent': 'Edits files and uses tools',
+	'agent': 'Make changes and run tools',
 	'plan': 'Research and write an implementation plan',
 }
 
@@ -415,7 +415,9 @@ export const ChatModeDropdown = ({ className }: { className: string }) => {
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const settingsState = useSettingsState()
 
-	const options: ChatMode[] = useMemo(() => ['normal', 'gather', 'agent', 'plan'], [])
+	// Two modes only, the same pair the CLI ships: Plan researches and writes a
+	// plan, Build executes. The older Chat/Gather modes are not offered.
+	const options: ChatMode[] = useMemo(() => ['plan', 'agent'], [])
 
 	const onChangeOption = useCallback((newVal: ChatMode) => {
 		voidSettingsService.setGlobalSetting('chatMode', newVal)
@@ -3280,6 +3282,12 @@ export const SidebarChat = () => {
 		? getModelCapabilities(chatModelSelection.providerName, chatModelSelection.modelName, settingsState.overridesOfModel).contextWindow
 		: undefined
 
+	// In CLI mode the CLI owns the context: the count is what it reports for the
+	// bound session, so it starts at 0 and only grows with real usage. Void's local
+	// estimator is only used on the direct-provider path that CLI mode replaces.
+	const cliThreadState = chatThreadsState.allThreads[chatThreadsState.currentThreadId]?.state as { cliUsage?: { input?: number } } | undefined
+	const cliTokenCount = Math.max(0, Math.round(cliThreadState?.cliUsage?.input ?? 0))
+
 	const sidebarRef = useRef<HTMLDivElement>(null)
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 	const onSubmit = useCallback(async (_forceSubmit?: string) => {
@@ -3530,7 +3538,7 @@ export const SidebarChat = () => {
 		selections={selections}
 		setSelections={setSelections}
 		onClickAnywhere={() => { textAreaRef.current?.focus() }}
-		tokenCount={tokenEstimate}
+		tokenCount={cliEnabled ? cliTokenCount : tokenEstimate}
 		contextWindow={chatContextWindow}
 	>
 		<VoidInputBox2

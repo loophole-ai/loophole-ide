@@ -309,7 +309,7 @@ export class LoopholeCliChannel implements IServerChannel {
 		if (this.state === 'connected' && this.handle) return this._callStatus();
 		if (this.state === 'starting') {
 			// Another caller is already spawning the CLI; wait for that attempt instead of failing.
-			const deadline = Date.now() + 30_000;
+			const deadline = Date.now() + 120_000;
 			while (this.state === 'starting' && Date.now() < deadline) {
 				await new Promise((resolve) => setTimeout(resolve, 200));
 			}
@@ -361,7 +361,7 @@ export class LoopholeCliChannel implements IServerChannel {
 		});
 
 		try {
-			await this._waitReady(port, password, proc, 30_000);
+			await this._waitReady(port, password, proc, 120_000);
 			this.state = 'connected';
 			console.log(`[LoopholeCli] connected on port ${port}`);
 		} catch (e) {
@@ -374,17 +374,41 @@ export class LoopholeCliChannel implements IServerChannel {
 
 	// ---- Phase 1: providers / models from the server (server owns config) ----
 
+	/**
+	 * Retry a read while the CLI's Location plugin is still activating.
+	 *
+	 * The CLI answers 503 `{ _tag: "ServiceUnavailableError", message: "Location
+	 * plugin did not finish activating" }` for the first seconds after startup,
+	 * and a single-shot read then fails in the UI even though the CLI is healthy
+	 * (clicking "Check again" worked). Waiting it out here keeps every caller simple.
+	 */
+	private async _callWhenReady<T>(read: () => Promise<T>): Promise<T> {
+		const deadline = Date.now() + 20_000;
+		let last: unknown
+		for (;;) {
+			try {
+				return await read()
+			} catch (e) {
+				last = e
+				const message = e instanceof Error ? e.message : String(e)
+				const transient = /\(503\)/.test(message) || /did not finish activating/i.test(message)
+				if (!transient || Date.now() > deadline) throw e
+			}
+			await new Promise((resolve) => setTimeout(resolve, 400))
+		}
+	}
+
 	private async _callProviders(): Promise<unknown> {
-		return this.cliApi('GET', '/api/provider');
+		return this._callWhenReady(() => this.cliApi('GET', '/api/provider'))
 	}
 
 	private async _callModels(): Promise<unknown> {
-		return this.cliApi('GET', '/api/model');
+		return this._callWhenReady(() => this.cliApi('GET', '/api/model'))
 	}
 
 	// Connectable integrations (auth methods + current connections) for the provider settings UI.
 	private async _callIntegrations(): Promise<unknown> {
-		return this.cliApi('GET', '/api/integration');
+		return this._callWhenReady(() => this.cliApi('GET', '/api/integration'))
 	}
 
 	// Read the CLI's live config (models, compaction, commit message prompt).
@@ -398,14 +422,21 @@ export class LoopholeCliChannel implements IServerChannel {
 		}
 	}
 
-	// Persist user-facing Context / Commit Message settings into the CLI config.
+	// Persist supported settings into the CLI config.
+	//
+	// `Config.Patch` only accepts `shell`; sending anything else is rejected with
+	// 400 "missing key ... at shell kind". Context / Commit Message preferences are
+	// editor-side settings, so only a `shell` payload is forwarded and an empty one
+	// is skipped entirely rather than provoking a validation error.
 	private async _callConfigUpdate(params: LoopholeCliConfigUpdateParams): Promise<void> {
+		const payload = params as { shell?: unknown }
+		if (payload?.shell === undefined) return
 		try {
-			await this.cliApi('PATCH', '/api/config', params ?? {});
+			await this.cliApi('PATCH', '/api/config', { shell: payload.shell })
 		} catch (e) {
 			// Older CLI builds expose config under the experimental prefix only.
-			if (!/\(404\)/.test(e instanceof Error ? e.message : String(e))) throw e;
-			await this.cliApi('PATCH', '/api/experimental/config', params ?? {});
+			if (!/\(404\)/.test(e instanceof Error ? e.message : String(e))) throw e
+			await this.cliApi('PATCH', '/api/experimental/config', { shell: payload.shell })
 		}
 	}
 
