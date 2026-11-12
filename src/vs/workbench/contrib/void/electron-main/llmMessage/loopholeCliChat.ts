@@ -206,21 +206,26 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		return typeof error === 'string' ? truncateLoopholeCliText(error) : undefined;
 	};
 	// Tool metadata can carry a full unified diff (and a file path); cap every
-	// string so one edit cannot blow up the webview's retained state.
+	// string so one edit cannot blow up the webview's retained state. Patches are
+	// exempt: they are how the editor reconstructs the pre-write text for the
+	// accept/reject diff, so cutting one would silently disable that review.
+	const PATCH_KEYS = new Set(['patch', 'diff', 'patches']);
+	const capText = (text: string, key?: string) =>
+		PATCH_KEYS.has(key ?? '') ? text : truncateLoopholeCliText(text);
 	const metadataOf = (metadata: unknown): Record<string, unknown> | undefined => {
 		if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
 		const out: Record<string, unknown> = {};
 		for (const [key, value] of Object.entries(metadata as Record<string, unknown>)) {
 			if (typeof value === 'string') {
-				out[key] = truncateLoopholeCliText(value);
+				out[key] = capText(value, key);
 			}
 			else if (Array.isArray(value)) {
-				out[key] = value.slice(0, 50).map((item) => typeof item === 'string' ? truncateLoopholeCliText(item) : item);
+				out[key] = value.slice(0, 50).map((item) => typeof item === 'string' ? capText(item) : item);
 			}
 			else if (value && typeof value === 'object') {
 				const nested: Record<string, unknown> = {};
 				for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-					nested[nestedKey] = typeof nestedValue === 'string' ? truncateLoopholeCliText(nestedValue) : nestedValue;
+					nested[nestedKey] = typeof nestedValue === 'string' ? capText(nestedValue, nestedKey) : nestedValue;
 				}
 				out[key] = nested;
 			}

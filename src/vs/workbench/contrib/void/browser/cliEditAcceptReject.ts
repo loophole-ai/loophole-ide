@@ -43,14 +43,45 @@ const textOf = (input: Record<string, unknown> | undefined, keys: string[]): str
 };
 
 // `filePath`/`path` on write/edit; `apply_patch`-style tools carry the target
-// path inside the patch header instead.
+// path inside the patch header instead; the CLI also reports the touched file in
+// `metadata.files[].file` after the edit (packages/core/src/tool/plugin/file-diff.ts).
 const pathOf = (tool: CliToolState): string | undefined => {
 	const direct = textOf(tool.input, ['filePath', 'file_path', 'path', 'filename', 'file']);
 	if (direct) return direct;
+	const files = tool.metadata?.files;
+	if (Array.isArray(files)) {
+		const first = (files[0] as { file?: unknown } | undefined)?.file;
+		if (typeof first === 'string') return first;
+	}
 	const patch = textOf(tool.input, ['patch', 'patchText', 'patch_text', 'input']);
 	if (!patch) return undefined;
 	const match = patch.match(/^\*\*\* (?:Update|Add|Delete|Move) File: (.+)$/m);
 	return match?.[1]?.trim();
+};
+
+/**
+ * The unified diff the CLI attached to a finished edit.
+ *
+ * `fileDiff()` emits `metadata.files[]` as `{ file, patch, status, additions,
+ * deletions }`, so the patch is the authoritative "before" source - unlike a
+ * snapshot it cannot race the server write.
+ */
+const patchOf = (tool: CliToolState): string | undefined => {
+	const files = tool.metadata?.files;
+	if (Array.isArray(files)) {
+		for (const item of files) {
+			if (item && typeof item === 'object') {
+				const patch = textOf(item as Record<string, unknown>, ['patch']);
+				if (patch) return patch;
+			}
+		}
+	}
+	const filediff = tool.metadata?.filediff;
+	if (filediff && typeof filediff === 'object') {
+		const patch = textOf(filediff as Record<string, unknown>, ['patch']);
+		if (patch) return patch;
+	}
+	return textOf(tool.metadata, ['diff']);
 };
 
 type Snapshot = { text: string; existed: boolean };
@@ -160,6 +191,16 @@ export class CliEditAcceptReject {
 		// A capture that found no file means the tool created it: the old side is
 		// empty (Reject leaves an empty file; the undo entry removes the content).
 		if (!snapshot.existed) return '';
+
+		// The CLI's own unified diff is authoritative: it was produced from the
+		// pre-write text, so unlike the snapshot it cannot lose the race with the
+		// server write. Try it first whenever it is complete and usable.
+		const patch = patchOf(tool);
+		if (patch && !patch.includes(LOOPHOLE_CLI_TRUNCATION_MARKER)) {
+			const fromPatch = this._beforeFromPatch(after, patch);
+			if (fromPatch !== null) return fromPatch;
+		}
+
 		if (snapshot.text !== after) return snapshot.text;
 
 		// Reverse the search/replace the tool reported (exact for `edit`).
@@ -168,20 +209,11 @@ export class CliEditAcceptReject {
 		if (oldStr !== undefined && newStr !== undefined && newStr.length > 0 && after.includes(newStr)) {
 			const replaceAll = tool.input?.replaceAll === true || tool.input?.replace_all === true;
 			if (replaceAll) return after.split(newStr).join(oldStr);
-			// Only reverse a single occurrence when it is unambiguous; otherwise
-			// fall through to the patch, which knows exactly which one changed.
+			// Only reverse a single occurrence when it is unambiguous.
 			if (after.split(newStr).length === 2) return after.replace(newStr, oldStr);
 		}
 
-		// Last resort: rebuild the old side from the tool's unified-diff metadata.
-		// Prefer `filediff.patch` (untrimmed) over `diff` (indentation-trimmed).
-		const filediff = tool.metadata?.filediff;
-		const patch = (filediff && typeof filediff === 'object' ? textOf(filediff as Record<string, unknown>, ['patch']) : undefined)
-			?? textOf(tool.metadata, ['diff']);
-		// A truncated patch cannot rebuild the old file; showing a partial "before"
-		// would let Reject corrupt it.
-		if (!patch || patch.includes(LOOPHOLE_CLI_TRUNCATION_MARKER)) return null;
-		return this._beforeFromPatch(after, patch);
+		return null;
 	}
 
 	// Reconstruct the old file from the new file plus the hunk headers. Context
