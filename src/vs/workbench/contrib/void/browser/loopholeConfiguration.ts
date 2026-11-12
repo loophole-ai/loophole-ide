@@ -22,6 +22,9 @@ export const loopholeCliModelSettingId = (role: LoopholeCliModelRole) => `loopho
 /** Models switched off in Settings > Models; they disappear from every picker. */
 export const LoopholeCliDisabledModelsSettingId = 'loophole.cli.models.disabled';
 
+/** OpenAI-compatible providers added in Settings > Providers. */
+export const LoopholeCliCustomProvidersSettingId = 'loophole.cli.customProviders';
+
 export const LoopholeNotificationCategorySettingId = (category: 'chatErrors' | 'applyChanges' | 'commitMessages' | 'voice') =>
 	`loophole.notifications.${category}`;
 
@@ -88,6 +91,11 @@ configurationRegistry.registerConfiguration({
 			type: 'array',
 			items: { type: 'string' },
 			description: nls.localize('loophole.cli.models.disabled', 'Models switched off in Settings > Models, as "providerID/modelID". They are hidden from every picker.'),
+			default: [],
+		},
+		[LoopholeCliCustomProvidersSettingId]: {
+			type: 'array',
+			description: nls.localize('loophole.cli.customProviders', 'OpenAI-compatible providers added in Settings > Providers.'),
 			default: [],
 		},
 		[LoopholeNotificationCategorySettingId('chatErrors')]: {

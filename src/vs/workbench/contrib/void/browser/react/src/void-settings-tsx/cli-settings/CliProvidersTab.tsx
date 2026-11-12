@@ -7,8 +7,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import { VoidButtonBgDarken, VoidSimpleInputBox } from '../../util/inputs.js'
 import { CliProviderConnectDialog } from './CliProviderConnectDialog.js'
+import { CliCustomProviderDialog } from './CliCustomProviderDialog.js'
 import { CliStatusCard } from './CliStatusCard.js'
 import { SettingsList, SettingsNote, SettingsRow, SettingsSection } from './CliSettingsRows.js'
+import { LoopholeCliCustomProvidersSettingId, type LoopholeCliCustomProvider } from './cliSettingIds.js'
 import type { LoopholeCliIntegrationConnection, LoopholeCliIntegrationInfo, LoopholeCliProviderInfo } from '../../../../../common/loopholeCliTypes.js'
 
 // Providers worth surfacing before the full integration catalog. Any missing id is simply ignored.
@@ -44,6 +46,26 @@ export const CliProvidersTab = () => {
 	const [error, setError] = useState<string | null>(null)
 	const [busy, setBusy] = useState<string | null>(null)
 	const [connecting, setConnecting] = useState<LoopholeCliIntegrationInfo | null>(null)
+	const [customOpen, setCustomOpen] = useState(false)
+	const configService = accessor.get('IConfigurationService')
+	const [custom, setCustom] = useState<LoopholeCliCustomProvider[]>(() =>
+		configService.getValue<LoopholeCliCustomProvider[]>(LoopholeCliCustomProvidersSettingId) ?? [],
+	)
+
+	useEffect(() => {
+		const disposable = configService.onDidChangeConfiguration((event) => {
+			if (!event.affectsConfiguration(LoopholeCliCustomProvidersSettingId)) return
+			setCustom(configService.getValue<LoopholeCliCustomProvider[]>(LoopholeCliCustomProvidersSettingId) ?? [])
+		})
+		return () => disposable.dispose()
+	}, [configService])
+
+	const removeCustom = (id: string) => {
+		configService.updateValue(
+			LoopholeCliCustomProvidersSettingId,
+			custom.filter((entry) => entry.id !== id),
+		)
+	}
 
 	const load = useCallback(async () => {
 		setLoading(true)
@@ -141,6 +163,22 @@ export const CliProvidersTab = () => {
 				})}
 		</SettingsList>
 
+		<h4 className='text-base mt-6 mb-2'>Custom providers</h4>
+		<SettingsList>
+			{custom.length === 0
+				? <SettingsRow label='No custom providers' description='Add an OpenAI-compatible endpoint by base URL and model id.' />
+				: custom.map((entry) => <SettingsRow
+					key={entry.id}
+					label={entry.name}
+					description={<>{entry.id} · {entry.model}{entry.baseURL ? ` · ${entry.baseURL}` : ''}</>}
+				>
+					<VoidButtonBgDarken className='px-3 py-1' onClick={() => removeCustom(entry.id)}>Remove</VoidButtonBgDarken>
+				</SettingsRow>)}
+		</SettingsList>
+		<div className='mt-2'>
+			<VoidButtonBgDarken className='px-3 py-1' onClick={() => setCustomOpen(true)}>Add custom provider</VoidButtonBgDarken>
+		</div>
+
 		<h4 className='text-base mt-6 mb-2'>Add provider</h4>
 		<div className='mb-2 max-w-sm'>
 			<VoidSimpleInputBox value={search} onChangeValue={setSearch} placeholder='Search providers' compact={true} />
@@ -166,6 +204,11 @@ export const CliProvidersTab = () => {
 			integration={connecting}
 			onClose={() => setConnecting(null)}
 			onConnected={() => { void load() }}
+		/> : null}
+
+		{customOpen ? <CliCustomProviderDialog
+			onClose={() => setCustomOpen(false)}
+			onSaved={() => { /* settings listener refreshes the list */ }}
 		/> : null}
 	</SettingsSection>
 }

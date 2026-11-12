@@ -370,6 +370,11 @@
 					"default": [],
 					"description": "Models switched off in Settings > Models, as \"providerID/modelID\". They are hidden from every picker."
 				},
+				"loophole.cli.customProviders": {
+					"type": "array",
+					"default": [],
+					"description": "OpenAI-compatible providers added in Settings > Providers."
+				},
 				"loophole.notifications.chatErrors": {
 					"type": "boolean",
 					"default": true,

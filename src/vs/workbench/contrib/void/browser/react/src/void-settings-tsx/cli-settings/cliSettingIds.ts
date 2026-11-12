@@ -28,3 +28,14 @@ export const loopholeNotificationCategorySettingId = (category: LoopholeNotifica
 
 /** Models switched off in Settings > Models; they disappear from every picker. */
 export const LoopholeCliDisabledModelsSettingId = 'loophole.cli.models.disabled'
+
+/** OpenAI-compatible providers added in Settings > Providers. */
+export const LoopholeCliCustomProvidersSettingId = 'loophole.cli.customProviders'
+
+export type LoopholeCliCustomProvider = {
+	id: string
+	name: string
+	baseURL?: string
+	model: string
+	apiKey?: string
+}

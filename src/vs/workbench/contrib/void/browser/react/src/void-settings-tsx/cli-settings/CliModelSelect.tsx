@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import { VoidCustomDropdownBox } from '../../util/inputs.js'
-import { LoopholeCliDisabledModelsSettingId } from './cliSettingIds.js'
+import { LoopholeCliDisabledModelsSettingId, LoopholeCliCustomProvidersSettingId, type LoopholeCliCustomProvider } from './cliSettingIds.js'
 import type { LoopholeCliModelInfo } from '../../../../../common/loopholeCliTypes.js'
 
 export type CliModelOption = {
@@ -71,7 +71,19 @@ export const useCliModels = () => {
 					throw new Error(next.error ?? 'The Loophole CLI is not connected.')
 				}
 				const list = await cliService.models()
-				if (!cancelled) setModels(list)
+				if (!cancelled) {
+					// Providers added on the Providers page are endpoints the editor owns,
+					// so their models are appended to what the CLI reports.
+					const custom = configService.getValue<LoopholeCliCustomProvider[]>(LoopholeCliCustomProvidersSettingId) ?? []
+					const extra: LoopholeCliModelInfo[] = custom.map((entry) => ({
+						id: `${entry.id}/${entry.model}`,
+						providerID: entry.id,
+						modelID: entry.model,
+						name: `${entry.name} (${entry.model})`,
+					}))
+					const known = new Set(list.map((model) => `${model.providerID}/${model.modelID}`))
+					setModels([...list, ...extra.filter((model) => !known.has(model.id))])
+				}
 			} catch (e) {
 				if (!cancelled) {
 					setModels([])
