@@ -426,7 +426,7 @@ export class LoopholeCliChannel implements IServerChannel {
 		// The server refuses to boot without a password (ServerProcess.run fails
 		// with "Missing server password"), and every request is Basic-authenticated
 		// against it, so the same secret has to be handed to the child.
-		const env = { ...process.env, ...params.env, OPENCODE_SERVER_PASSWORD: password };
+		const env: NodeJS.ProcessEnv = { ...process.env, ...params.env, OPENCODE_SERVER_PASSWORD: password };
 		if (!env.OPENCODE_DB) {
 			const database = this._resolveDatabase();
 			if (database) env.OPENCODE_DB = database;
