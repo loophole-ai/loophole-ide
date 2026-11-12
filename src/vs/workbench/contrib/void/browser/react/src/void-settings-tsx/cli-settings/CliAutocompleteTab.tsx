@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useAccessor, useSettingsState } from '../../util/services.js'
 import { VoidButtonBgDarken, VoidSimpleInputBox, VoidSwitch } from '../../util/inputs.js'
-import { loopholeCliModelSettingId } from '../../../../loopholeConfiguration.js'
+import { loopholeCliModelSettingId } from './cliSettingIds.js'
 import { CliModelSelect, useCliModels } from './CliModelSelect.js'
 import { SettingsList, SettingsNote, SettingsRow, SettingsSection } from './CliSettingsRows.js'
 

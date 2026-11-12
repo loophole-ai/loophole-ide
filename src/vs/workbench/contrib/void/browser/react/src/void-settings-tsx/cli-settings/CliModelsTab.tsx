@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
-import { loopholeCliModelSettingId, type LoopholeCliModelRole } from '../../../../loopholeConfiguration.js'
+import { loopholeCliModelSettingId, type LoopholeCliModelRole } from './cliSettingIds.js'
 import { CliModelSelect, useCliModels } from './CliModelSelect.js'
 import { CliCustomModelDialog } from './CliCustomModelDialog.js'
 import { SettingsList, SettingsNote, SettingsRow, SettingsSection } from './CliSettingsRows.js'

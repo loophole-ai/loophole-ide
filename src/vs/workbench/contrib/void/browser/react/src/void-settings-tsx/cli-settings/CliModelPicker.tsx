@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import type { IConfigurationService } from '../../../../../../../../platform/configuration/common/configuration.js'
-import { loopholeCliModelSettingId } from '../../../../loopholeConfiguration.js'
+import { loopholeCliModelSettingId } from './cliSettingIds.js'
 import { CliModelSelect, useCliModels } from './CliModelSelect.js'
 import { CliCustomModelDialog } from './CliCustomModelDialog.js'
 

@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import { VoidSwitch } from '../../util/inputs.js'
-import { LoopholeNotificationCategorySettingId } from '../../../../loopholeConfiguration.js'
+import { loopholeNotificationCategorySettingId } from './cliSettingIds.js'
 import { SettingsList, SettingsNote, SettingsRow, SettingsSection } from './CliSettingsRows.js'
 
 const categories = [
@@ -22,7 +22,7 @@ export const CliNotificationsTab = () => {
 	const configService = accessor.get('IConfigurationService')
 	const [values, setValues] = useState<Record<string, boolean>>(() => {
 		const next: Record<string, boolean> = {}
-		for (const category of categories) next[category.id] = configService.getValue<boolean>(LoopholeNotificationCategorySettingId(category.id)) !== false
+		for (const category of categories) next[category.id] = configService.getValue<boolean>(loopholeNotificationCategorySettingId(category.id)) !== false
 		return next
 	})
 
@@ -36,7 +36,7 @@ export const CliNotificationsTab = () => {
 					size='xs'
 					value={values[category.id] ?? true}
 					onChange={(next) => {
-						configService.updateValue(LoopholeNotificationCategorySettingId(category.id), next)
+						configService.updateValue(loopholeNotificationCategorySettingId(category.id), next)
 						setValues(prev => ({ ...prev, [category.id]: next }))
 					}}
 				/>
