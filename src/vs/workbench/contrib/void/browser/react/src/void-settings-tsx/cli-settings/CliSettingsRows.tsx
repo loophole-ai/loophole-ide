@@ -15,11 +15,11 @@ export const SettingsSection = ({ title, description, children }: { title?: stri
 }
 
 /** One label/description row with its control on the right. */
-export const SettingsRow = ({ label, description, children }: { label: React.ReactNode, description?: React.ReactNode, children?: React.ReactNode }) => {
-	return <div className='flex flex-wrap items-center justify-between gap-3 py-3 px-4 border-b border-loophole-border-2 last:border-b-0'>
+const SettingsRow = ({ label, description, children }: { label: React.ReactNode, description?: React.ReactNode, children?: React.ReactNode }) => {
+	return <div className='flex flex-wrap items-center justify-between gap-3 py-3.5 px-4 border-b border-loophole-border-2 last:border-b-0'>
 		<div className='min-w-0'>
-			<div className='text-sm text-loophole-fg-1'>{label}</div>
-			{description ? <div className='text-xs text-loophole-fg-3 mt-0.5'>{description}</div> : null}
+			<div className='text-[15px] text-loophole-fg-1'>{label}</div>
+			{description ? <div className='text-[13px] text-loophole-fg-3 mt-0.5'>{description}</div> : null}
 		</div>
 		<div className='flex items-center gap-2 shrink-0'>{children}</div>
 	</div>
@@ -27,12 +27,12 @@ export const SettingsRow = ({ label, description, children }: { label: React.Rea
 
 /** Bordered container for a group of SettingsRows. */
 export const SettingsList = ({ children }: { children: React.ReactNode }) => {
-	return <div className='border border-loophole-border-2 bg-loophole-bg-1 rounded-sm'>{children}</div>
+	return <div className='border border-loophole-border-2 bg-loophole-bg-1 rounded-lg overflow-hidden'>{children}</div>
 }
 
 /** Quiet status line used instead of colored callouts. */
 export const SettingsNote = ({ children }: { children: React.ReactNode }) => {
-	return <div className='text-xs text-loophole-fg-3'>{children}</div>
+	return <div className='text-[13px] text-loophole-fg-3'>{children}</div>
 }
 
 /** A plain status dot + label (no bright accent colors). */

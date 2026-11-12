@@ -1536,9 +1536,10 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 			</div>
 		}
 
-		{/* server-side tool calls (Loophole CLI); todo tools get a checklist */}
+		{/* server-side tool calls (Loophole CLI); todo tools get a checklist.
+		    Cards own their output: nothing a tool returns is rendered outside them. */}
 		{cliTools.length > 0 &&
-			<div className={`flex flex-col gap-1 ${isCheckpointGhost ? 'opacity-50' : ''}`}>
+			<div className={`flex flex-col gap-1 w-full min-w-0 ${isCheckpointGhost ? 'opacity-50' : ''}`}>
 				{cliTools.map(tool => (
 					<React.Fragment key={tool.id}>
 						{isTodoToolName(tool.name)

@@ -28,6 +28,7 @@ export const CliProviderConnectDialog = ({ integration, onClose, onConnected }: 
 }) => {
 	const accessor = useAccessor()
 	const cliService = accessor.get('ILoopholeCliService')
+	const configService = accessor.get('IConfigurationService')
 
 	const [key, setKey] = useState('')
 	const [busy, setBusy] = useState(false)
@@ -47,6 +48,12 @@ export const CliProviderConnectDialog = ({ integration, onClose, onConnected }: 
 		setSuccess(null)
 		try {
 			await cliService.connectKey({ integrationID: integration.id, key: key.trim() })
+			// Inline completions talk to the provider directly, so the key entered
+			// here is also what autocomplete should use. Keeping one place to enter
+			// keys is why the Autocomplete page has no key field of its own.
+			if (/inception|mercury/i.test(integration.id) || /inception/i.test(integration.name)) {
+				configService.updateValue('loophole.fim.apiKey', key.trim())
+			}
 			setKey('')
 			setSuccess(`API key stored for ${integration.name}.`)
 			onConnected()

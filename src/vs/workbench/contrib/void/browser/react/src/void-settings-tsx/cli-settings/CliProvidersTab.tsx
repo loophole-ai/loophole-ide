@@ -71,10 +71,14 @@ export const CliProvidersTab = () => {
 		setLoading(true)
 		setError(null)
 		try {
+			// Connect on demand: opening the page right after launch used to show an
+			// empty list because the CLI had not finished starting yet.
 			const status = await cliService.status()
-			if (status.status !== 'connected') {
+			const next = status.status === 'connected' ? status : await cliService.connect()
+			if (next.status !== 'connected') {
 				setProviders([])
 				setIntegrations([])
+				setError(next.error ?? 'The Loophole CLI is not connected.')
 				return
 			}
 			const [nextProviders, nextIntegrations] = await Promise.all([

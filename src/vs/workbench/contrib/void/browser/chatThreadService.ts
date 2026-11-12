@@ -43,6 +43,7 @@ import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
 import { ITokenUsageService } from '../common/tokenUsageService.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { isLoopholeNotificationEnabled } from './loopholeNotifications.js';
+import { CliEditAcceptReject } from './cliEditAcceptReject.js';
 
 
 // related to retrying when LLM message has error
@@ -334,6 +335,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	private readonly _onDidChangeCliPermissions = new Emitter<{ threadId: string }>();
 	readonly onDidChangeCliPermissions: Event<{ threadId: string }> = this._onDidChangeCliPermissions.event;
 
+	// Turns server-applied CLI edits into Void diffs (Accept/Reject).
+	private readonly _cliEdits: CliEditAcceptReject;
+
 	readonly streamState: ThreadStreamState = {}
 	state: ThreadsState // allThreads is persisted, currentThread is not
 
@@ -363,6 +367,13 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
+
+		this._cliEdits = new CliEditAcceptReject({
+			editCodeService: this._editCodeService,
+			voidModelService: this._voidModelService,
+			fileService: this._fileService,
+			workspaceRoot: this._workspaceContextService.getWorkspace().folders[0]?.uri,
+		})
 
 		const readThreads = this._readAllThreads() || {}
 
@@ -913,6 +924,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					// Loophole CLI tool/compaction snapshots (never called by the direct-LLM path)
 					onTool: ({ tools }) => {
 						this._mergeCliStreamState(threadId, { cliTools: tools })
+						// Server-applied edits are replayed as Void diffs (Accept/Reject).
+						this._cliEdits.handle(tools)
 					},
 					onCompaction: ({ compaction }) => {
 						this._mergeCliStreamState(threadId, { compaction })

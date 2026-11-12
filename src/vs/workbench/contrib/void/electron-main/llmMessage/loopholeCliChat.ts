@@ -42,6 +42,7 @@
 
 import type { LLMChatMessage, OnCompaction, OnError, OnFinalMessage, OnPermission, OnCliSession, OnText, OnTool, OnUsage, CliCompactionState, CliPermissionRequest, CliToolState, CliUsage } from '../../common/sendLLMMessageTypes.js';
 import type { LoopholeCliModelRef } from '../../common/loopholeCliTypes.js';
+import { LOOPHOLE_CLI_TRUNCATION_MARKER, truncateLoopholeCliText } from '../../common/loopholeCliTypes.js';
 import { getLoopholeCliChannel } from '../loopholeCliChannel.js';
 
 export type LoopholeCliChatParams = {
@@ -190,18 +191,44 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 
 	// Tool success content is Content[] ({ type: 'text' | 'file', ... }); keep
 	// the text parts, drop the rest, so the card can render a plain string.
+	// Text is capped: a fetched page or file dump must not be kept whole.
 	const contentText = (content: unknown): string | undefined => {
 		if (!Array.isArray(content)) return undefined;
 		const texts = content
 			.filter((c) => !!c && typeof c === 'object' && (c as { type?: unknown }).type === 'text' && typeof (c as { text?: unknown }).text === 'string')
 			.map((c) => (c as { text: string }).text);
-		return texts.length > 0 ? texts.join('\n') : undefined;
+		return texts.length > 0 ? truncateLoopholeCliText(texts.join('\n')) : undefined;
 	};
 	const errorText = (error: unknown): string | undefined => {
 		if (!!error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string') {
-			return (error as { message: string }).message;
+			return truncateLoopholeCliText((error as { message: string }).message);
 		}
-		return typeof error === 'string' ? error : undefined;
+		return typeof error === 'string' ? truncateLoopholeCliText(error) : undefined;
+	};
+	// Tool metadata can carry a full unified diff (and a file path); cap every
+	// string so one edit cannot blow up the webview's retained state.
+	const metadataOf = (metadata: unknown): Record<string, unknown> | undefined => {
+		if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
+		const out: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(metadata as Record<string, unknown>)) {
+			if (typeof value === 'string') {
+				out[key] = truncateLoopholeCliText(value);
+			}
+			else if (Array.isArray(value)) {
+				out[key] = value.slice(0, 50).map((item) => typeof item === 'string' ? truncateLoopholeCliText(item) : item);
+			}
+			else if (value && typeof value === 'object') {
+				const nested: Record<string, unknown> = {};
+				for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+					nested[nestedKey] = typeof nestedValue === 'string' ? truncateLoopholeCliText(nestedValue) : nestedValue;
+				}
+				out[key] = nested;
+			}
+			else {
+				out[key] = value;
+			}
+		}
+		return out;
 	};
 
 	const started = Date.now();
@@ -233,13 +260,16 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 			const delta = typeof data.delta === 'string' ? data.delta : '';
 			if (id && delta) {
 				const prev = toolsById.get(id);
-				upsertTool(id, { status: 'input', inputText: `${prev?.inputText ?? ''}${delta}` });
+				// Drop our own marker before appending so repeated deltas after the
+				// cap do not stack "... (truncated)" markers.
+				const prevText = (prev?.inputText ?? '').replace(LOOPHOLE_CLI_TRUNCATION_MARKER, '');
+				upsertTool(id, { status: 'input', inputText: truncateLoopholeCliText(`${prevText}${delta}`) });
 			}
 		}
 		else if (evt.type === 'session.tool.input.ended') {
 			const id = typeof data.id === 'string' ? data.id : '';
 			const text = typeof data.text === 'string' ? data.text : '';
-			if (id) upsertTool(id, { status: 'input', inputText: text });
+			if (id) upsertTool(id, { status: 'input', inputText: truncateLoopholeCliText(text) });
 		}
 		else if (evt.type === 'session.tool.called') {
 			const id = typeof data.id === 'string' ? data.id : '';
@@ -253,9 +283,7 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		else if (evt.type === 'session.tool.progress') {
 			// Ephemeral live metadata (e.g. partial output) — merge, keep status.
 			const id = typeof data.id === 'string' ? data.id : '';
-			const metadata = (data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata))
-				? data.metadata as Record<string, unknown>
-				: undefined;
+			const metadata = metadataOf(data.metadata);
 			if (id && metadata) {
 				const prev = toolsById.get(id);
 				upsertTool(id, { status: prev?.status ?? 'running', metadata: { ...(prev?.metadata ?? {}), ...metadata } });
@@ -265,18 +293,14 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 			const id = typeof data.id === 'string' ? data.id : '';
 			if (!id) return;
 			const outputText = contentText(data.content);
-			const metadata = (data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata))
-				? data.metadata as Record<string, unknown>
-				: undefined;
+			const metadata = metadataOf(data.metadata);
 			upsertTool(id, { status: 'done', outputText, metadata });
 		}
 		else if (evt.type === 'session.tool.failed') {
 			const id = typeof data.id === 'string' ? data.id : '';
 			if (!id) return;
 			const outputText = contentText(data.content);
-			const metadata = (data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata))
-				? data.metadata as Record<string, unknown>
-				: undefined;
+			const metadata = metadataOf(data.metadata);
 			upsertTool(id, { status: 'error', error: errorText(data.error), outputText, metadata });
 		}
 		else if (evt.type === 'session.compaction.started') {
@@ -284,10 +308,14 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		}
 		else if (evt.type === 'session.compaction.delta') {
 			const text = typeof data.text === 'string' ? data.text : '';
-			if (text) emitCompaction({ phase: 'streaming', text: `${compaction?.text ?? ''}${text}` });
+			if (text) {
+				const prevText = (compaction?.text ?? '').replace(LOOPHOLE_CLI_TRUNCATION_MARKER, '');
+				emitCompaction({ phase: 'streaming', text: truncateLoopholeCliText(`${prevText}${text}`) });
+			}
 		}
 		else if (evt.type === 'session.compaction.ended') {
-			emitCompaction({ phase: 'done', reason: typeof data.reason === 'string' ? data.reason : compaction?.reason, text: typeof data.text === 'string' ? data.text : compaction?.text });
+			const text = typeof data.text === 'string' ? truncateLoopholeCliText(data.text) : compaction?.text;
+			emitCompaction({ phase: 'done', reason: typeof data.reason === 'string' ? data.reason : compaction?.reason, text });
 		}
 		else if (evt.type === 'session.compaction.failed') {
 			emitCompaction({ phase: 'failed', reason: typeof data.reason === 'string' ? data.reason : compaction?.reason, error: errorText(data.error) });

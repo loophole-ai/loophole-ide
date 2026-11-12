@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
+import { VoidSimpleInputBox } from '../../util/inputs.js'
 import { loopholeCliModelSettingId, type LoopholeCliModelRole } from './cliSettingIds.js'
 import { CliModelSelect, cliModelRef, useCliModels, useDisabledCliModels, visibleCliModels } from './CliModelSelect.js'
 import { CliCustomModelDialog } from './CliCustomModelDialog.js'
@@ -26,7 +27,16 @@ export const CliModelsTab = () => {
 	const cliService = accessor.get('ILoopholeCliService')
 	const { models, loading, error, reload } = useCliModels()
 	const { disabled, toggle } = useDisabledCliModels()
-	const enabled = useMemo(() => visibleCliModels(models, disabled), [models, disabled])
+	const [search, setSearch] = useState('')
+	const query = search.trim().toLowerCase()
+	const enabled = useMemo(() => {
+		const visible = visibleCliModels(models, disabled)
+		if (!query) return visible
+		return visible.filter((model) =>
+			`${model.providerID}/${model.modelID} ${model.name ?? ''}`.toLowerCase().includes(query),
+		)
+	}, [models, disabled, query])
+	const allEnabled = useMemo(() => visibleCliModels(models, disabled), [models, disabled])
 	const [saveError, setSaveError] = useState<string | null>(null)
 
 	const [values, setValues] = useState<Record<string, string>>(() => {
@@ -83,9 +93,14 @@ export const CliModelsTab = () => {
 
 		{models.length > 0 ? <div className='mt-6'>
 			<div className='text-sm text-loophole-fg-1 mb-1'>Available models</div>
-			<div className='text-xs text-loophole-fg-3 mb-3'>Switch a model off to hide it from every picker. {enabled.length} of {models.length} shown.</div>
+			<div className='text-xs text-loophole-fg-3 mb-3'>Switch a model off to hide it from every picker. {allEnabled.length} of {models.length} shown.</div>
+			<div className='mb-2 max-w-sm'>
+				<VoidSimpleInputBox value={search} onChangeValue={setSearch} placeholder='Search models' compact={true} />
+			</div>
 			<SettingsList>
-				{models.map((model) => {
+				{models
+					.filter((model) => !query || `${model.providerID}/${model.modelID} ${model.name ?? ''}`.toLowerCase().includes(query))
+					.map((model) => {
 					const ref = cliModelRef(model)
 					const on = !disabled.includes(ref)
 					return <SettingsRow

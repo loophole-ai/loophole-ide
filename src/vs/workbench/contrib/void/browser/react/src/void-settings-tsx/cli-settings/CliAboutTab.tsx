@@ -16,6 +16,7 @@ export const CliAboutTab = () => {
 	const cliService = accessor.get('ILoopholeCliService')
 
 	const [version, setVersion] = useState('')
+	const [cliPath, setCliPath] = useState('')
 	const [update, setUpdate] = useState<LoopholeCliUpdateInfo | null>(null)
 	const [checking, setChecking] = useState(false)
 	const [installing, setInstalling] = useState(false)
@@ -35,6 +36,7 @@ export const CliAboutTab = () => {
 	useEffect(() => {
 		let cancelled = false
 		void cliService.version().then(next => { if (!cancelled) setVersion(next) }).catch(() => { if (!cancelled) setVersion('unknown') })
+		void cliService.status().then(next => { if (!cancelled) setCliPath(next.binaryPath ?? '') }).catch(() => { /* optional */ })
 		void cliService.updateCheck().then(next => { if (!cancelled) setUpdate(next) }).catch(() => { /* offline is fine */ })
 		return () => { cancelled = true }
 	}, [cliService])
@@ -66,6 +68,12 @@ export const CliAboutTab = () => {
 				</SettingsRow>
 				<SettingsRow label='Loophole CLI'>
 					<span className='text-xs text-loophole-fg-2'>{version || 'Checking...'}</span>
+				</SettingsRow>
+				<SettingsRow label='CLI location' description={cliPath || 'Using a binary from PATH.'}>
+					<span className='text-xs text-loophole-fg-3'>binary</span>
+				</SettingsRow>
+				<SettingsRow label='Engine' description='Chat, agents, providers, and sessions all run in the Loophole CLI.'>
+					<span className='text-xs text-loophole-fg-3'>local CLI</span>
 				</SettingsRow>
 			</SettingsList>
 		</SettingsSection>

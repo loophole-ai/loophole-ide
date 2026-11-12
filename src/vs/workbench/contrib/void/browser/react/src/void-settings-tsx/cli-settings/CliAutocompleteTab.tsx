@@ -5,16 +5,21 @@
 
 import { useEffect, useState } from 'react'
 import { useAccessor, useSettingsState } from '../../util/services.js'
-import { VoidButtonBgDarken, VoidSimpleInputBox, VoidSwitch } from '../../util/inputs.js'
+import { VoidSwitch } from '../../util/inputs.js'
 import { loopholeCliModelSettingId } from './cliSettingIds.js'
 import { CliModelSelect, useCliModels } from './CliModelSelect.js'
-import { SettingsList, SettingsNote, SettingsRow, SettingsSection } from './CliSettingsRows.js'
+import { SettingsList, SettingsRow, SettingsSection } from './CliSettingsRows.js'
 
 const fimEnabledSetting = 'loophole.fim.enabled'
 const fimModelSetting = 'loophole.fim.model'
-const fimApiKeySetting = 'loophole.fim.apiKey'
 
-/** Inline completion (FIM) settings, with the model chosen from the CLI list. */
+/**
+ * Inline completion (FIM) settings.
+ *
+ * No API key field here on purpose: provider keys live on the Providers page and
+ * are read from the CLI, so this page only chooses the model and turns the
+ * feature on.
+ */
 export const CliAutocompleteTab = () => {
 	const accessor = useAccessor()
 	const configService = accessor.get('IConfigurationService')
@@ -28,19 +33,13 @@ export const CliAutocompleteTab = () => {
 		const fallback = configService.getValue<string>(fimModelSetting) ?? ''
 		return role || fallback || 'mercury-edit-2'
 	})
-	const [apiKey, setApiKey] = useState(() => configService.getValue<string>(fimApiKeySetting) ?? '')
-	const [message, setMessage] = useState<string | null>(null)
 
 	useEffect(() => {
 		const disposable = configService.onDidChangeConfiguration((event) => {
-			if (event.affectsConfiguration(fimModelSetting)) {
-				const fallback = configService.getValue<string>(fimModelSetting) ?? ''
-				const role = configService.getValue<string>(loopholeCliModelSettingId('autocompletion')) ?? ''
-				setRef(role || fallback || 'mercury-edit-2')
-			}
-			if (event.affectsConfiguration(fimApiKeySetting)) {
-				setApiKey(configService.getValue<string>(fimApiKeySetting) ?? '')
-			}
+			if (!event.affectsConfiguration(fimModelSetting)) return
+			const fallback = configService.getValue<string>(fimModelSetting) ?? ''
+			const role = configService.getValue<string>(loopholeCliModelSettingId('autocompletion')) ?? ''
+			setRef(role || fallback || 'mercury-edit-2')
 		})
 		return () => disposable.dispose()
 	}, [configService])
@@ -52,14 +51,9 @@ export const CliAutocompleteTab = () => {
 		configService.updateValue(fimModelSetting, modelID || 'mercury-edit-2')
 	}
 
-	const saveKey = () => {
-		configService.updateValue(fimApiKeySetting, apiKey)
-		setMessage('Saved. Autocomplete stays off until a key is set and the feature is enabled.')
-	}
-
 	return <SettingsSection
 		title='Autocomplete'
-		description='Inline completions use the Inception FIM API. The CLI model list supplies the picker; the model id alone is sent to Inception.'
+		description='Inline completions use the provider you connected on the Providers page. Pick the model here and turn the feature on.'
 	>
 		<SettingsList>
 			<SettingsRow label='Enable autocomplete' description='Show inline suggestions as you type.'>
@@ -77,20 +71,5 @@ export const CliAutocompleteTab = () => {
 				<CliModelSelect value={ref} models={models} onChange={save} />
 			</SettingsRow>
 		</SettingsList>
-
-		<div className='flex flex-col gap-2 max-w-md mt-4'>
-			<div className='text-sm text-loophole-fg-1'>Inception API key</div>
-			<VoidSimpleInputBox
-				value={apiKey}
-				onChangeValue={setApiKey}
-				placeholder='Inception API Key'
-				passwordBlur={true}
-				compact={true}
-			/>
-			<div className='flex items-center gap-2'>
-				<VoidButtonBgDarken className='px-3 py-1 w-fit' onClick={saveKey}>Save</VoidButtonBgDarken>
-				{message ? <SettingsNote>{message}</SettingsNote> : null}
-			</div>
-		</div>
 	</SettingsSection>
 }

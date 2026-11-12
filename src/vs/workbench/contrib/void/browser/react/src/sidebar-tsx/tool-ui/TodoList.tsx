@@ -60,7 +60,7 @@ export const TodoListCard = ({ tool }: { tool: CliToolState }) => {
 	const done = live.filter((i) => i.status === 'completed').length;
 	const active = live.find((i) => i.status === 'in_progress') ?? live.find((i) => i.status === 'pending');
 	const running = tool.status === 'running' || tool.status === 'input';
-	return <div className='w-full border border-loophole-border-3 rounded px-2 py-1 bg-loophole-bg-3 overflow-hidden'>
+	return <div className='w-full min-w-0 border border-loophole-border-3 rounded px-2 py-1 bg-loophole-bg-3 overflow-hidden'>
 		<div className='select-none flex items-center min-h-[24px] justify-between cursor-pointer' onClick={() => setIsOpen(v => !v)}>
 			<div className='flex items-center min-w-0 overflow-hidden'>
 				<ChevronRight className={`text-loophole-fg-3 mr-0.5 h-4 w-4 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'rotate-90' : ''}`} />
@@ -75,10 +75,10 @@ export const TodoListCard = ({ tool }: { tool: CliToolState }) => {
 			<span className='text-loophole-fg-4 text-xs ml-auto mr-1 flex-shrink-0'>{done}/{live.length}</span>
 		</div>
 		<div className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'opacity-100 py-1' : 'max-h-0 opacity-0'}`}>
-			<div className='flex flex-col gap-1 max-h-[300px] overflow-y-auto'>
+			<div className='flex flex-col gap-1 max-h-[300px] overflow-y-auto min-w-0'>
 				{items.length === 0
 					? <div className='text-loophole-fg-4 text-xs italic px-2'>{running ? 'Planning…' : 'No items yet.'}</div>
-					: items.map((item, i) => <div key={i} className={`flex items-start gap-1.5 px-2 text-xs ${item.status === 'completed' || item.status === 'cancelled' ? 'text-loophole-fg-4' : 'text-loophole-fg-2'}`}>
+					: items.map((item, i) => <div key={i} className={`flex items-start gap-1.5 px-2 text-xs min-w-0 ${item.status === 'completed' || item.status === 'cancelled' ? 'text-loophole-fg-4' : 'text-loophole-fg-2'}`}>
 						<span className='flex-shrink-0 mt-0.5'>
 							{item.status === 'completed'
 								? <Check size={12} className='text-emerald-500' />
@@ -88,7 +88,7 @@ export const TodoListCard = ({ tool }: { tool: CliToolState }) => {
 										? <Loader2 size={12} className='animate-spin text-loophole-fg-3' />
 										: <Circle size={12} className='text-loophole-fg-4' />}
 						</span>
-						<span className={`${item.status === 'completed' ? 'line-through' : ''} ${item.status === 'cancelled' ? 'line-through opacity-60' : ''}`}>{item.content}</span>
+						<span className={`min-w-0 break-words ${item.status === 'completed' ? 'line-through' : ''} ${item.status === 'cancelled' ? 'line-through opacity-60' : ''}`}>{item.content}</span>
 						{item.priority && <span className='text-loophole-fg-4 text-[10px] italic ml-auto flex-shrink-0'>{item.priority}</span>}
 					</div>)}
 			</div>

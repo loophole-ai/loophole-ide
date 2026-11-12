@@ -274,3 +274,19 @@ export interface LoopholeCliVoiceWsEvent {
 	text?: string;
 	error?: string;
 }
+
+/**
+ * Largest tool input/output/compaction string the IDE keeps for one CLI call.
+ * A web page or file dump can be arbitrarily large; keeping it whole would sit
+ * in the webview's memory (and thread storage) forever, so it is cut here.
+ */
+const CLI_TEXT_LIMIT = 20_000;
+
+/** Marker appended when CLI text is cut at CLI_TEXT_LIMIT. */
+export const LOOPHOLE_CLI_TRUNCATION_MARKER = '\n… (truncated)';
+
+/** Truncate CLI text before it is stored or sent to the webview. */
+export const truncateLoopholeCliText = (text: string, limit: number = CLI_TEXT_LIMIT): string => {
+	if (text.length <= limit) return text;
+	return `${text.slice(0, limit)}${LOOPHOLE_CLI_TRUNCATION_MARKER}`;
+};
