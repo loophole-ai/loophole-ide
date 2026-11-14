@@ -98,6 +98,11 @@ configurationRegistry.registerConfiguration({
 			description: nls.localize('loophole.cli.customProviders', 'OpenAI-compatible providers added in Settings > Providers.'),
 			default: [],
 		},
+		'loophole.updates.checkOnStartup': {
+			type: 'boolean',
+			description: nls.localize('loophole.updates.checkOnStartup', 'Check for Loophole CLI and editor updates when the workbench starts.'),
+			default: true,
+		},
 		[LoopholeNotificationCategorySettingId('chatErrors')]: {
 			type: 'boolean',
 			description: nls.localize('loophole.notifications.chatErrors', 'Show a notification when a chat response fails.'),

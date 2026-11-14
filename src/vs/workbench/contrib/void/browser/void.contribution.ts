@@ -22,6 +22,7 @@ import './autocompleteService.js'
 import './loopholeConfiguration.js'
 import './loopholeFimProvider.js'
 import './loopholeAutocompleteStatusBar.js'
+import './loopholeUpdateChecker.js'
 
 // register Context services
 // import './contextGatheringService.js'

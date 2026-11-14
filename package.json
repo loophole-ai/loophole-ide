@@ -375,6 +375,11 @@
 					"default": [],
 					"description": "OpenAI-compatible providers added in Settings > Providers."
 				},
+				"loophole.updates.checkOnStartup": {
+					"type": "boolean",
+					"default": true,
+					"description": "Check for Loophole CLI and editor updates when the workbench starts."
+				},
 				"loophole.notifications.chatErrors": {
 					"type": "boolean",
 					"default": true,
