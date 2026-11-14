@@ -584,7 +584,23 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	updateCliUsage = (threadId: string, usage: CliUsage) => {
 		if (!this.state.allThreads[threadId]) return
+		const previous = this.state.allThreads[threadId].state.cliUsage
 		this._setThreadState(threadId, { cliUsage: usage })
+		// The graph is per model, and the CLI only reports cumulative session totals,
+		// so attribute the growth since the previous snapshot to the model that is
+		// currently selected. That is accurate for a session that keeps one model,
+		// which is how the composer works (changing the model starts a new session).
+		const delta = usage.tokens.input + usage.tokens.output - (previous ? previous.tokens.input + previous.tokens.output : 0)
+		if (delta <= 0) return
+		const ref = this._configurationService.getValue<string>('loophole.cli.model') ?? ''
+		const slash = ref.indexOf('/')
+		this._tokenUsageService.addTokens({
+			inputTokens: Math.max(0, usage.tokens.input - (previous?.tokens.input ?? 0)),
+			outputTokens: Math.max(0, usage.tokens.output - (previous?.tokens.output ?? 0)),
+			totalTokens: delta,
+			providerName: slash > 0 ? ref.slice(0, slash) : undefined,
+			modelName: slash > 0 ? ref.slice(slash + 1) : '',
+		})
 	}
 
 

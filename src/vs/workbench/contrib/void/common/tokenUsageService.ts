@@ -1,5 +1,5 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2026 Garv Agnihotri, Inc. All rights reserved.
+ *  Copyright 2026 Loophole AI, Inc. All rights reserved.
  *--------------------------------------------------------------------------------------*/
 
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';

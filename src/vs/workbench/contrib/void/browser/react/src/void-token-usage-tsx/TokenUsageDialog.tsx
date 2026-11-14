@@ -1,5 +1,5 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2026 Garv Agnihotri, Inc. All rights reserved.
+ *  Copyright 2026 Loophole AI, Inc. All rights reserved.
  *--------------------------------------------------------------------------------------*/
 
 import { useEffect, useRef, useState, useCallback } from 'react';
@@ -172,7 +172,7 @@ const UsageChart = ({ data, allModels }: ChartProps) => {
 					Math.max(PAD.top, tooltip.barY - 20),
 					CHART_HEIGHT - tooltipHeight
 				);
-			
+
                 const sorted = Object.entries(tooltip.entry.models)
                     .sort((a, b) => b[1].tokens - a[1].tokens);
 

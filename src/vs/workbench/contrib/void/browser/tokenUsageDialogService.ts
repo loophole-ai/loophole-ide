@@ -1,5 +1,5 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2026 Garv Agnihotri, Inc. All rights reserved.
+ *  Copyright 2026 Loophole AI, Inc. All rights reserved.
  *--------------------------------------------------------------------------------------*/
 
 import { Disposable, toDisposable } from '../../../../base/common/lifecycle.js';

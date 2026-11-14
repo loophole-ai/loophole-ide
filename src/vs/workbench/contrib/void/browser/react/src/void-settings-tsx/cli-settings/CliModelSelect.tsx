@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useAccessor } from '../../util/services.js'
 import { VoidSimpleInputBox } from '../../util/inputs.js'
 import { LoopholeCliDisabledModelsSettingId, LoopholeCliCustomProvidersSettingId, type LoopholeCliCustomProvider } from './cliSettingIds.js'
@@ -132,15 +133,46 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 
 	const [open, setOpen] = useState(false)
 	const [search, setSearch] = useState('')
+	const [pos, setPos] = useState<{ left: number, top: number, width: number } | null>(null)
 	const box = useRef<HTMLDivElement>(null)
+	const menu = useRef<HTMLDivElement>(null)
+	const trigger = useRef<HTMLButtonElement>(null)
+
+	const WIDTH = 340
+
+	/**
+	 * Open the list in a fixed-position portal.
+	 *
+	 * The composer and the settings rows both live inside containers with their own
+	 * overflow and stacking context, so an absolutely positioned menu rendered in
+	 * place was drawn behind the input box. A portal on document.body, positioned
+	 * from the trigger, cannot be clipped by any ancestor.
+	 */
+	const openMenu = () => {
+		const rect = trigger.current?.getBoundingClientRect()
+		if (!rect) return
+		const width = Math.min(WIDTH, window.innerWidth - 16)
+		const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))
+		const below = rect.bottom + 4
+		const openUp = below + 320 > window.innerHeight
+		setPos({ left, top: openUp ? Math.max(8, rect.top - 324) : below, width })
+		setOpen(true)
+	}
 
 	useEffect(() => {
 		if (!open) return
 		const close = (event: MouseEvent) => {
-			if (!box.current?.contains(event.target as Node)) setOpen(false)
+			const target = event.target as Node
+			if (box.current?.contains(target) || menu.current?.contains(target)) return
+			setOpen(false)
 		}
+		const onResize = () => setOpen(false)
 		window.addEventListener('mousedown', close)
-		return () => window.removeEventListener('mousedown', close)
+		window.addEventListener('resize', onResize)
+		return () => {
+			window.removeEventListener('mousedown', close)
+			window.removeEventListener('resize', onResize)
+		}
 	}, [open])
 
 	const query = search.trim().toLowerCase()
@@ -161,15 +193,20 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 
 	return <div ref={box} className='relative'>
 		<button
+			ref={trigger}
 			type='button'
-			onClick={() => setOpen((next) => !next)}
+			onClick={() => (open ? setOpen(false) : openMenu())}
 			className={className ?? 'text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded-md px-2 py-1'}
 			title={selected?.label ?? value}
 		>
 			{selected?.label ?? (value || 'Select model')}
 		</button>
 
-		{open ? <div className='absolute right-0 z-[9999999] mt-1 w-[340px] max-w-[80vw] rounded-md border border-loophole-border-1 bg-loophole-bg-2-alt shadow-lg overflow-hidden'>
+		{open && pos ? createPortal(<div
+			ref={menu}
+			className='rounded-md border border-loophole-border-1 bg-loophole-bg-2-alt shadow-lg overflow-hidden'
+			style={{ position: 'fixed', left: pos.left, top: pos.top, width: pos.width, zIndex: 1000000 }}
+		>
 			<div className='p-2 border-b border-loophole-border-2'>
 				<VoidSimpleInputBox value={search} onChangeValue={setSearch} placeholder='Search models' compact={true} />
 			</div>
@@ -186,6 +223,6 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 						{option.detail ? <div className='text-xs text-loophole-fg-3'>{option.detail}</div> : null}
 					</button>)}
 			</div>
-		</div> : null}
+		</div>, document.body) : null}
 	</div>
 }

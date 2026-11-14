@@ -60,7 +60,6 @@ function freePort(): Promise<number> {
 /** Bundled binary, then overrides, then PATH - but only if it really is the Loophole CLI. */
 function resolveBinary(explicit?: string): string {
 	if (explicit) return explicit;
-	if (process.env.LOOPHOLE_CLI_BIN) return process.env.LOOPHOLE_CLI_BIN;
 	const exe = process.platform === 'win32' ? 'loophole.exe' : 'loophole';
 	const cliExe = process.platform === 'win32' ? 'loophole-cli.exe' : 'loophole-cli';
 	// A packaged build puts the app in <install>/resources/app next to the
@@ -74,9 +73,14 @@ function resolveBinary(explicit?: string): string {
 		path.join(dir, 'resources', exe),
 		path.join(dir, 'bin', cliExe),
 	]
+	// The binary shipped with this install wins over an environment override:
+	// a stale LOOPHOLE_CLI_BIN from an earlier setup would otherwise pin an old
+	// version forever, which is exactly how About showed 1.1.4 next to a 1.1.6
+	// release.
 	for (const candidate of candidates) {
 		if (existsSync(candidate)) return candidate
 	}
+	if (process.env.LOOPHOLE_CLI_BIN) return process.env.LOOPHOLE_CLI_BIN;
 	// Nothing bundled: fall back to PATH, but the probe rejects the editor's own
 	// `loophole` shim, which shares the name and would exit 0 on `serve`.
 	const onPath = ['loophole-cli', exe, cliExe].find((name) => isLoopholeCli(name))

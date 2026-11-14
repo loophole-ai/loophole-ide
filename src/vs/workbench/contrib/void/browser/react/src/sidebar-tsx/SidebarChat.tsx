@@ -297,6 +297,7 @@ const ContextWindowIndicator = ({ featureName }: { featureName: FeatureName }) =
 	const accessor = useAccessor()
 	const settingsState = useSettingsState()
 	const chatThreadsState = useChatThreadsState()
+	const configService = accessor.get('IConfigurationService')
 
 	const currentThread = chatThreadsState.allThreads[chatThreadsState.currentThreadId]
 	const modelSelection = settingsState.modelSelectionOfFeature[featureName]
@@ -307,6 +308,13 @@ const ContextWindowIndicator = ({ featureName }: { featureName: FeatureName }) =
 	}, [modelSelection, settingsState.overridesOfModel])
 
 	const estimatedUsage = useMemo(() => {
+		// In CLI mode the CLI owns the context, so the wheel must report what it
+		// reports for the bound session (0 on a fresh chat) rather than this
+		// local estimate, which always starts with a system-prompt baseline.
+		const cliUsage = currentThread?.state?.cliUsage as { tokens?: { input?: number } } | undefined
+		if (configService.getValue<boolean>('loophole.cli.enabled') === true) {
+			return Math.max(0, Math.round(cliUsage?.tokens?.input ?? 0))
+		}
 		if (!currentThread || !modelCapabilities) return 0
 
 		// PRIMARY: use real inputTokens from the last API response —

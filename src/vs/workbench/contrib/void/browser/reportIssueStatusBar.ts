@@ -1,5 +1,5 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2026 Garv Agnihotri, Inc. All rights reserved.
+ *  Copyright 2026 Loophole AI, Inc. All rights reserved.
  *--------------------------------------------------------------------------------------*/
 
 import { Disposable } from '../../../../base/common/lifecycle.js';
@@ -52,7 +52,7 @@ export class ReportIssueStatusBarService extends Disposable implements IReportIs
 		// Register the command
 		this._register(
 			CommandsRegistry.registerCommand(REPORT_ISSUE_COMMAND_ID, async () => {
-				const issueUrl = this.productService.reportIssueUrl || 'https://github.com/loophole-ai/loophole-ide/issues/new';
+				const issueUrl = this.productService.reportIssueUrl || 'https://github.com/loophole-ai/issues/issues/new';
 				await this.openerService.open(URI.parse(issueUrl));
 			})
 		);

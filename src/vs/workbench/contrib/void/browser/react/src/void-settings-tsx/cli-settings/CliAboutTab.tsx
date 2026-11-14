@@ -72,6 +72,9 @@ export const CliAboutTab = () => {
 				<SettingsRow label='CLI location' description={cliPath || 'Using a binary from PATH.'}>
 					<span className='text-xs text-loophole-fg-3'>binary</span>
 				</SettingsRow>
+				<SettingsRow label='Latest release' description={update?.latest ? `Published: ${update.latest}` : 'Not checked yet.'}>
+					<span className='text-xs text-loophole-fg-2'>{update?.latest || '—'}</span>
+				</SettingsRow>
 				<SettingsRow label='Engine' description='Chat, agents, providers, and sessions all run in the Loophole CLI.'>
 					<span className='text-xs text-loophole-fg-3'>local CLI</span>
 				</SettingsRow>

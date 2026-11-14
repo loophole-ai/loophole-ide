@@ -638,10 +638,10 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		// Inline completion is owned by the Loophole CLI FIM provider when that
 		// feature is on: it talks to the provider directly, so letting this legacy
 		// provider run as well would double-request and fail against a provider
-		// that no longer exists in CLI mode.
-		const fimEnabled = this._configService.getValue<boolean>('loophole.fim.enabled') !== false
-		const fimKey = this._configService.getValue<string>('loophole.fim.apiKey') ?? ''
-		if (fimEnabled && fimKey) return []
+		// that no longer exists in CLI mode. Gated on the toggle alone — without a
+		// key the FIM provider is simply inert, which is better than this path
+		// erroring on every keystroke.
+		if (this._configService.getValue<boolean>('loophole.fim.enabled') !== false) return []
 
 		const testMode = false
 
