@@ -64,27 +64,14 @@ export class LoopholeUpdateChecker extends Disposable implements IWorkbenchContr
 		try {
 			const update = await this.cli.updateCheck();
 			if (!update.updateAvailable || !update.latest) return;
+			// Keep the bundled CLI current without asking: a stale CLI is the most
+			// common "nothing works" report after an install.
+			const result = await this.cli.updateInstall({ version: update.latest });
 			this.notifications.notify({
-				severity: Severity.Info,
-				message: localize('loophole.cliUpdate', 'Loophole CLI {0} is available (you have {1}).', update.latest, update.current),
-				actions: {
-					primary: [{
-						id: 'loophole.cliUpdate.install',
-						label: localize('loophole.cliUpdate.install', 'Update CLI'),
-						tooltip: '',
-						class: undefined,
-						enabled: true,
-						run: async () => {
-							const result = await this.cli.updateInstall({ version: update.latest });
-							this.notifications.notify({
-								severity: result.ok ? Severity.Info : Severity.Error,
-								message: result.ok
-									? localize('loophole.cliUpdate.done', 'Loophole CLI updated to {0}.', result.version)
-									: localize('loophole.cliUpdate.failed', 'Loophole CLI update failed: {0}', result.output),
-							});
-						},
-					}],
-				},
+				severity: result.ok ? Severity.Info : Severity.Warning,
+				message: result.ok
+					? localize('loophole.cliUpdate', 'Loophole CLI updated to {0}.', result.version)
+					: localize('loophole.cliUpdateFailed', 'Could not update the Loophole CLI to {0}: {1}', update.latest, result.output),
 			});
 		} catch {
 			// Offline or the registry is unreachable: stay quiet on startup.

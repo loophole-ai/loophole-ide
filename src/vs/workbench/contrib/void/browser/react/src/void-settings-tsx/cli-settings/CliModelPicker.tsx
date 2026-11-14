@@ -54,6 +54,7 @@ export const CliModelPicker = ({ className }: { className?: string }) => {
 			models={enabled}
 			onChange={choose}
 			onCustom={() => setCustom(true)}
+			placement='bottom-end'
 			className={className ?? 'text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded-md px-2 py-1'}
 		/>
 		{custom ? <CliCustomModelDialog

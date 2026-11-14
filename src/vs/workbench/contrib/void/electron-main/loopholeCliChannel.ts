@@ -83,7 +83,7 @@ function resolveBinary(explicit?: string): string {
 	for (const candidate of candidates) {
 		if (existsSync(candidate)) return candidate
 	}
-	if (process.env.LOOPHOLE_CLI_BIN) return process.env.LOOPHOLE_CLI_BIN;
+	if (process.env.LOOPHOLE_CLI_BIN && existsSync(process.env.LOOPHOLE_CLI_BIN)) return process.env.LOOPHOLE_CLI_BIN;
 	// Nothing bundled: fall back to PATH, but the probe rejects the editor's own
 	// `loophole` shim, which shares the name and would exit 0 on `serve`.
 	const onPath = ['loophole-cli', exe, cliExe].find((name) => isLoopholeCli(name))

@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/react'
 import { useAccessor } from '../../util/services.js'
 import { VoidSimpleInputBox } from '../../util/inputs.js'
 import { LoopholeCliDisabledModelsSettingId, LoopholeCliCustomProvidersSettingId, type LoopholeCliCustomProvider } from './cliSettingIds.js'
@@ -107,13 +108,14 @@ export const useCliModels = () => {
  * consistent: type to filter provider, model id, and display name. Used by the
  * Models / Autocomplete / Commit Message rows and by the composer.
  */
-export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault = true, className }: {
+export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault = true, className, placement = 'bottom-start' }: {
 	value: string
 	models: LoopholeCliModelInfo[]
 	onChange: (value: string) => void
 	onCustom?: () => void
 	allowDefault?: boolean
 	className?: string
+	placement?: 'bottom-start' | 'bottom-end'
 }) => {
 	const options = useMemo(() => {
 		const list: CliModelOption[] = []
@@ -133,6 +135,17 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 	const [open, setOpen] = useState(false)
 	const [search, setSearch] = useState('')
 	const box = useRef<HTMLDivElement>(null)
+
+	// Anchored where the trigger is (the old position), but positioned with
+	// floating-ui in `fixed` coordinates like the rest of the editor's dropdowns,
+	// so the menu is never clipped by the composer or a settings panel.
+	const { refs, floatingStyles } = useFloating({
+		open,
+		placement,
+		strategy: 'fixed',
+		middleware: [offset(4), flip(), shift()],
+		whileElementsMounted: autoUpdate,
+	})
 
 	useEffect(() => {
 		if (!open) return
@@ -161,6 +174,7 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 
 	return <div ref={box} className='relative'>
 		<button
+			ref={refs.setReference}
 			type='button'
 			onClick={() => setOpen((next) => !next)}
 			className={className ?? 'text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded-md px-2 py-1'}
@@ -170,26 +184,25 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 		</button>
 
 		{open ? <div
-			className='fixed inset-0 z-[9999999] flex items-start justify-center bg-black/40 pt-[18vh]'
-			onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false) }}
+			ref={refs.setFloating}
+			style={floatingStyles}
+			className='z-[9999999] w-[340px] max-w-[92vw] overflow-hidden rounded-md border border-loophole-border-1 bg-loophole-bg-2-alt shadow-lg'
 		>
-			<div className='w-[380px] max-w-[92vw] max-h-[70vh] overflow-hidden rounded-md border border-loophole-border-1 bg-loophole-bg-2-alt shadow-lg'>
-				<div className='p-2 border-b border-loophole-border-2'>
-					<VoidSimpleInputBox value={search} onChangeValue={setSearch} placeholder='Search models' compact={true} />
-				</div>
-				<div className='max-h-[48vh] overflow-y-auto py-1'>
-					{filtered.length === 0
-						? <div className='px-3 py-2 text-xs text-loophole-fg-3'>No matching models</div>
-						: filtered.map((option, index) => <button
-							key={`${option.value}:${index}`}
-							type='button'
-							onClick={() => pick(option)}
-							className={`w-full text-left px-3 py-1.5 hover:bg-loophole-bg-2 ${option.value === value ? 'text-loophole-fg-1' : 'text-loophole-fg-2'}`}
-						>
-							<div className='text-sm'>{option.label}</div>
-							{option.detail ? <div className='text-xs text-loophole-fg-3'>{option.detail}</div> : null}
-						</button>)}
-				</div>
+			<div className='p-2 border-b border-loophole-border-2'>
+				<VoidSimpleInputBox value={search} onChangeValue={setSearch} placeholder='Search models' compact={true} />
+			</div>
+			<div className='max-h-[280px] overflow-y-auto py-1'>
+				{filtered.length === 0
+					? <div className='px-3 py-2 text-xs text-loophole-fg-3'>No matching models</div>
+					: filtered.map((option, index) => <button
+						key={`${option.value}:${index}`}
+						type='button'
+						onClick={() => pick(option)}
+						className={`w-full text-left px-3 py-1.5 hover:bg-loophole-bg-2 ${option.value === value ? 'text-loophole-fg-1' : 'text-loophole-fg-2'}`}
+					>
+						<div className='text-sm'>{option.label}</div>
+						{option.detail ? <div className='text-xs text-loophole-fg-3'>{option.detail}</div> : null}
+					</button>)}
 			</div>
 		</div> : null}
 	</div>
