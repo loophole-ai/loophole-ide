@@ -72,6 +72,9 @@ function resolveBinary(explicit?: string): string {
 		path.join(dir, 'resources', cliExe),
 		path.join(dir, 'resources', exe),
 		path.join(dir, 'bin', cliExe),
+		// `install.sh` and the npm global package both drop the binary here.
+		path.join(homedir(), '.loophole', 'bin', cliExe),
+		path.join(homedir(), '.loophole', 'bin', exe),
 	]
 	// The binary shipped with this install wins over an environment override:
 	// a stale LOOPHOLE_CLI_BIN from an earlier setup would otherwise pin an old
@@ -177,6 +180,7 @@ export class LoopholeCliChannel implements IServerChannel {
 	/** Runs `<binary> --version`; the CLI is the only thing needed to answer this. */
 	private _callVersion(): Promise<string> {
 		const binary = resolveBinary();
+		if (!existsSync(binary)) return Promise.resolve('not installed');
 		return new Promise((resolve) => {
 			execFile(binary, ['--version'], { windowsHide: true, timeout: 10_000 }, (_error, stdout) => {
 				const line = String(stdout ?? '').trim().split('\n')[0];
@@ -424,6 +428,15 @@ export class LoopholeCliChannel implements IServerChannel {
 		this.state = 'starting';
 
 		const binary = resolveBinary(params.binaryPath);
+		// Resolve before spawning: a missing binary otherwise surfaces as the
+		// cryptic "exited with code -4058" (libuv ENOENT), which tells the user
+		// nothing about what is actually wrong.
+		if (!existsSync(binary)) {
+			this._teardown('error');
+			this.statusError = `Loophole CLI not found at "${binary}". Install @loophole-ai/cli, or point LOOPHOLE_CLI_BIN at the binary.`;
+			console.warn(`[LoopholeCli] ${this.statusError}`);
+			return this._callStatus();
+		}
 		const password = randomBytes(24).toString('base64url');
 		const port = await freePort();
 		const cwd = params.workspacePath ?? process.cwd();

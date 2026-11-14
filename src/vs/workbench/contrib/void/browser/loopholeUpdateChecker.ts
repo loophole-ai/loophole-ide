@@ -93,17 +93,20 @@ export class LoopholeUpdateChecker extends Disposable implements IWorkbenchContr
 
 	private async checkEditor(): Promise<void> {
 		try {
+			// Compare against the Loophole release version. `product.version` is
+			// VS Code's (1.121.x), so using it made every build look outdated.
+			const current = this.product.loopholeVersion ?? this.product.version;
 			const response = await fetch(`https://api.github.com/repos/${IDE_REPO}/releases/latest`, {
-				headers: { accept: 'application/vnd.github+json', 'user-agent': `loophole/${this.product.version}` },
+				headers: { accept: 'application/vnd.github+json', 'user-agent': `loophole/${current}` },
 			});
 			if (!response.ok) return;
 			const release = (await response.json()) as { tag_name?: string; html_url?: string };
 			const latest = release.tag_name ?? '';
-			if (!latest || !isNewer(latest, this.product.version)) return;
+			if (!latest || !isNewer(latest, current)) return;
 			const url = release.html_url ?? `https://github.com/${IDE_REPO}/releases/latest`;
 			this.notifications.notify({
 				severity: Severity.Info,
-				message: localize('loophole.editorUpdate', 'Loophole {0} is available (you have {1}).', latest, this.product.version),
+				message: localize('loophole.editorUpdate', 'Loophole {0} is available (you have {1}).', latest, current),
 				actions: {
 					primary: [{
 						id: 'loophole.editorUpdate.download',

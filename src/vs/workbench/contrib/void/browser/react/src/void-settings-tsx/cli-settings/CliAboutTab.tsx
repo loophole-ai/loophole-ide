@@ -17,6 +17,10 @@ export const CliAboutTab = () => {
 
 	const [version, setVersion] = useState('')
 	const [cliPath, setCliPath] = useState('')
+	// The Loophole release version, not VS Code's: `product.version` is the
+	// upstream editor version (1.121.x) and comparing it against release tags made
+	// every build look outdated.
+	const appVersion = productService.loopholeVersion ?? productService.version
 	const [update, setUpdate] = useState<LoopholeCliUpdateInfo | null>(null)
 	const [checking, setChecking] = useState(false)
 	const [installing, setInstalling] = useState(false)
@@ -64,7 +68,7 @@ export const CliAboutTab = () => {
 		<SettingsSection title='About'>
 			<SettingsList>
 				<SettingsRow label='Application' description={productService.nameLong}>
-					<span className='text-xs text-loophole-fg-2'>{productService.version}</span>
+					<span className='text-xs text-loophole-fg-2'>{appVersion}</span>
 				</SettingsRow>
 				<SettingsRow label='Loophole CLI'>
 					<span className='text-xs text-loophole-fg-2'>{version || 'Checking...'}</span>
