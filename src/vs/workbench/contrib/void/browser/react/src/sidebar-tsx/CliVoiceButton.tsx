@@ -129,7 +129,9 @@ export const useCliVoiceRecorder = (
 			const preferred = configured.includes('/') ? configured.slice(configured.lastIndexOf('/') + 1) : configured
 			const model = pickModel(Array.isArray(models) ? models : [], preferred || fallback);
 			if (!model) {
-				setError('No realtime voice model is available from the Loophole CLI. Add a provider API key in Settings > Providers.');
+				const message = 'Voice input needs a provider with a transcription model. Connect one in Settings > Providers, then pick it in Settings > Voice.';
+				setError(message);
+				notificationService.info(message);
 				return;
 			}
 			const voiceModel = models.find((m) => m.model === model);

@@ -21,6 +21,7 @@ import { StorageScope, StorageTarget } from '../../../../../../../platform/stora
 import { CliProvidersTab } from './cli-settings/CliProvidersTab.js'
 import { CliModelsTab } from './cli-settings/CliModelsTab.js'
 import { CliAutocompleteTab } from './cli-settings/CliAutocompleteTab.js'
+import { CliVoiceTab } from './cli-settings/CliVoiceTab.js'
 import { CliContextTab } from './cli-settings/CliContextTab.js'
 import { CliCommitMessageTab } from './cli-settings/CliCommitMessageTab.js'
 import { CliNotificationsTab } from './cli-settings/CliNotificationsTab.js'
@@ -44,6 +45,7 @@ const navItems: { tab: Tab, label: string }[] = [
 	{ tab: 'models', label: 'Models' },
 	{ tab: 'providers', label: 'Providers' },
 	{ tab: 'autocomplete', label: 'Autocomplete' },
+	{ tab: 'voice', label: 'Voice' },
 	{ tab: 'context', label: 'Context' },
 	{ tab: 'commitMessage', label: 'Commit Message' },
 	{ tab: 'notifications', label: 'Notifications' },
@@ -583,6 +585,10 @@ export const Settings = () => {
 
 							<div className={shouldShowTab('autocomplete') ? '' : 'hidden'}>
 								<ErrorBoundary><CliAutocompleteTab /></ErrorBoundary>
+							</div>
+
+							<div className={shouldShowTab('voice') ? '' : 'hidden'}>
+								<ErrorBoundary><CliVoiceTab /></ErrorBoundary>
 							</div>
 
 							<div className={shouldShowTab('context') ? '' : 'hidden'}>

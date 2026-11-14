@@ -7,8 +7,6 @@ import React, { ButtonHTMLAttributes, FormEvent, FormHTMLAttributes, Fragment, K
 
 
 import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useCliPermissions } from '../util/services.js';
-import { useLocalVoiceModel, useLocalVoiceRecorder } from '../util/localVoiceModel.js';
-import { localVoiceModelService } from '../../../localVoiceModelService.js';
 import { CliPermissionCard } from './CliPermissionCard.js';
 import { CliUsageChip } from './CliUsageChip.js';
 import { CliSlashMenu, filterCliSlashEntries, useCliSlashEntries } from './CliSlashMenu.js';
@@ -3174,22 +3172,9 @@ export const SidebarChat = () => {
 			.catch(() => undefined)
 		return () => { cancelled = true }
 	}, [cliEnabled, cliService])
-	const voiceState = useLocalVoiceModel()
-	const selectedVoiceModelId = settingsState.globalSettings.localVoiceModelId
-	const selectedVoiceModelStatus = selectedVoiceModelId === null
-		? undefined
-		: voiceState.statusByModel[selectedVoiceModelId]
-	const isVoiceModelReady = selectedVoiceModelStatus === 'ready'
-	useEffect(() => {
-		if (!selectedVoiceModelId || selectedVoiceModelStatus !== 'installed') return;
-		void localVoiceModelService.ensureModel(selectedVoiceModelId).catch(() => undefined);
-	}, [selectedVoiceModelId, selectedVoiceModelStatus])
-	const onVoiceTranscript = useCallback((text: string) => {
-		textAreaFnsRef.current?.insertTextAtCursor(text)
-	}, [])
-	const voiceRecorder = useLocalVoiceRecorder(isVoiceModelReady ? selectedVoiceModelId : null, onVoiceTranscript)
-	// CLI voice (CLI mode only; click-driven, no polling). Live transcripts
-	// insert into the composer; Enter/stop sends through the normal CLI chat path.
+	// Speech input is provider-backed only; the downloaded local models were
+	// removed because they were slower and much less accurate than the provider
+	// transcription models, and they carried a large download per machine.
 	const cliVoiceBaseline = useCallback(() => textAreaRef.current?.value ?? '', [])
 	const cliVoice = useCliVoiceRecorder(cliEnabled, textAreaFnsRef, cliVoiceBaseline)
 	// ----- HIGHER STATE -----
@@ -3302,7 +3287,6 @@ export const SidebarChat = () => {
 	const onSubmit = useCallback(async (_forceSubmit?: string) => {
 
 		if (isDisabled && !_forceSubmit) return
-		if (voiceRecorder.isRecording || voiceRecorder.isTranscribing) return
 		if (isRunning) return
 
 		const threadId = chatThreadsService.state.currentThreadId
@@ -3334,7 +3318,7 @@ export const SidebarChat = () => {
 		textAreaFnsRef.current?.setValue('')
 		textAreaRef.current?.focus() // focus input after submit
 
-	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState, voiceRecorder.isRecording, voiceRecorder.isTranscribing, cliEnabled, runSlashSubmit, cliVoice])
+	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState, cliEnabled, runSlashSubmit, cliVoice])
 
 	const onAbort = async () => {
 		const threadId = currentThread.id
@@ -3502,28 +3486,11 @@ export const SidebarChat = () => {
 		}
 	}, [onSubmit, onAbort, isRunning, cliEnabled, slashOpen, cliSlashEntries, slashIndex, onPickSlash])
 
-	// Sized and styled like the attach button next to it. The icon never changes:
-	// dictating only tints it red, so the button does not resize or swap glyphs
-	// under the cursor mid-sentence.
-	// CLI mode -> CLI voice (click-driven); otherwise keep the local model button.
-	const localVoiceButton = isVoiceModelReady && !isRunning ? <button
-		type='button'
-		className={`flex items-center justify-center transition-colors ${voiceRecorder.isRecording ? 'text-red-500' : 'text-loophole-fg-2 opacity-60 hover:opacity-100'} ${voiceRecorder.isTranscribing ? 'cursor-wait opacity-50' : 'cursor-pointer'}`}
-		aria-label={voiceRecorder.isRecording ? 'Stop dictation' : 'Start dictation'}
-		aria-pressed={voiceRecorder.isRecording}
-		disabled={voiceRecorder.isTranscribing}
-		title={voiceRecorder.error || (voiceRecorder.isRecording ? 'Stop dictation' : 'Dictate with a local model')}
-		onMouseDown={event => event.preventDefault()}
-		onClick={() => {
-			if (voiceRecorder.isRecording) voiceRecorder.stop()
-			else void voiceRecorder.start()
-		}}
-	>
-		<Mic size={13} strokeWidth={2} />
-	</button> : undefined
-	const voiceButton = cliEnabled
-		? (!isRunning ? <CliMicButton voice={cliVoice} /> : undefined)
-		: localVoiceButton
+	// The mic always uses the CLI's provider-backed speech-to-text, never a
+	// downloaded local model: provider models are materially better at accents,
+	// noise and technical vocabulary, and there is nothing to download or keep warm.
+	const voiceEnabled = configService.getValue<boolean>('loophole.voice.enabled') !== false
+	const voiceButton = !isRunning && voiceEnabled ? <CliMicButton voice={cliVoice} /> : undefined
 
 	const slashMenuHTML = cliEnabled && slashOpen ? <div className='px-2 pb-1'>
 		<CliSlashMenu
@@ -3541,7 +3508,7 @@ export const SidebarChat = () => {
 		onSubmit={() => onSubmit()}
 		onAbort={onAbort}
 		isStreaming={!!isRunning}
-		isDisabled={isDisabled || voiceRecorder.isRecording || voiceRecorder.isTranscribing}
+		isDisabled={isDisabled}
 		showSelections={true}
 		// showProspectiveSelections={previousMessagesHTML.length === 0}
 		selections={selections}

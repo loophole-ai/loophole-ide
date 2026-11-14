@@ -380,6 +380,11 @@
 					"default": true,
 					"description": "Check for Loophole CLI and editor updates when the workbench starts."
 				},
+				"loophole.voice.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show the microphone button in the composer. Speech-to-text uses the provider model selected in Settings > Voice."
+				},
 				"loophole.notifications.chatErrors": {
 					"type": "boolean",
 					"default": true,

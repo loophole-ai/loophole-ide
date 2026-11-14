@@ -103,6 +103,11 @@ configurationRegistry.registerConfiguration({
 			description: nls.localize('loophole.updates.checkOnStartup', 'Check for Loophole CLI and editor updates when the workbench starts.'),
 			default: true,
 		},
+		'loophole.voice.enabled': {
+			type: 'boolean',
+			description: nls.localize('loophole.voice.enabled', 'Show the microphone button in the composer. Speech-to-text uses the provider model selected in Settings > Voice.'),
+			default: true,
+		},
 		[LoopholeNotificationCategorySettingId('chatErrors')]: {
 			type: 'boolean',
 			description: nls.localize('loophole.notifications.chatErrors', 'Show a notification when a chat response fails.'),
