@@ -641,7 +641,10 @@ export class LoopholeCliChannel implements IServerChannel {
 
 	private _callFim(params: LoopholeCliFimParams): Promise<void> {
 		const { requestId, prefix, suffix, apiKey } = params;
-		const model = params.model ?? 'mercury-edit-2';
+		// Same whitelist the editor enforces: the FIM endpoint 400s anything else.
+		const FIM_MODELS = ['mercury-coder', 'mercury-coder-small', 'mercury-edit', 'mercury-edit-2'];
+		const requested = params.model?.trim() ?? '';
+		const model = FIM_MODELS.includes(requested) ? requested : 'mercury-edit-2';
 		const maxTokens = params.maxTokens ?? 256;
 		const temperature = params.temperature ?? 0;
 		if (!apiKey) {

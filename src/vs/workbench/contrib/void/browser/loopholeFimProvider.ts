@@ -75,11 +75,22 @@ export class LoopholeFimProvider extends Disposable implements IWorkbenchContrib
 		}));
 	}
 
+	/**
+	 * Inception's FIM endpoint accepts exactly these models. Anything else is a
+	 * bad or stale value (older settings UIs persisted display names) and the
+	 * API rejects it with a 400, so normalize here instead of shipping garbage.
+	 */
+	private static normalizeModel(model: string): string {
+		const FIM_MODELS = ['mercury-coder', 'mercury-coder-small', 'mercury-edit', 'mercury-edit-2'];
+		const trimmed = model.trim();
+		return FIM_MODELS.includes(trimmed) ? trimmed : 'mercury-edit-2';
+	}
+
 	private _settings(): { enabled: boolean; apiKey: string; model: string } {
 		return {
 			enabled: this._configurationService.getValue<boolean>('loophole.fim.enabled') !== false,
 			apiKey: this._configurationService.getValue<string>('loophole.fim.apiKey') ?? '',
-			model: this._configurationService.getValue<string>('loophole.fim.model') ?? 'mercury-edit-2',
+			model: LoopholeFimProvider.normalizeModel(this._configurationService.getValue<string>('loophole.fim.model') ?? ''),
 		};
 	}
 
