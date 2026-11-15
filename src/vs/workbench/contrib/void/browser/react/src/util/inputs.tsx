@@ -1285,6 +1285,9 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 	matchInputWidth = false,
 	gapPx = 0,
 	offsetPx = -6,
+	searchable = false,
+	searchPlaceholder = 'Search models...',
+	isPinnedOption,
 }: {
 	options: T[];
 	selectedOption: T | undefined;
@@ -1298,9 +1301,29 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 	matchInputWidth?: boolean;
 	gapPx?: number;
 	offsetPx?: number;
+	searchable?: boolean;
+	searchPlaceholder?: string;
+	isPinnedOption?: (option: T) => boolean;
 }) => {
 	const [isOpen, setIsOpen] = useState(false);
+	const [query, setQuery] = useState('');
 	const measureRef = useRef<HTMLDivElement>(null);
+	const searchRef = useRef<HTMLInputElement>(null);
+
+	const searchTerms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+	const filteredOptions = (!searchable || searchTerms.length === 0) ? options : options.filter((option) => {
+		if (isPinnedOption?.(option)) return true;
+		const haystack = `${getOptionDropdownName(option)} ${getOptionDropdownDetail?.(option) ?? ''}`.toLowerCase();
+		return searchTerms.every((term) => haystack.includes(term));
+	});
+
+	useEffect(() => {
+		if (!isOpen) {
+			setQuery('');
+			return;
+		}
+		if (searchable) searchRef.current?.focus();
+	}, [isOpen, searchable]);
 
 	// Replace manual positioning with floating-ui
 	const {
@@ -1450,16 +1473,44 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 							))
 					}}
 					onWheel={(e) => e.stopPropagation()}
-				><div className='overflow-auto max-h-80'>
+				>
+					{searchable && (
+						<div className='p-1 border-b border-loophole-border-3'>
+							<input
+								ref={searchRef}
+								type='text'
+								value={query}
+								placeholder={searchPlaceholder}
+								onChange={(e) => setQuery(e.target.value)}
+								onKeyDown={(e) => {
+									e.stopPropagation();
+									if (e.key === 'Escape') {
+										setIsOpen(false);
+										return;
+									}
+									if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+										e.preventDefault();
+										const first = filteredOptions.find((option) => !isPinnedOption?.(option));
+										if (first !== undefined) {
+											onChangeOption(first);
+											setIsOpen(false);
+										}
+									}
+								}}
+								className='w-full text-xs px-2 py-1 rounded bg-loophole-bg-1 text-loophole-fg-1 placeholder:text-loophole-fg-3 border border-loophole-border-2 focus:border-loophole-border-1 outline-none'
+							/>
+						</div>
+					)}
+					<div className='overflow-auto max-h-80'>
 
-						{options.map((option) => {
+						{filteredOptions.map((option) => {
 							const thisOptionIsSelected = getOptionsEqual(option, selectedOption);
 							const optionName = getOptionDropdownName(option);
 							const optionDetail = getOptionDropdownDetail?.(option) || '';
 
 							return (
 								<div
-									key={optionName}
+									key={optionName + optionDetail}
 									className={`flex items-center px-2 py-1 pr-4 cursor-pointer whitespace-nowrap
 									transition-all duration-100
 									${thisOptionIsSelected ? 'bg-blue-500 text-white/80' : 'hover:bg-blue-500 hover:text-white/80'}
@@ -1489,6 +1540,9 @@ export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
 								</div>
 							);
 						})}
+						{searchable && filteredOptions.length === 0 && (
+							<div className='px-2 py-1 text-xs opacity-60'>No models found</div>
+						)}
 					</div>
 
 				</div>
