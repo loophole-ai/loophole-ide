@@ -115,6 +115,38 @@ const Section = ({ label, summary, defaultOpen, icon, children }: {
 	</div>;
 };
 
+// Renders an edit's green/red hunks from the CLI's unified diff, the same
+// treatment other clients give file changes. The CLI attaches
+// `metadata.files[]` ({ file, patch, additions, deletions }) to edit tools.
+const DiffBody = ({ tool, running }: { tool: CliToolState; running: boolean }) => {
+	const files = (tool.metadata as { files?: unknown } | undefined)?.files;
+	if (!Array.isArray(files)) return null;
+	const entries = files
+		.map((item) => item && typeof item === 'object' ? item as { file?: unknown; patch?: unknown; additions?: unknown; deletions?: unknown } : undefined)
+		.filter((item): item is { file?: unknown; patch: string; additions?: unknown; deletions?: unknown } =>
+			!!item && typeof item.patch === 'string' && item.patch.length > 0);
+	if (entries.length === 0) return null;
+	const name = (p: unknown) => typeof p === 'string' ? p : 'file';
+	const count = entries.reduce((acc, entry) => acc + (typeof entry.additions === 'number' ? entry.additions : 0) + (typeof entry.deletions === 'number' ? entry.deletions : 0), 0);
+	const summary = `${entries.length} file${entries.length === 1 ? '' : 's'} · ${count} change${count === 1 ? '' : 's'}`;
+	return <Section label='Changes' summary={summary} defaultOpen={running}>
+		<div className='flex flex-col gap-2 min-w-0'>
+			{entries.map((entry, index) => <div key={index} className='min-w-0'>
+				<div className='text-[11px] text-loophole-fg-3 font-mono truncate mb-0.5'>{name(entry.file)}</div>
+				<div className='font-mono text-[11px] leading-[1.35] overflow-auto max-h-[260px] select-text rounded border border-loophole-border-3'>
+					{entry.patch.split('\n').map((line, i) => {
+						const kind = line.charAt(0);
+						if (kind === '-') return <div key={i} className='px-1 bg-red-500/10 text-red-300 whitespace-pre-wrap break-all'>{line}</div>;
+						if (kind === '+') return <div key={i} className='px-1 bg-emerald-500/10 text-emerald-300 whitespace-pre-wrap break-all'>{line}</div>;
+						if (kind === '@') return <div key={i} className='px-1 bg-loophole-bg-2 text-loophole-fg-4 whitespace-pre-wrap'>{line}</div>;
+						return <div key={i} className='px-1 text-loophole-fg-2 whitespace-pre-wrap break-all'>{line}</div>;
+					})}
+				</div>
+			</div>)}
+		</div>
+	</Section>;
+};
+
 const InputBody = ({ tool, running }: { tool: CliToolState; running: boolean }) => {
 	const input = tool.input;
 	if (!input && !tool.inputText) return null;
@@ -184,6 +216,7 @@ export const ToolCard = ({ tool }: { tool: CliToolState }) => {
 		</div>
 		{hasBody && <div className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'opacity-100 py-1' : 'max-h-0 opacity-0'}`}>
 			<div className='flex flex-col gap-1.5 px-1 min-w-0'>
+				<DiffBody tool={tool} running={running} />
 				<InputBody tool={tool} running={running} />
 				<OutputBody tool={tool} running={running} />
 				<ErrorBody tool={tool} running={running} />

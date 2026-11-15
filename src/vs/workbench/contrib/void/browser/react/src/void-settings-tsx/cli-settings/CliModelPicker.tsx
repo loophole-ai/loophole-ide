@@ -15,13 +15,7 @@ const readDefaultModel = (configService: IConfigurationService) => {
 	return role || (configService.getValue<string>('loophole.cli.model') ?? '')
 }
 
-/**
- * Composer model picker.
- *
- * Shares the searchable picker with the settings pages, so the list and the
- * search behaviour are identical everywhere; selecting a model starts a fresh
- * CLI session on the next turn.
- */
+/** Composer model picker. Selecting a model starts a fresh CLI session on the next turn. */
 export const CliModelPicker = ({ className }: { className?: string }) => {
 	const accessor = useAccessor()
 	const configService = accessor.get('IConfigurationService')
@@ -54,7 +48,6 @@ export const CliModelPicker = ({ className }: { className?: string }) => {
 			models={enabled}
 			onChange={choose}
 			onCustom={() => setCustom(true)}
-			placement='bottom-end'
 			className={className ?? 'text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded-md px-2 py-1'}
 		/>
 		{custom ? <CliCustomModelDialog

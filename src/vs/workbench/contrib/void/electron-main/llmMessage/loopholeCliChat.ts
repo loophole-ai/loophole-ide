@@ -184,6 +184,9 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		emitTools();
 	};
 	let compaction: CliCompactionState | undefined = undefined;
+	// True between sending a prompt and the turn finishing: only then does usage
+	// belong to the model the user picked.
+	let chatTurn = false;
 	const emitCompaction = (patch: CliCompactionState) => {
 		compaction = { ...(compaction ?? { phase: patch.phase }), ...patch, phase: patch.phase };
 		if (onCompaction) onCompaction({ compaction });
@@ -347,9 +350,16 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		else if (evt.type === 'session.usage.updated') {
 			// Ephemeral per-session usage (packages/schema/src/session-event.ts):
 			// { sessionID, cost, tokens: { input, output, reasoning, cache: { read, write } } }.
+			//
+			// Only forward it while a chat turn is in flight. The CLI also spends
+			// tokens outside a turn (generating the session title, compaction, the
+			// small-model roles), and those get billed to the session total - so
+			// counting every update attributed a Gemini title/compaction call to the
+			// model the user actually picked, which is why the graph listed models
+			// nobody chose.
 			const tokens = (data.tokens && typeof data.tokens === 'object') ? data.tokens as Record<string, unknown> : undefined;
 			const cost = typeof data.cost === 'number' ? data.cost : undefined;
-			if (tokens && cost !== undefined && onUsage) {
+			if (chatTurn && tokens && cost !== undefined && onUsage) {
 				const num = (v: unknown): number => typeof v === 'number' ? v : 0;
 				const cache = (tokens.cache && typeof tokens.cache === 'object') ? tokens.cache as Record<string, unknown> : {};
 				const usage: CliUsage = {
@@ -366,6 +376,7 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		}
 		else if (evt.type === 'session.step.ended' || evt.type === 'session.execution.succeeded') {
 			const evtTokens = evt.type === 'session.step.ended' ? data.tokens : undefined;
+			chatTurn = false;
 			finish(fullText, fullReasoning, evtTokens);
 		}
 		else if (evt.type === 'session.step.failed' || evt.type === 'session.execution.failed') {
@@ -425,6 +436,7 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 	// small head-start so the server has the subscription before the prompt is admitted
 	await new Promise((resolve) => setTimeout(resolve, 100));
 	if (settled) return;
+	chatTurn = true;
 	try {
 		await channel.cliApi('POST', `/api/session/${encodeURIComponent(sessionID)}/prompt`, { text });
 	} catch (e) {
