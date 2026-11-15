@@ -6,11 +6,12 @@
 // registered in app.ts next to LLMMessageChannel; consumed by LoopholeCliService (renderer)
 
 import { execFile, spawn, spawnSync, type ChildProcess } from 'child_process';
-import { existsSync, readdirSync, statSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { createServer, request, type IncomingMessage } from 'http';
 import { randomBytes } from 'crypto';
 import * as path from 'path';
+import { gunzipSync } from 'zlib';
 import { WebSocket } from 'ws';
 import type { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { Emitter, type Event } from '../../../../base/common/event.js';
@@ -55,6 +56,33 @@ function freePort(): Promise<number> {
 			server.close(() => resolve(typeof address === 'object' && address ? address.port : 0));
 		});
 	});
+}
+
+/**
+ * Pull one file out of a `.tar.gz` without depending on a tar binary.
+ * GNU tar is not guaranteed to be on the machine, and the npm packages we fetch
+ * are plain ustar with 512-byte headers.
+ */
+function extractFileFromTarGz(gzip: Buffer, wanted: string): Buffer | null {
+	const tar = gunzipSync(gzip);
+	let offset = 0;
+	while (offset + 512 <= tar.length) {
+		const header = tar.subarray(offset, offset + 512);
+		const name = header.subarray(0, 100).toString('utf8').replace(/\0.*$/, '').trim();
+		const sizeField = header.subarray(124, 136).toString('utf8').replace(/\0.*$/, '').trim();
+		const size = sizeField ? parseInt(sizeField, 8) || 0 : 0;
+		const type = String.fromCharCode(header[156] || 48);
+		offset += 512;
+		if (type !== '0' && type !== '\0') {
+			offset += Math.ceil(size / 512) * 512;
+			continue;
+		}
+		if (!name) break;
+		const body = tar.subarray(offset, offset + size);
+		if (name === wanted || name.endsWith(`/${wanted}`)) return Buffer.from(body);
+		offset += Math.ceil(size / 512) * 512;
+	}
+	return null;
 }
 
 /** Bundled binary, then overrides, then PATH - but only if it really is the Loophole CLI. */
@@ -164,6 +192,7 @@ export class LoopholeCliChannel implements IServerChannel {
 		if (command === 'voiceWsClose') return this._callVoiceWsClose(params);
 		if (command === 'updateCheck') return this._callUpdateCheck();
 		if (command === 'updateInstall') return this._callUpdateInstall(params);
+		if (command === 'downloadCli') return this._callDownloadCli();
 		throw new Error(`LoopholeCli: command "${command}" not recognized.`);
 	}
 
@@ -274,8 +303,45 @@ export class LoopholeCliChannel implements IServerChannel {
 		}
 	}
 
-	/** Run `<binary> upgrade <version>` and restart the CLI so the new build takes over. */
-	private async _callUpdateInstall(params: { version?: string } = {}): Promise<LoopholeCliUpdateResult> {
+	/**
+	 * Fetch the published CLI and install it into the user's own directory.
+	 *
+	 * The IDE ships the CLI inside its resources, but an install that predates
+	 * that (or a broken package) leaves every feature dead with "not found".
+	 * `~/.loophole/bin` is writable without elevation - the install folder usually
+	 * is not - and the resolver already looks there, so this is the self-heal path.
+	 */
+	private async _callDownloadCli(): Promise<{ ok: boolean; path?: string; error?: string }> {
+		const platform = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux';
+		const arch = process.arch === 'x64' ? 'x64' : 'arm64';
+		const pkg = `@loophole-ai/cli-${platform}-${arch}`;
+		const file = process.platform === 'win32' ? 'loophole-cli.exe' : 'loophole-cli';
+		try {
+			const meta = await fetch(`https://registry.npmjs.org/${pkg}/latest`).then((r) => {
+				if (!r.ok) throw new Error(`registry responded ${r.status}`);
+				return r.json() as Promise<{ version?: string }>;
+			});
+			const version = meta.version;
+			if (!version) throw new Error('the registry did not report a version');
+			const name = pkg.replace('@loophole-ai/', '');
+			const tarball = await fetch(`https://registry.npmjs.org/${pkg}/-/${name}-${version}.tgz`).then((r) => {
+				if (!r.ok) throw new Error(`download responded ${r.status}`);
+				return r.arrayBuffer();
+			});
+			const binary = extractFileFromTarGz(Buffer.from(tarball), `package/bin/${file}`);
+			if (!binary) throw new Error(`${file} was not inside the ${pkg} tarball`);
+
+			const dir = path.join(homedir(), '.loophole', 'bin');
+			mkdirSync(dir, { recursive: true });
+			const target = path.join(dir, file);
+			writeFileSync(target, binary);
+			return { ok: true, path: target };
+		} catch (e) {
+			return { ok: false, error: e instanceof Error ? e.message : String(e) };
+		}
+	}
+
+	/** Run `<binary> upgrade <version>` and restart the CLI so the new build takes over. */	private async _callUpdateInstall(params: { version?: string } = {}): Promise<LoopholeCliUpdateResult> {
 		const binary = resolveBinary();
 		const version = (params.version ?? '').trim();
 		const args = version ? ['upgrade', version] : ['upgrade'];

@@ -45,21 +45,39 @@ export const visibleCliModels = (models: LoopholeCliModelInfo[], disabled: strin
 	models.filter((model) => !disabled.includes(cliModelRef(model)))
 
 /** Model list + connection state shared by the Models, Autocomplete, and Commit Message pages. */
+// Shared cache: every page that mounts asks for the same list and one fetch is
+// 250 KB of JSON. Serving it from a short-lived cache keeps opening Settings from
+// parsing it four or five times in the same breath.
+let cachedModels: LoopholeCliModelInfo[] | undefined
+let cachedAt = 0
+const CACHE_MS = 30_000
+
 export const useCliModels = () => {
 	const accessor = useAccessor()
 	const configService = accessor.get('IConfigurationService')
 	const cliService = accessor.get('ILoopholeCliService')
 
-	const [models, setModels] = useState<LoopholeCliModelInfo[]>([])
-	const [loading, setLoading] = useState(true)
+	const [models, setModels] = useState<LoopholeCliModelInfo[]>(() => cachedModels ?? [])
+	const [loading, setLoading] = useState(() => !cachedModels)
 	const [error, setError] = useState<string | null>(null)
 	const [version, setVersion] = useState(0)
 
-	const reload = useCallback(() => { setVersion(v => v + 1) }, [])
+	const reload = useCallback(() => {
+		cachedModels = undefined
+		cachedAt = 0
+		setVersion(v => v + 1)
+	}, [])
 
 	useEffect(() => {
 		let cancelled = false
 		const load = async () => {
+			if (cachedModels && Date.now() - cachedAt < CACHE_MS) {
+				if (!cancelled) {
+					setModels(cachedModels)
+					setLoading(false)
+				}
+				return
+			}
 			setLoading(true)
 			setError(null)
 			try {
@@ -72,6 +90,8 @@ export const useCliModels = () => {
 					throw new Error(next.error ?? 'The Loophole CLI is not connected.')
 				}
 				const list = await cliService.models()
+				cachedModels = list
+				cachedAt = Date.now()
 				if (!cancelled) {
 					// Providers added on the Providers page are endpoints the editor owns,
 					// so their models are appended to what the CLI reports.

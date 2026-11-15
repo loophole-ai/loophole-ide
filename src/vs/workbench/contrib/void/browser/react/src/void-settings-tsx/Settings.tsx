@@ -576,31 +576,31 @@ export const Settings = () => {
 
 						<div className='flex flex-col gap-12'>
 							<div className={shouldShowTab('models') ? '' : 'hidden'}>
-								<ErrorBoundary><CliModelsTab /></ErrorBoundary>
+								{selectedSection === 'models' || selectedSection === 'all' ? <ErrorBoundary><CliModelsTab /></ErrorBoundary> : null}
 							</div>
 
 							<div className={shouldShowTab('providers') ? '' : 'hidden'}>
-								<ErrorBoundary><CliProvidersTab /></ErrorBoundary>
+								{selectedSection === 'providers' || selectedSection === 'all' ? <ErrorBoundary><CliProvidersTab /></ErrorBoundary> : null}
 							</div>
 
 							<div className={shouldShowTab('autocomplete') ? '' : 'hidden'}>
-								<ErrorBoundary><CliAutocompleteTab /></ErrorBoundary>
+								{selectedSection === 'autocomplete' || selectedSection === 'all' ? <ErrorBoundary><CliAutocompleteTab /></ErrorBoundary> : null}
 							</div>
 
 							<div className={shouldShowTab('voice') ? '' : 'hidden'}>
-								<ErrorBoundary><CliVoiceTab /></ErrorBoundary>
+								{selectedSection === 'voice' || selectedSection === 'all' ? <ErrorBoundary><CliVoiceTab /></ErrorBoundary> : null}
 							</div>
 
 							<div className={shouldShowTab('context') ? '' : 'hidden'}>
-								<ErrorBoundary><CliContextTab /></ErrorBoundary>
+								{selectedSection === 'context' || selectedSection === 'all' ? <ErrorBoundary><CliContextTab /></ErrorBoundary> : null}
 							</div>
 
 							<div className={shouldShowTab('commitMessage') ? '' : 'hidden'}>
-								<ErrorBoundary><CliCommitMessageTab /></ErrorBoundary>
+								{selectedSection === 'commitMessage' || selectedSection === 'all' ? <ErrorBoundary><CliCommitMessageTab /></ErrorBoundary> : null}
 							</div>
 
 							<div className={shouldShowTab('notifications') ? '' : 'hidden'}>
-								<ErrorBoundary><CliNotificationsTab /></ErrorBoundary>
+								{selectedSection === 'notifications' || selectedSection === 'all' ? <ErrorBoundary><CliNotificationsTab /></ErrorBoundary> : null}
 							</div>
 
 							<div className={shouldShowTab('status') ? '' : 'hidden'}>
@@ -608,15 +608,15 @@ export const Settings = () => {
 							</div>
 
 							<div className={shouldShowTab('general') ? '' : 'hidden'}>
-								<ErrorBoundary><GeneralTab /></ErrorBoundary>
+								{selectedSection === 'general' || selectedSection === 'all' ? <ErrorBoundary><GeneralTab /></ErrorBoundary> : null}
 							</div>
 
 							<div className={shouldShowTab('mcp') ? '' : 'hidden'}>
-								<ErrorBoundary><MCPTab /></ErrorBoundary>
+								{selectedSection === 'mcp' || selectedSection === 'all' ? <ErrorBoundary><MCPTab /></ErrorBoundary> : null}
 							</div>
 
 							<div className={shouldShowTab('about') ? '' : 'hidden'}>
-								<ErrorBoundary><CliAboutTab /></ErrorBoundary>
+								{selectedSection === 'about' || selectedSection === 'all' ? <ErrorBoundary><CliAboutTab /></ErrorBoundary> : null}
 							</div>
 						</div>
 					</div>

@@ -28,6 +28,8 @@ export interface ILoopholeCliService {
 	updateCheck: () => Promise<LoopholeCliUpdateInfo>;
 	/** Install a release and restart the CLI. */
 	updateInstall: (params?: { version?: string }) => Promise<LoopholeCliUpdateResult>;
+	/** Fetch the published CLI into the user's own directory (self-heal). */
+	downloadCli: () => Promise<{ ok: boolean; path?: string; error?: string }>;
 	/** `GET /api/config` on the running CLI. */
 	config: () => Promise<LoopholeCliConfig>;
 	/** `GET /api/provider` on the running CLI. */
@@ -184,6 +186,10 @@ export class LoopholeCliService extends Disposable implements ILoopholeCliServic
 
 	async updateInstall(params?: { version?: string }): Promise<LoopholeCliUpdateResult> {
 		return this.channel.call('updateInstall', params ?? {});
+	}
+
+	async downloadCli(): Promise<{ ok: boolean; path?: string; error?: string }> {
+		return this.channel.call('downloadCli');
 	}
 
 	async config(): Promise<LoopholeCliConfig> {

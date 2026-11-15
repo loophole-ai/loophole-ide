@@ -57,7 +57,43 @@ export class LoopholeUpdateChecker extends Disposable implements IWorkbenchContr
 
 	private async check(): Promise<void> {
 		if (this.config.getValue<boolean>('loophole.updates.checkOnStartup') === false) return;
-		await Promise.allSettled([this.checkCli(), this.checkEditor()]);
+		await Promise.allSettled([this.checkMissingCli(), this.checkCli(), this.checkEditor()]);
+	}
+
+	/**
+	 * An install that predates CLI bundling has no engine at all. Offer the
+	 * one-click download instead of leaving every feature dead on arrival.
+	 */
+	private async checkMissingCli(): Promise<void> {
+		try {
+			const version = await this.cli.version();
+			if (!version.includes('not installed')) return;
+			this.notifications.notify({
+				severity: Severity.Warning,
+				message: localize('loophole.cliMissing', 'The Loophole CLI is not installed, so chat, providers, and autocomplete are unavailable.'),
+				actions: {
+					primary: [{
+						id: 'loophole.cliMissing.download',
+						label: localize('loophole.cliMissing.download', 'Download CLI'),
+						tooltip: '',
+						class: undefined,
+						enabled: true,
+						run: async () => {
+							const result = await this.cli.downloadCli();
+							this.notifications.notify({
+								severity: result.ok ? Severity.Info : Severity.Error,
+								message: result.ok
+									? localize('loophole.cliMissing.done', 'Loophole CLI installed to {0}.', result.path ?? '')
+									: localize('loophole.cliMissing.failed', 'Could not download the Loophole CLI: {0}', result.error ?? ''),
+							});
+							if (result.ok) await this.cli.connect();
+						},
+					}],
+				},
+			});
+		} catch {
+			// Offline: stay quiet.
+		}
 	}
 
 	private async checkCli(): Promise<void> {
