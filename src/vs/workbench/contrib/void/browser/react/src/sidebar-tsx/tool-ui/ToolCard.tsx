@@ -12,7 +12,7 @@
 // Tool results must never spill into the transcript: the card auto-collapses
 // as soon as the call finishes and the result body lives in its own collapsible
 // section with a summary line and a scrollable, wrapping code block.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
 import type { CliCompactionState, CliToolState } from '../../../../../common/sendLLMMessageTypes.js';
 
@@ -115,9 +115,87 @@ const Section = ({ label, summary, defaultOpen, icon, children }: {
 	</div>;
 };
 
-// Renders an edit's green/red hunks from the CLI's unified diff, the same
-// treatment other clients give file changes. The CLI attaches
-// `metadata.files[]` ({ file, patch, additions, deletions }) to edit tools.
+// Unified diff rendering modeled on Kilo's @kilocode/kilo-ui/diff block
+// (packages/kilo-ui/src/components/diff.tsx): per-file header with the
+// `+adds −dels` badge, line-number gutters on both sides, hunk separators,
+// green/red row backgrounds. The CLI attaches `metadata.files[]`
+// ({ file, patch, additions, deletions }) to edit tools.
+const stripAbbreviatedPath = (path: string) => {
+	const trimmed = path.replace(/\\/g, '/');
+	const parts = trimmed.split('/');
+	return parts.length > 2 ? parts.slice(-2).join('/') : trimmed;
+};
+
+type DiffRow =
+	| { kind: 'hunk'; text: string }
+	| { kind: 'add' | 'del' | 'ctx'; text: string; oldLine?: number; newLine?: number }
+const parsePatch = (patch: string): DiffRow[] => {
+	const rows: DiffRow[] = [];
+	let oldLine = 0;
+	let newLine = 0;
+	for (const raw of patch.split('\n')) {
+		const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+		if (match) {
+			oldLine = parseInt(match[1], 10);
+			newLine = parseInt(match[2], 10);
+			rows.push({ kind: 'hunk', text: raw.replace(/^@@[^@]*@@\s*/, '').trim() });
+			continue;
+		}
+		if (raw.startsWith('+++') || raw.startsWith('---') || raw.startsWith('diff ') || raw.startsWith('index ') || raw.startsWith('new file') || raw.startsWith('deleted file') || raw.startsWith('rename ') || raw === '') continue;
+		const sign = raw.charAt(0);
+		const text = raw.slice(1);
+		if (sign === '+') {
+			rows.push({ kind: 'add', text, newLine: newLine++ });
+		} else if (sign === '-') {
+			rows.push({ kind: 'del', text, oldLine: oldLine++ });
+		} else {
+			rowlines(rows, raw, oldLine, newLine);
+			oldLine++;
+			newLine++;
+		}
+	}
+	return rows;
+};
+const rowlines = (rows: DiffRow[], raw: string, oldLine: number, newLine: number) => {
+	rows.push({ kind: 'ctx', text: raw.charAt(0) === ' ' ? raw.slice(1) : raw, oldLine, newLine });
+};
+
+const FileDiffBlock = ({ file, patch, additions, deletions }: { file: string; patch: string; additions?: number; deletions?: number }) => {
+	const [open, setOpen] = useState(true);
+	const rows = useMemo(() => parsePatch(patch), [patch]);
+	const add = typeof additions === 'number' ? additions : rows.filter(r => r.kind === 'add').length;
+	const del = typeof deletions === 'number' ? deletions : rows.filter(r => r.kind === 'del').length;
+	return <div className='border border-loophole-border-3 rounded overflow-hidden min-w-0'>
+		<div className='flex select-none min-w-0 cursor-pointer items-center px-1 min-h-[22px]' onClick={() => setOpen(v => !v)}>
+			<ChevronRight className={`text-loophole-fg-4 mr-0.5 h-3 w-3 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${open ? 'rotate-90' : ''}`} />
+			<span className='text-[11px] text-loophole-fg-3 font-mono truncate min-w-0 flex-1'>{stripAbbreviatedPath(file)}</span>
+			<span className='text-[11px] font-mono flex-shrink-0'>
+				{add > 0 && <span className='text-emerald-400'>+{add}</span>}
+				{add > 0 && del > 0 && <span className='text-loophole-fg-4'> </span>}
+				{del > 0 && <span className='text-red-400'>−{del}</span>}
+			</span>
+		</div>
+		{open && <div className='overflow-auto max-h-[280px] border-t border-loophole-border-3 min-w-0 select-text' style={{ fontFamily: 'var(--vscode-editor-font-family, monospace)' }}>
+			<div className='min-w-max'>
+				{rows.map((row, i) => {
+					if (row.kind === 'hunk') {
+						return <div key={i} className='flex select-none items-center sticky left-0 w-max min-w-full bg-loophole-bg-2 text-loophole-fg-4 text-[11px] px-6 py-0.5 whitespace-pre-wrap'>{row.text || '@@'}</div>;
+					}
+					const gutter = row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' ';
+					const bg = row.kind === 'add' ? 'bg-emerald-500/10 text-emerald-300' : row.kind === 'del' ? 'bg-red-500/10 text-red-300' : 'text-loophole-fg-2';
+					const border = row.kind === 'add' ? 'border-emerald-500/25' : row.kind === 'del' ? 'border-red-500/25' : 'border-transparent';
+					return <div key={i} className={`flex border-l-2 ${border} ${bg} whitespace-pre`}>
+						<span className='w-8 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.oldLine ?? ''}</span>
+						<span className='w-8 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.newLine ?? ''}</span>
+						<span className='w-4 flex-shrink-0 select-none text-center'>{gutter}</span>
+						<span className='pr-2'>{row.text || ' '}</span>
+					</div>;
+				})}
+			</div>
+		</div>}
+	</div>;
+};
+
 const DiffBody = ({ tool, running }: { tool: CliToolState; running: boolean }) => {
 	const files = (tool.metadata as { files?: unknown } | undefined)?.files;
 	if (!Array.isArray(files)) return null;
@@ -127,22 +205,17 @@ const DiffBody = ({ tool, running }: { tool: CliToolState; running: boolean }) =
 			!!item && typeof item.patch === 'string' && item.patch.length > 0);
 	if (entries.length === 0) return null;
 	const name = (p: unknown) => typeof p === 'string' ? p : 'file';
-	const count = entries.reduce((acc, entry) => acc + (typeof entry.additions === 'number' ? entry.additions : 0) + (typeof entry.deletions === 'number' ? entry.deletions : 0), 0);
-	const summary = `${entries.length} file${entries.length === 1 ? '' : 's'} · ${count} change${count === 1 ? '' : 's'}`;
-	return <Section label='Changes' summary={summary} defaultOpen={running}>
-		<div className='flex flex-col gap-2 min-w-0'>
-			{entries.map((entry, index) => <div key={index} className='min-w-0'>
-				<div className='text-[11px] text-loophole-fg-3 font-mono truncate mb-0.5'>{name(entry.file)}</div>
-				<div className='font-mono text-[11px] leading-[1.35] overflow-auto max-h-[260px] select-text rounded border border-loophole-border-3'>
-					{entry.patch.split('\n').map((line, i) => {
-						const kind = line.charAt(0);
-						if (kind === '-') return <div key={i} className='px-1 bg-red-500/10 text-red-300 whitespace-pre-wrap break-all'>{line}</div>;
-						if (kind === '+') return <div key={i} className='px-1 bg-emerald-500/10 text-emerald-300 whitespace-pre-wrap break-all'>{line}</div>;
-						if (kind === '@') return <div key={i} className='px-1 bg-loophole-bg-2 text-loophole-fg-4 whitespace-pre-wrap'>{line}</div>;
-						return <div key={i} className='px-1 text-loophole-fg-2 whitespace-pre-wrap break-all'>{line}</div>;
-					})}
-				</div>
-			</div>)}
+	const add = entries.reduce((acc, entry) => acc + (typeof entry.additions === 'number' ? entry.additions : 0), 0);
+	const del = entries.reduce((acc, entry) => acc + (typeof entry.deletions === 'number' ? entry.deletions : 0), 0);
+	return <Section label='Changes' summary={`${entries.length} file${entries.length === 1 ? '' : 's'} · +${add} −${del}`} defaultOpen={running}>
+		<div className='flex flex-col gap-1.5 min-w-0'>
+			{entries.map((entry, index) => <FileDiffBlock
+				key={index}
+				file={name(entry.file)}
+				patch={entry.patch}
+				additions={typeof entry.additions === 'number' ? entry.additions : undefined}
+				deletions={typeof entry.deletions === 'number' ? entry.deletions : undefined}
+			/>)}
 		</div>
 	</Section>;
 };
