@@ -1,6 +1,5 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
- *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
+ *  Copyright 2026 Loophole AI. All rights reserved.
  *--------------------------------------------------------------------------------------*/
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -162,5 +161,8 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 		getOptionDropdownDetail={(option) => option.detail ?? ''}
 		getOptionsEqual={(a, b) => a.value === b.value}
 		matchInputWidth={false}
+		searchable={options.length > 6}
+		searchPlaceholder='Search models...'
+		isPinnedOption={(option) => option.value === '__custom__'}
 	/>
 }
