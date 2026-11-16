@@ -6,6 +6,7 @@ import { createDecorator } from '../../../../platform/instantiation/common/insta
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
+import type { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { getModelCapabilities } from './modelCapabilities.js';
 import { ProviderName } from './voidSettingsTypes.js';
 import { IMetricsService } from './metricsService.js';
@@ -35,6 +36,43 @@ export type DailyTokenEntry = {
 	cost: number;
 	models: Record<string, ModelDayEntry>;
 };
+
+/**
+ * Whether requests run on the Loophole CLI, and on which model (`providerID/modelID`).
+ * Resolved exactly like `sendLLMMessageService` does for the default role (chat, agents, apply).
+ */
+export function cliUsageContext(configService: Pick<IConfigurationService, 'getValue'>): { cliEnabled: boolean; cliModel: string } {
+	return {
+		cliEnabled: configService.getValue<boolean>('loophole.cli.enabled') === true,
+		cliModel: configService.getValue<string>('loophole.cli.models.default') || configService.getValue<string>('loophole.cli.model') || '',
+	};
+}
+
+/**
+ * Decide what (if anything) a finished request should add to the usage graph.
+ *
+ * With the CLI enabled, the model that runs is the CLI's, never the editor's own per-feature
+ * `modelSelection` (which nothing uses in CLI mode and can be left on any provider's first
+ * model). Booking against that selection is what made a model the user never picked, and
+ * that mirrored every request, show up in the graph. Returns null when nothing should be booked.
+ */
+export function usageToBook(args: {
+	tokenUsage: Pick<TokenUsageInfo, 'inputTokens' | 'outputTokens' | 'totalTokens'>;
+	cliEnabled: boolean;
+	cliModel: string;
+	/** The editor's own model for this feature (direct-LLM mode only). */
+	editorSelection: { providerName: string; modelName: string } | null | undefined;
+	/** This CLI turn was already booked from the live per-session usage events (chat). */
+	alreadyBooked?: boolean;
+}): TokenUsageInfo | null {
+	const { tokenUsage, cliEnabled, cliModel, editorSelection, alreadyBooked } = args;
+	if (!cliEnabled) return { ...tokenUsage, providerName: editorSelection?.providerName, modelName: editorSelection?.modelName };
+	if (alreadyBooked) return null;
+	const slash = cliModel.indexOf('/');
+	return slash > 0
+		? { ...tokenUsage, providerName: cliModel.slice(0, slash), modelName: cliModel.slice(slash + 1) }
+		: { ...tokenUsage, modelName: '' };
+}
 
 const FREE_PROVIDERS = new Set<string>(['ollama', 'vLLM', 'lmStudio']);
 
