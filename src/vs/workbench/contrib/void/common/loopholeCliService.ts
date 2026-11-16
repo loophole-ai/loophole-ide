@@ -7,6 +7,8 @@ import { Disposable } from '../../../../base/common/lifecycle.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
+import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
+import { Schemas } from '../../../../base/common/network.js';
 import { Emitter, type Event } from '../../../../base/common/event.js';
 import type { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import type { LoopholeCliConfig, LoopholeCliConfigUpdateParams, LoopholeCliConnectKeyParams, LoopholeCliConnectParams, LoopholeCliFimEvent, LoopholeCliFimParams, LoopholeCliIntegrationInfo, LoopholeCliModelInfo, LoopholeCliProviderInfo, LoopholeCliStatus, LoopholeCliVoiceWsEvent } from './loopholeCliTypes.js';
@@ -114,9 +116,16 @@ export class LoopholeCliService extends Disposable implements ILoopholeCliServic
 
 	constructor(
 		@IMainProcessService private readonly mainProcessService: IMainProcessService,
+		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 	) {
 		super();
 		this.channel = this.mainProcessService.getChannel('void-channel-loopholeCli');
+
+		// The CLI runs in whatever folder it was spawned in, and the main process keeps it
+		// alive across windows and folder switches. Re-aligning here makes it follow the
+		// folder open in this window (on load, and when the folders change).
+		this._register(this.workspaceContextService.onDidChangeWorkspaceFolders(() => { void this._alignWorkspace(); }));
+		void this._alignWorkspace();
 
 		this._register((this.channel.listen('onEvent_loopholeCli') satisfies Event<LoopholeCliFimEvent>)((e) => {
 			if (!e || e.kind !== 'fim') return;
@@ -164,8 +173,26 @@ export class LoopholeCliService extends Disposable implements ILoopholeCliServic
 		return this._onVoiceWsEvent.event;
 	}
 
+	// The folder open in the editor, or undefined for an empty window / non-local folder.
+	private _workspacePath(): string | undefined {
+		const folder = this.workspaceContextService.getWorkspace().folders[0];
+		return folder?.uri.scheme === Schemas.file ? folder.uri.fsPath : undefined;
+	}
+
+	// If the CLI is already up (or coming up), ask it to restart in this window's folder.
+	// The main process is a no-op when it already runs there. When it is not running,
+	// the next connect() starts it in the right folder, so nothing is spawned eagerly.
+	private async _alignWorkspace(): Promise<void> {
+		try {
+			const { status } = await this.status();
+			if (status === 'connected' || status === 'starting') await this.connect();
+		} catch (e) {
+			console.warn(`[LoopholeCli] could not align CLI with the workspace folder: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
+
 	async connect(params: LoopholeCliConnectParams = {}): Promise<LoopholeCliStatus> {
-		return this.channel.call('connect', params);
+		return this.channel.call('connect', { ...params, workspacePath: params.workspacePath ?? this._workspacePath() });
 	}
 
 	async disconnect(): Promise<void> {
