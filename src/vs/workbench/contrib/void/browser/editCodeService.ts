@@ -38,7 +38,7 @@ import { Emitter } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { LLMChatMessage } from '../common/sendLLMMessageTypes.js';
 import { IMetricsService } from '../common/metricsService.js';
-import { ITokenUsageService } from '../common/tokenUsageService.js';
+import { ITokenUsageService, cliUsageContext, usageToBook } from '../common/tokenUsageService.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { isLoopholeNotificationEnabled } from './loopholeNotifications.js';
 import { IEditCodeService, AddCtrlKOpts, StartApplyingOpts, CallBeforeStartApplyingOpts, } from './editCodeServiceInterface.js';
@@ -1537,7 +1537,8 @@ class EditCodeService extends Disposable implements IEditCodeService {
 						const { fullText, tokenUsage } = params
 						// Track token usage if available
 						if (tokenUsage) {
-							this._tokenUsageService.addTokens({ ...tokenUsage, providerName: modelSelection?.providerName, modelName: modelSelection?.modelName })
+							const booked = usageToBook({ tokenUsage, ...cliUsageContext(this._configurationService), editorSelection: modelSelection })
+							if (booked) this._tokenUsageService.addTokens(booked)
 						}
 						// console.log('DONE! FULL TEXT\n', extractText(fullText), diffZone.startLine, diffZone.endLine)
 						// at the end, re-write whole thing to make sure no sync errors
@@ -1975,7 +1976,8 @@ class EditCodeService extends Disposable implements IEditCodeService {
 						const { fullText, tokenUsage } = params
 						// Track token usage if available
 						if (tokenUsage) {
-							this._tokenUsageService.addTokens({ ...tokenUsage, providerName: modelSelection?.providerName, modelName: modelSelection?.modelName })
+							const booked = usageToBook({ tokenUsage, ...cliUsageContext(this._configurationService), editorSelection: modelSelection })
+							if (booked) this._tokenUsageService.addTokens(booked)
 						}
 						onText(params)
 
