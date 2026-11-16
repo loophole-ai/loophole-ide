@@ -40,7 +40,7 @@ import { IDirectoryStrService } from '../common/directoryStrService.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IMCPService } from '../common/mcpService.js';
 import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
-import { ITokenUsageService } from '../common/tokenUsageService.js';
+import { ITokenUsageService, cliUsageContext, usageToBook } from '../common/tokenUsageService.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { isLoopholeNotificationEnabled } from './loopholeNotifications.js';
 import { CliEditAcceptReject } from './cliEditAcceptReject.js';
@@ -574,6 +574,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	// one and a whole turn's worth of tokens silently attributed to the wrong
 	// model (or dropped).
 	private readonly _cliUsageSessionIds = new Map<string, string | undefined>();
+	// Threads whose current CLI turn was already booked by updateCliUsage, so the turn's final
+	// message must not book the same tokens again.
+	private readonly _cliTurnBooked = new Set<string>();
 
 	setCliSessionId = (threadId: string, cliSessionId: string) => {
 		if (!this.state.allThreads[threadId]) return
@@ -610,6 +613,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		if (delta <= 0) return
 		const ref = this._configurationService.getValue<string>('loophole.cli.model') ?? ''
 		const slash = ref.indexOf('/')
+		this._cliTurnBooked.add(threadId)
 		this._tokenUsageService.addTokens({
 			inputTokens: Math.max(0, usage.tokens.input - (previous?.tokens.input ?? 0)),
 			outputTokens: Math.max(0, usage.tokens.output - (previous?.tokens.output ?? 0)),
@@ -937,6 +941,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				let resMessageIsDonePromise: (res: ResTypes) => void // resolves when user approves this tool use (or if tool doesn't require approval)
 				const messageIsDonePromise = new Promise<ResTypes>((res, rej) => { resMessageIsDonePromise = res })
 
+				this._cliTurnBooked.delete(threadId)
 				const llmCancelToken = this._llmMessageService.sendLLMMessage({
 					messagesType: 'chatMessages',
 					chatMode,
@@ -974,7 +979,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					onFinalMessage: async ({ fullText, fullReasoning, toolCall, anthropicReasoning, tokenUsage }) => {
 						// Track token usage if available
 						if (tokenUsage) {
-							this._tokenUsageService.addTokens({ ...tokenUsage, providerName: modelSelection?.providerName, modelName: modelSelection?.modelName })
+							const booked = usageToBook({ tokenUsage, ...cliUsageContext(this._configurationService), editorSelection: modelSelection, alreadyBooked: this._cliTurnBooked.has(threadId) })
+							if (booked) this._tokenUsageService.addTokens(booked)
 							// Update context window indicator — inputTokens IS the current context size
 							const thread = this.state.allThreads[threadId]
 							if (thread) {
