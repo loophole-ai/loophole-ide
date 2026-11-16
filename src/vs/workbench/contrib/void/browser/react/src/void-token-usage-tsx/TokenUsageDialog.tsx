@@ -359,6 +359,23 @@ export const TokenUsageDialog = ({ isOpen: isOpenProp, _ts }: Props) => {
                             <Pill label='Total tokens' value={formatTokenCount(totalTokens)} />
                             {totalCost > 0 && <Pill label='Est. cost' value={formatDollarCount(totalCost)} />}
                             <button
+                                onClick={() => {
+                                    // usage recorded before per-session attribution was fixed can carry
+                                    // another model's tokens on it — wipe it on explicit request.
+                                    if (window.confirm('Reset all recorded token usage? This cannot be undone.')) {
+                                        tokenUsageService.clearUsage();
+                                    }
+                                }}
+                                style={{
+                                    background: 'none', border: '1px solid var(--loophole-border-3)', cursor: 'pointer',
+                                    color: 'var(--loophole-fg-3)', padding: '4px 8px', borderRadius: 6,
+                                    fontSize: 11, fontFamily: 'inherit',
+                                }}
+                                title='Reset usage history'
+                            >
+                                Reset
+                            </button>
+                            <button
                                 onClick={close}
                                 style={{
                                     background: 'none', border: 'none', cursor: 'pointer',

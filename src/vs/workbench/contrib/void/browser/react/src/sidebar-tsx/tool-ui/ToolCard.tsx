@@ -14,7 +14,6 @@
 // section with a summary line and a scrollable, wrapping code block.
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
-import { PatchDiff } from '@pierre/diffs/react';
 import type { CliCompactionState, CliToolState } from '../../../../../common/sendLLMMessageTypes.js';
 
 // The transport caps stored text at 20k; rendering much less keeps the DOM
@@ -116,34 +115,40 @@ const Section = ({ label, summary, defaultOpen, icon, children }: {
 	</div>;
 };
 
-// File changes are rendered with the same component Kilo uses for its edit
-// review (@pierre/diffs). The CLI attaches `metadata.files[]`
-// ({ file, patch, additions, deletions }) to edit tools, which is exactly the
-// input PatchDiff wants.
-const PIERRE_OPTIONS = {
-	diffStyle: 'unified',
-	diffIndicators: 'bars',
-	lineDiffType: 'word-alt',
-	maxLineDiffLength: 1000,
-	maxLineLengthForHighlighting: 1000,
-	disableFileHeader: true,
-	hunkSeparators: 'line-info-basic',
-	overflow: 'wrap',
-	unsafeCSS: `
-[data-indicators='bars'] [data-column-number][data-line-type='change-deletion'] { --diffs-deletion-base: #ff6762; }
-[data-diff] [data-code] { overflow-x: auto !important; overflow-y: clip !important; }
-`,
-} as const;
-
-// Kilo's styleVariables, aimed at the editor's monospace editor font.
-const PIERRE_STYLE = {
-	'--diffs-font-family': 'var(--vscode-editor-font-family, monospace)',
-	'--diffs-font-size': '12px',
-	'--diffs-line-height': '20px',
-	'--diffs-tab-size': 2,
-	'--diffs-gap-block': 0,
-	'--diffs-min-number-column-width': '4ch',
-} as React.CSSProperties;
+// File changes: plain green/red unified diff built from the CLI's own
+// `metadata.files[]` ({ file, patch, additions, deletions }) — the editor's
+// own look, no third-party diff component.
+type DiffRow =
+	| { kind: 'hunk'; text: string }
+	| { kind: 'add' | 'del' | 'ctx'; text: string; oldLine?: number; newLine?: number }
+const parsePatch = (patch: string): DiffRow[] => {
+	const rows: DiffRow[] = [];
+	let oldLine = 0;
+	let newLine = 0;
+	const ctx = (raw: string, o: number, n: number) => ({ kind: 'ctx' as const, text: raw.charAt(0) === ' ' ? raw.slice(1) : raw, oldLine: o, newLine: n });
+	for (const raw of patch.split('\n')) {
+		const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+		if (match) {
+			oldLine = parseInt(match[1], 10);
+			newLine = parseInt(match[2], 10);
+			rows.push({ kind: 'hunk', text: raw.replace(/^@@[^@]*@@\s*/, '').trim() || '@@' });
+			continue;
+		}
+		if (raw.startsWith('+++') || raw.startsWith('---') || raw.startsWith('diff ') || raw.startsWith('index ') || raw.startsWith('new file') || raw.startsWith('deleted file') || raw.startsWith('rename ') || raw === '') continue;
+		const sign = raw.charAt(0);
+		const text = raw.slice(1);
+		if (sign === '+') {
+			rows.push({ kind: 'add', text, newLine: newLine++ });
+		} else if (sign === '-') {
+			rows.push({ kind: 'del', text, oldLine: oldLine++ });
+		} else {
+			rows.push(ctx(raw, oldLine, newLine));
+			oldLine++;
+			newLine++;
+		}
+	}
+	return rows;
+};
 
 const stripAbbreviatedPath = (path: string) => {
 	const trimmed = path.replace(/\\/g, '/');
@@ -153,20 +158,34 @@ const stripAbbreviatedPath = (path: string) => {
 
 const FileDiffBlock = ({ file, patch, additions, deletions }: { file: string; patch: string; additions?: number; deletions?: number }) => {
 	const [open, setOpen] = useState(true);
-	const add = typeof additions === 'number' ? additions : undefined;
-	const del = typeof deletions === 'number' ? deletions : undefined;
+	const rows = React.useMemo(() => parsePatch(patch), [patch]);
+	const add = typeof additions === 'number' ? additions : rows.filter(r => r.kind === 'add').length;
+	const del = typeof deletions === 'number' ? deletions : rows.filter(r => r.kind === 'del').length;
 	return <div className='border border-loophole-border-3 rounded overflow-hidden min-w-0'>
 		<div className='flex select-none min-w-0 cursor-pointer items-center px-1 min-h-[22px]' onClick={() => setOpen(v => !v)}>
 			<ChevronRight className={`text-loophole-fg-4 mr-0.5 h-3 w-3 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${open ? 'rotate-90' : ''}`} />
 			<span className='text-[11px] text-loophole-fg-3 font-mono truncate min-w-0 flex-1'>{stripAbbreviatedPath(file)}</span>
 			<span className='text-[11px] font-mono flex-shrink-0'>
-				{add !== undefined && add > 0 && <span className='text-emerald-400'>+{add}</span>}
-				{add !== undefined && add > 0 && del !== undefined && del > 0 && <span className='text-loophole-fg-4'> </span>}
-				{del !== undefined && del > 0 && <span className='text-red-400'>−{del}</span>}
+				{add > 0 && <span className='text-emerald-400'>+{add}</span>}
+				{add > 0 && del > 0 && <span className='text-loophole-fg-4'> </span>}
+				{del > 0 && <span className='text-red-400'>−{del}</span>}
 			</span>
 		</div>
-		{open && <div className='max-h-[280px] overflow-auto border-t border-loophole-border-3 select-text'>
-			<PatchDiff patch={patch} options={PIERRE_OPTIONS} style={PIERRE_STYLE} />
+		{open && <div className='max-h-[280px] overflow-auto border-t border-loophole-border-3 select-text font-mono text-[11px] leading-[1.4]'>
+			{rows.map((row, i) => {
+				if (row.kind === 'hunk') {
+					return <div key={i} className='px-1 bg-loophole-bg-2 text-loophole-fg-4 whitespace-pre-wrap py-0.5'>{row.text}</div>;
+				}
+				const gutter = row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' ';
+				const bg = row.kind === 'add' ? 'bg-emerald-500/10 text-emerald-300' : row.kind === 'del' ? 'bg-red-500/10 text-red-300' : 'text-loophole-fg-2';
+				const border = row.kind === 'add' ? 'border-emerald-500/25' : row.kind === 'del' ? 'border-red-500/25' : 'border-transparent';
+				return <div key={i} className={`flex border-l-2 ${border} ${bg} whitespace-pre-wrap break-all`}>
+					<span className='w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.oldLine ?? ''}</span>
+					<span className='w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.newLine ?? ''}</span>
+					<span className='w-4 flex-shrink-0 select-none text-center'>{gutter}</span>
+					<span className='pr-2'>{row.text || ' '}</span>
+				</div>;
+			})}
 		</div>}
 	</div>;
 };

@@ -568,10 +568,18 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		this._onDidChangeCliPermissions.fire({ threadId })
 	}
 
+	// CLI reports usage cumulatively per session, so the baseline a delta is
+	// measured against must belong to the same session. Without this, switching
+	// models mid-thread left the new session's numbers compared against the old
+	// one and a whole turn's worth of tokens silently attributed to the wrong
+	// model (or dropped).
+	private readonly _cliUsageSessionIds = new Map<string, string | undefined>();
+
 	setCliSessionId = (threadId: string, cliSessionId: string) => {
 		if (!this.state.allThreads[threadId]) return
 		if (this.state.allThreads[threadId].state.cliSessionId === cliSessionId) return
-		this._setThreadState(threadId, { cliSessionId })
+		this._setThreadState(threadId, { cliSessionId, cliUsage: undefined })
+		this._cliUsageSessionIds.set(threadId, cliSessionId)
 	}
 
 	clearCliSessionId = (threadId: string) => {
@@ -584,6 +592,14 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	updateCliUsage = (threadId: string, usage: CliUsage) => {
 		if (!this.state.allThreads[threadId]) return
+		// The usage belongs to the CLI session this turn opened. If the thread
+		// has moved to a different session (model switch mid-thread), drop the
+		// previous snapshot as a baseline before computing the delta.
+		const sessionId = this.state.allThreads[threadId].state.cliSessionId
+		if (this._cliUsageSessionIds.get(threadId) !== sessionId) {
+			this._cliUsageSessionIds.set(threadId, sessionId)
+			this._setThreadState(threadId, { cliUsage: undefined })
+		}
 		const previous = this.state.allThreads[threadId].state.cliUsage
 		this._setThreadState(threadId, { cliUsage: usage })
 		// The graph is per model, and the CLI only reports cumulative session totals,

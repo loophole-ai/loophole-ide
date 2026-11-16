@@ -80,6 +80,8 @@ export interface ITokenUsageService {
 	getEstimatedCost(): number;
 	getFormattedEstimatedCost(): string;
 	getDailyUsage(): DailyTokenEntry[];
+	/** Wipe all recorded usage (totals, cost and per-model daily entries). */
+	clearUsage(): void;
 }
 
 export class TokenUsageService implements ITokenUsageService {
@@ -165,6 +167,16 @@ export class TokenUsageService implements ITokenUsageService {
 		return Array.from(this._dailyUsage.entries())
 			.map(([date, { tokens, cost, models }]) => ({ date, tokens, cost, models }))
 			.sort((a, b) => a.date.localeCompare(b.date));
+	}
+
+	clearUsage(): void {
+		this._dailyUsage.clear();
+		this._totalTokensUsed = 0;
+		this._estimatedCost = 0;
+		this.storageService.remove(TOTAL_TOKENS_STORAGE_KEY, StorageScope.APPLICATION);
+		this.storageService.remove(ESTIMATED_COST_STORAGE_KEY, StorageScope.APPLICATION);
+		this.storageService.remove(DAILY_TOKENS_STORAGE_KEY, StorageScope.APPLICATION);
+		this._onTokenUsageChanged.fire();
 	}
 }
 

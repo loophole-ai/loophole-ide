@@ -132,7 +132,7 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 		const list: CliModelOption[] = []
 		// With real models available the list is the models themselves; "default"
 		// only exists as a fallback so the picker is never empty.
-		if (allowDefault && models.length === 0) list.push({ value: '', label: 'CLI default', detail: 'Let the CLI choose' })
+		if (allowDefault && models.length === 0) list.push({ value: '', label: 'Default', detail: 'Let the CLI choose' })
 		for (const model of models) {
 			list.push({ value: cliModelRef(model), label: model.name ?? model.modelID, detail: model.providerID })
 		}
