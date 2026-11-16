@@ -137,6 +137,9 @@ export class LoopholeCliChannel implements IServerChannel {
 	private handle: LoopholeCliHandle | null = null;
 	private state: CliState = 'disconnected';
 	private statusError: string | undefined = undefined;
+	// Folder the running (or last spawned) CLI was started in. The CLI binds its
+	// project to its cwd, so this has to follow the folder open in the editor.
+	private cwd: string | undefined = undefined;
 	private readonly _onEvent = new Emitter<unknown>();
 	// requestId -> FIM abort controllers (cancel on new request / on fimAbort)
 	private readonly _fimControllers = new Map<string, AbortController>();
@@ -356,7 +359,7 @@ export class LoopholeCliChannel implements IServerChannel {
 			// version answers and the status page reflects reality.
 			const wasConnected = this.state === 'connected';
 			this._teardown('disconnected');
-			if (wasConnected) await this._callConnect({});
+			if (wasConnected) await this._callConnect({ workspacePath: this.cwd });
 		}
 		return { ok: !failed, version, output };
 	}
@@ -480,15 +483,31 @@ export class LoopholeCliChannel implements IServerChannel {
 		throw new Error('Loophole CLI did not become ready in time');
 	}
 
+	// Normalised form used only to compare two folders (case-insensitive on Windows).
+	private _folderKey(folder: string): string {
+		const resolved = path.resolve(folder);
+		return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+	}
+
+	// True when the CLI already runs in `requested`. No requested folder means "don't care".
+	private _runsIn(requested: string | undefined): boolean {
+		if (requested === undefined) return true;
+		return this.cwd !== undefined && this._folderKey(this.cwd) === this._folderKey(requested);
+	}
+
 	private async _callConnect(params: LoopholeCliConnectParams = {}): Promise<LoopholeCliStatus> {
-		if (this.state === 'connected' && this.handle) return this._callStatus();
+		// The editor's open folder; ignored when it no longer exists on disk.
+		const requestedCwd = params.workspacePath && existsSync(params.workspacePath) ? params.workspacePath : undefined;
+		if (this.state === 'connected' && this.handle && this._runsIn(requestedCwd)) return this._callStatus();
 		if (this.state === 'starting') {
 			// Another caller is already spawning the CLI; wait for that attempt instead of failing.
 			const deadline = Date.now() + 120_000;
 			while (this.state === 'starting' && Date.now() < deadline) {
 				await new Promise((resolve) => setTimeout(resolve, 200));
 			}
-			return this._callStatus();
+			// Still starting, or it came up in the folder we want: done. Otherwise it was
+			// started for a different folder, so fall through and restart it for this one.
+			if (this.state === 'starting' || this._runsIn(requestedCwd)) return this._callStatus();
 		}
 		this._teardown('starting');
 		this.state = 'starting';
@@ -505,7 +524,9 @@ export class LoopholeCliChannel implements IServerChannel {
 		}
 		const password = randomBytes(24).toString('base64url');
 		const port = await freePort();
-		const cwd = params.workspacePath ?? process.cwd();
+		// Never fall back to process.cwd(): for the packaged editor that is the install folder.
+		const cwd = requestedCwd ?? homedir();
+		this.cwd = cwd;
 		// The server refuses to boot without a password (ServerProcess.run fails
 		// with "Missing server password"), and every request is Basic-authenticated
 		// against it, so the same secret has to be handed to the child.
@@ -886,4 +907,3 @@ export class LoopholeCliChannel implements IServerChannel {
 		return Promise.resolve();
 	}
 }
-
