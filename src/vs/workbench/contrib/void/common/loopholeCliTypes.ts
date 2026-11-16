@@ -6,7 +6,8 @@
 export interface LoopholeCliConnectParams {
 	// override the bundled binary path; undefined = bundled <app>/resources/app/bin/loophole[.exe], then $PATH
 	binaryPath?: string;
-	// workspace to run the server in (cwd for sessions); undefined = first workspace folder
+	// workspace to run the server in (cwd for sessions); the renderer service fills in the
+	// editor's first workspace folder when omitted, and the CLI restarts if it runs elsewhere
 	workspacePath?: string;
 	// extra env to pass to the server process
 	env?: { [key: string]: string | undefined };
