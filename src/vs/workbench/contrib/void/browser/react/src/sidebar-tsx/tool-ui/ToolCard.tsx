@@ -12,9 +12,9 @@
 // Tool results must never spill into the transcript: the card auto-collapses
 // as soon as the call finishes and the result body lives in its own collapsible
 // section with a summary line and a scrollable, wrapping code block.
-import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
-import type { CliCompactionState, CliToolState } from '../../../../../common/sendLLMMessageTypes.js';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Ban, Check, ChevronRight, FilePlus, FileText, Loader2, RefreshCw } from 'lucide-react';
+import type { CliCompactionState, CliToolState, CliToolStatus } from '../../../../../common/sendLLMMessageTypes.js';
 
 // The transport caps stored text at 20k; rendering much less keeps the DOM
 // small even when a stored block is still large.
@@ -131,7 +131,7 @@ const parsePatch = (patch: string): DiffRow[] => {
 		if (match) {
 			oldLine = parseInt(match[1], 10);
 			newLine = parseInt(match[2], 10);
-			rows.push({ kind: 'hunk', text: raw.replace(/^@@[^@]*@@\s*/, '').trim() || '@@' });
+			rows.push({ kind: 'hunk', text: raw.replace(/^@@[^@]*@@\s*/, '').trim() || `Line ${newLine}` });
 			continue;
 		}
 		if (raw.startsWith('+++') || raw.startsWith('---') || raw.startsWith('diff ') || raw.startsWith('index ') || raw.startsWith('new file') || raw.startsWith('deleted file') || raw.startsWith('rename ') || raw === '') continue;
@@ -156,6 +156,26 @@ const stripAbbreviatedPath = (path: string) => {
 	return parts.length > 2 ? parts.slice(-2).join('/') : trimmed;
 };
 
+const DiffRows = ({ rows, showLineNumbers = true }: { rows: DiffRow[]; showLineNumbers?: boolean }) => {
+	return <>
+		{rows.map((row, i) => {
+			if (row.kind === 'hunk') {
+				return <div key={i} className='px-2 py-0.5 bg-loophole-bg-2 text-loophole-fg-4 whitespace-pre-wrap'>{row.text}</div>;
+			}
+			const gutter = row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' ';
+			const tone = row.kind === 'add' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500' : row.kind === 'del' ? 'bg-red-500/10 text-red-300 border-red-500' : 'text-loophole-fg-3 border-transparent';
+			return <div key={i} className={`flex border-l-2 ${tone} whitespace-pre-wrap break-all`}>
+				{showLineNumbers && <>
+					<span className='w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.oldLine ?? ''}</span>
+					<span className='w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.newLine ?? ''}</span>
+				</>}
+				<span className='w-4 flex-shrink-0 select-none text-center'>{gutter}</span>
+				<span className='pr-2'>{row.text || ' '}</span>
+			</div>;
+		})}
+	</>;
+};
+
 const FileDiffBlock = ({ file, patch, additions, deletions }: { file: string; patch: string; additions?: number; deletions?: number }) => {
 	const [open, setOpen] = useState(true);
 	const rows = React.useMemo(() => parsePatch(patch), [patch]);
@@ -172,20 +192,7 @@ const FileDiffBlock = ({ file, patch, additions, deletions }: { file: string; pa
 			</span>
 		</div>
 		{open && <div className='max-h-[280px] overflow-auto border-t border-loophole-border-3 select-text font-mono text-[11px] leading-[1.4]'>
-			{rows.map((row, i) => {
-				if (row.kind === 'hunk') {
-					return <div key={i} className='px-1 bg-loophole-bg-2 text-loophole-fg-4 whitespace-pre-wrap py-0.5'>{row.text}</div>;
-				}
-				const gutter = row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' ';
-				const bg = row.kind === 'add' ? 'bg-emerald-500/10 text-emerald-300' : row.kind === 'del' ? 'bg-red-500/10 text-red-300' : 'text-loophole-fg-2';
-				const border = row.kind === 'add' ? 'border-emerald-500/25' : row.kind === 'del' ? 'border-red-500/25' : 'border-transparent';
-				return <div key={i} className={`flex border-l-2 ${border} ${bg} whitespace-pre-wrap break-all`}>
-					<span className='w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.oldLine ?? ''}</span>
-					<span className='w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.newLine ?? ''}</span>
-					<span className='w-4 flex-shrink-0 select-none text-center'>{gutter}</span>
-					<span className='pr-2'>{row.text || ' '}</span>
-				</div>;
-			})}
+			<DiffRows rows={rows} />
 		</div>}
 	</div>;
 };
@@ -256,7 +263,7 @@ const StatusIcon = ({ status }: { status: CliToolState['status'] }) => {
 	return <Loader2 size={13} className='text-loophole-fg-4 animate-spin flex-shrink-0' />;
 };
 
-export const ToolCard = ({ tool }: { tool: CliToolState }) => {
+const GenericToolCard = ({ tool }: { tool: CliToolState }) => {
 	const running = tool.status === 'running' || tool.status === 'input';
 	// Expanded while the call runs, collapsed once it finishes so its result
 	// cannot push the transcript around.
@@ -290,6 +297,221 @@ export const ToolCard = ({ tool }: { tool: CliToolState }) => {
 			</div>
 		</div>}
 	</div>;
+};
+
+type FileChange = {
+	file: string;
+	patch: string;
+	additions?: number;
+	deletions?: number;
+	isNew: boolean;
+	synthetic: boolean;
+};
+
+const FILE_CHANGE_TOOLS = new Set(['write', 'edit', 'patch', 'apply_patch', 'multiedit', 'multi_edit']);
+
+export const isFileChangeTool = (name: string): boolean => FILE_CHANGE_TOOLS.has(name.toLowerCase());
+
+const rawTextOf = (input: Record<string, unknown>, keys: string[]): string | undefined => {
+	for (const key of keys) {
+		const value = input[key];
+		if (typeof value === 'string') return value;
+	}
+	return undefined;
+};
+
+const linesOf = (text: string): string[] => {
+	const normalized = text.replace(/\r\n/g, '\n').replace(/\n$/, '');
+	return normalized === '' ? [] : normalized.split('\n');
+};
+
+const patchFromTexts = (oldText: string, newText: string, label: string): string => {
+	const oldLines = linesOf(oldText);
+	const newLines = linesOf(newText);
+	return [
+		`@@ -1,${oldLines.length} +1,${newLines.length} @@ ${label}`,
+		...oldLines.map((line) => `-${line}`),
+		...newLines.map((line) => `+${line}`),
+	].join('\n');
+};
+
+const PATCH_FILE_HEADER = /^\*\*\* (Update|Add|Delete|Move) File: (.+)$/;
+
+const filesFromPatchText = (text: string): FileChange[] => {
+	const files: FileChange[] = [];
+	let current: { file: string; isNew: boolean; lines: string[] } | undefined;
+	const flush = () => {
+		if (current) files.push({ file: current.file, patch: current.lines.join('\n'), isNew: current.isNew, synthetic: true });
+	};
+	for (const raw of text.replace(/\r\n/g, '\n').split('\n')) {
+		const header = PATCH_FILE_HEADER.exec(raw);
+		if (header) {
+			flush();
+			current = { file: header[2].trim(), isNew: header[1] === 'Add', lines: ['@@ -1,0 +1,0 @@ Changing'] };
+			continue;
+		}
+		if (!current || raw.startsWith('*** ') || raw.startsWith('@@')) continue;
+		const sign = raw.charAt(0);
+		current.lines.push(sign === '+' || sign === '-' || sign === ' ' ? raw : ` ${raw}`);
+	}
+	flush();
+	return files;
+};
+
+const changesOfTool = (tool: CliToolState): FileChange[] => {
+	const metaFiles = (tool.metadata as { files?: unknown } | undefined)?.files;
+	if (Array.isArray(metaFiles)) {
+		const changes: FileChange[] = [];
+		for (const item of metaFiles) {
+			if (!item || typeof item !== 'object') continue;
+			const entry = item as { file?: unknown; patch?: unknown; additions?: unknown; deletions?: unknown; status?: unknown };
+			if (typeof entry.patch !== 'string' || entry.patch.length === 0) continue;
+			changes.push({
+				file: typeof entry.file === 'string' ? entry.file : '',
+				patch: entry.patch,
+				additions: typeof entry.additions === 'number' ? entry.additions : undefined,
+				deletions: typeof entry.deletions === 'number' ? entry.deletions : undefined,
+				isNew: entry.status === 'added' || /^@@ -0,0 /m.test(entry.patch),
+				synthetic: false,
+			});
+		}
+		if (changes.length > 0) return changes;
+	}
+	const input = tool.input;
+	if (!input) return [{ file: '', patch: '', isNew: false, synthetic: true }];
+	const file = rawTextOf(input, ['filePath', 'file_path', 'path', 'filename', 'file']) ?? '';
+	const patchText = rawTextOf(input, ['patchText', 'patch', 'patch_text']);
+	if (patchText !== undefined) {
+		const fromPatch = filesFromPatchText(patchText);
+		if (fromPatch.length > 0) return fromPatch;
+	}
+	if (tool.name.toLowerCase() === 'write') {
+		const content = rawTextOf(input, ['content', 'text', 'newContent']);
+		return [{ file, patch: content === undefined ? '' : patchFromTexts('', content, 'Writing'), isNew: false, synthetic: true }];
+	}
+	const edits = (Array.isArray(input.edits) ? input.edits : [input]).filter((edit): edit is Record<string, unknown> => !!edit && typeof edit === 'object');
+	const patches: string[] = [];
+	edits.forEach((edit, index) => {
+		const oldText = rawTextOf(edit, ['oldString', 'old_string', 'oldText']);
+		const newText = rawTextOf(edit, ['newString', 'new_string', 'newText', 'newContent']);
+		if (oldText === undefined && newText === undefined) return;
+		patches.push(patchFromTexts(oldText ?? '', newText ?? '', edits.length > 1 ? `Edit ${index + 1}` : 'Changing'));
+	});
+	return [{ file, patch: patches.join('\n'), isNew: false, synthetic: true }];
+};
+
+const splitPath = (file: string): { name: string; dir: string } => {
+	const parts = file.replace(/\\/g, '/').split('/').filter((part) => part.length > 0);
+	if (parts.length === 0) return { name: '', dir: '' };
+	const parents = parts.slice(Math.max(0, parts.length - 3), parts.length - 1);
+	return { name: parts[parts.length - 1], dir: parents.length > 0 ? `${parents.join('/')}/` : '' };
+};
+
+const countsOf = (change: FileChange, rows: DiffRow[]): { added: number; removed: number } => ({
+	added: change.additions ?? rows.filter((row) => row.kind === 'add').length,
+	removed: change.deletions ?? rows.filter((row) => row.kind === 'del').length,
+});
+
+const isRejection = (text: string | undefined): boolean => !!text && /reject|denied|declin/i.test(text);
+
+const useAutoOpen = (running: boolean): [boolean, () => void] => {
+	const [isOpen, setIsOpen] = useState(running);
+	const userToggled = useRef(false);
+	useEffect(() => {
+		if (userToggled.current) return;
+		if (running) {
+			setIsOpen(true);
+			return;
+		}
+		const timer = window.setTimeout(() => setIsOpen(false), 700);
+		return () => window.clearTimeout(timer);
+	}, [running]);
+	const toggle = () => {
+		userToggled.current = true;
+		setIsOpen((value) => !value);
+	};
+	return [isOpen, toggle];
+};
+
+const FileStatusIcon = ({ status, rejected, isNew }: { status: CliToolStatus; rejected: boolean; isNew: boolean }) => {
+	if (status === 'running' || status === 'input') return <Loader2 size={13} className='text-loophole-fg-4 animate-spin flex-shrink-0' />;
+	if (status === 'error') return rejected
+		? <Ban size={13} className='text-loophole-fg-4 flex-shrink-0' />
+		: <AlertTriangle size={13} className='text-loophole-warning flex-shrink-0' />;
+	return isNew
+		? <FilePlus size={13} className='text-loophole-fg-4 flex-shrink-0' />
+		: <FileText size={13} className='text-loophole-fg-4 flex-shrink-0' />;
+};
+
+const ChangeCounts = ({ added, removed }: { added: number; removed: number }) => {
+	return <span className='ml-auto flex gap-1.5 flex-shrink-0 font-mono text-[11px]'>
+		{added > 0 && <span className='text-emerald-400'>+{added}</span>}
+		{removed > 0 && <span className='text-red-400'>−{removed}</span>}
+	</span>;
+};
+
+const FileChangeView = ({ change, status, errorText, fallbackName, nested }: { change: FileChange; status: CliToolStatus; errorText: string | undefined; fallbackName: string; nested: boolean }) => {
+	const running = status === 'running' || status === 'input';
+	const [isOpen, toggle] = useAutoOpen(running);
+	const rows = useMemo(() => parsePatch(change.patch), [change.patch]);
+	const bodyRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (running && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+	}, [rows.length, running]);
+	const { added, removed } = countsOf(change, rows);
+	const rejected = status === 'error' && isRejection(errorText);
+	const { name, dir } = splitPath(change.file);
+	const hasBody = rows.length > 0 || !!errorText;
+	const struck = rejected ? 'line-through' : '';
+	return <div className={`w-full min-w-0 border border-loophole-border-3 rounded overflow-hidden ${nested ? 'bg-loophole-bg-1' : 'bg-loophole-bg-3'}`}>
+		<div className={`group flex items-center gap-1.5 min-h-[26px] pl-1 pr-2 py-0.5 min-w-0 select-none ${hasBody ? 'cursor-pointer' : ''}`} onClick={hasBody ? toggle : undefined}>
+			<ChevronRight className={`text-loophole-fg-3 h-3.5 w-3.5 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'rotate-90' : ''} ${hasBody ? '' : 'opacity-0'}`} />
+			<FileStatusIcon status={status} rejected={rejected} isNew={change.isNew} />
+			<span className={`text-xs font-medium text-loophole-fg-2 group-hover:text-loophole-fg-1 flex-shrink-0 max-w-[60%] truncate ${struck}`}>{name || fallbackName}</span>
+			{dir && <span className={`text-[11px] text-loophole-fg-4 min-w-0 truncate ${struck}`}>{dir}</span>}
+			{change.isNew && <span className='text-[10px] text-loophole-fg-3 border border-loophole-border-3 rounded-sm px-1 flex-shrink-0'>New</span>}
+			<ChangeCounts added={added} removed={removed} />
+		</div>
+		{isOpen && hasBody && <div ref={bodyRef} className='border-t border-loophole-border-3 max-h-[260px] overflow-auto select-text font-mono text-[11px] leading-[1.45]'>
+			<DiffRows rows={rows} showLineNumbers={!change.synthetic} />
+			{errorText && <pre className='m-0 px-2 py-1.5 text-xs font-mono text-loophole-fg-2 whitespace-pre-wrap break-words'>{truncate(errorText, MAX_VISIBLE_CHARS).text}</pre>}
+		</div>}
+	</div>;
+};
+
+const FileChangeGroup = ({ changes, status, errorText, fallbackName }: { changes: FileChange[]; status: CliToolStatus; errorText: string | undefined; fallbackName: string }) => {
+	const running = status === 'running' || status === 'input';
+	const [isOpen, toggle] = useAutoOpen(running);
+	const totals = changes.reduce((sum, change) => {
+		const { added, removed } = countsOf(change, parsePatch(change.patch));
+		return { added: sum.added + added, removed: sum.removed + removed };
+	}, { added: 0, removed: 0 });
+	return <div className='w-full min-w-0 border border-loophole-border-3 rounded bg-loophole-bg-3 overflow-hidden'>
+		<div className='flex items-center gap-1.5 min-h-[26px] pl-1 pr-2 py-0.5 min-w-0 select-none cursor-pointer' onClick={toggle}>
+			<ChevronRight className={`text-loophole-fg-3 h-3.5 w-3.5 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'rotate-90' : ''}`} />
+			<FileStatusIcon status={status} rejected={false} isNew={false} />
+			<span className='text-xs font-medium text-loophole-fg-2 flex-shrink-0'>{changes.length} files changed</span>
+			<ChangeCounts added={totals.added} removed={totals.removed} />
+		</div>
+		{isOpen && <div className='flex flex-col gap-1 p-1.5 border-t border-loophole-border-3'>
+			{changes.map((change, index) => <FileChangeView key={`${change.file}:${index}`} change={change} status={status} errorText={undefined} fallbackName={fallbackName} nested={true} />)}
+			{errorText && <pre className='m-0 px-2 py-1.5 text-xs font-mono text-loophole-fg-2 whitespace-pre-wrap break-words'>{truncate(errorText, MAX_VISIBLE_CHARS).text}</pre>}
+		</div>}
+	</div>;
+};
+
+const FileChangeCard = ({ tool }: { tool: CliToolState }) => {
+	const changes = changesOfTool(tool);
+	const fallbackName = titleOfToolName(tool.name);
+	if (changes.length > 1) {
+		return <FileChangeGroup changes={changes} status={tool.status} errorText={tool.error} fallbackName={fallbackName} />;
+	}
+	return <FileChangeView change={changes[0]} status={tool.status} errorText={tool.error} fallbackName={fallbackName} nested={false} />;
+};
+
+export const ToolCard = ({ tool }: { tool: CliToolState }) => {
+	if (!isFileChangeTool(tool.name)) return <GenericToolCard tool={tool} />;
+	return <FileChangeCard tool={tool} />;
 };
 
 // Compact banner for session.compaction.* (context compaction). Text is the
