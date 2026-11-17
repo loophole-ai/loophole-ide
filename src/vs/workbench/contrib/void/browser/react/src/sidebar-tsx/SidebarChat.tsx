@@ -36,8 +36,8 @@ import { acceptAllBg, acceptBorder, buttonFontSize, buttonTextColor, rejectAllBg
 import { builtinToolNames, isABuiltinToolName, MAX_FILE_CHARS_PAGE, MAX_TERMINAL_INACTIVE_TIME } from '../../../../common/prompt/prompts.js';
 import { RawToolCallObj } from '../../../../common/sendLLMMessageTypes.js';
 import { ThinkingBlock } from './tool-ui/ThinkingBlock.js';
-import { ToolCard, CompactionBanner } from './tool-ui/ToolCard.js';
-import { TodoListCard, isTodoToolName } from './tool-ui/TodoList.js';
+import { CompactionBanner } from './tool-ui/ToolCard.js';
+import { CliToolList } from './tool-ui/CliToolList.js';
 import ErrorBoundary from './ErrorBoundary.js';
 import { ToolApprovalTypeSwitch } from '../void-settings-tsx/Settings.js';
 
@@ -1546,13 +1546,7 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 		    Cards own their output: nothing a tool returns is rendered outside them. */}
 		{cliTools.length > 0 &&
 			<div className={`flex flex-col gap-1 w-full min-w-0 ${isCheckpointGhost ? 'opacity-50' : ''}`}>
-				{cliTools.map(tool => (
-					<React.Fragment key={tool.id}>
-						{isTodoToolName(tool.name)
-							? <TodoListCard tool={tool} />
-							: <ToolCard tool={tool} />}
-					</React.Fragment>
-				))}
+				<CliToolList tools={cliTools} />
 			</div>
 		}
 
