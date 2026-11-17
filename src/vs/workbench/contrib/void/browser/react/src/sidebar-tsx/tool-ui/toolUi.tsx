@@ -79,12 +79,10 @@ export const useCopyText = (): [boolean, (text: string) => void] => {
 	return [copied, copy];
 };
 
-const LINK_CLASS = 'cursor-pointer hover:text-[var(--vscode-textLink-foreground)] hover:underline';
-
 export const FileLink = ({ path, line, className, children }: { path: string; line?: number; className?: string; children: React.ReactNode }) => {
 	const openFile = useOpenFile();
 	return <span
-		className={`${LINK_CLASS} ${className ?? ''}`}
+		className={`cursor-pointer hover:text-[var(--vscode-textLink-foreground)] hover:underline ${className ?? ''}`}
 		title='Open in editor'
 		onClick={(e) => {
 			e.stopPropagation();
@@ -96,7 +94,7 @@ export const FileLink = ({ path, line, className, children }: { path: string; li
 export const UrlLink = ({ url, className, children }: { url: string; className?: string; children: React.ReactNode }) => {
 	const openUrl = useOpenUrl();
 	return <span
-		className={`${LINK_CLASS} ${className ?? ''}`}
+		className={`cursor-pointer hover:text-[var(--vscode-textLink-foreground)] hover:underline ${className ?? ''}`}
 		title='Open in browser'
 		onClick={(e) => {
 			e.stopPropagation();
