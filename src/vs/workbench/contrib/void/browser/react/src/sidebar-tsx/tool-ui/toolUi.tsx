@@ -1,13 +1,7 @@
-/*--------------------------------------------------------------------------------------
- *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
- *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
- *--------------------------------------------------------------------------------------*/
-
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useAccessor } from '../../util/services.js';
-import { URI } from '../../../../../../../../base/common/uri.js';
-import { ScrollType } from '../../../../../../../../editor/common/editorCommon.js';
+import { URI, ScrollType } from '../../util/vscodeInternals.js';
 import { formatDuration } from './toolData.js';
 
 export const useAutoOpen = (running: boolean, keepOpen: boolean = false): [boolean, () => void] => {
