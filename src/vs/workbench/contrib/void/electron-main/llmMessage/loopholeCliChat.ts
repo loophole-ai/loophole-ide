@@ -45,6 +45,15 @@ import type { LoopholeCliModelRef } from '../../common/loopholeCliTypes.js';
 import { LOOPHOLE_CLI_TRUNCATION_MARKER, truncateLoopholeCliText } from '../../common/loopholeCliTypes.js';
 import { getLoopholeCliChannel } from '../loopholeCliChannel.js';
 
+// `session.step.ended` closes one model call, not the whole turn. When the model stopped to call
+// tools, the server runs them and starts another step that writes the answer from their results,
+// so a step that ended for tools must not finish the turn: everything after it would be dropped
+// and the reply would stop right after "Let me check...".
+export const stepContinuesTurn = (finish: unknown): boolean => typeof finish === 'string' && /tool|function/i.test(finish);
+
+// A turn is only failed for silence: the agent loop can legitimately run for much longer than this.
+const LOOPHOLE_CLI_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
 export type LoopholeCliChatParams = {
 	messages: LLMChatMessage[];
 	separateSystemMessage: string | undefined;
@@ -138,16 +147,19 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 	const eventController = new AbortController();
 	let settled = false;
 	let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+	let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const fail = (message: string) => {
 		if (settled) return;
 		settled = true;
+		clearTimeout(idleTimer);
 		onError({ message, fullError: null });
 	};
 
 	const finish = (fullText: string, fullReasoning: string, tokens?: unknown) => {
 		if (settled) return;
 		settled = true;
+		clearTimeout(idleTimer);
 		const tokenUsage = (tokens && typeof tokens === 'object'
 			&& typeof (tokens as { input?: unknown }).input === 'number'
 			&& typeof (tokens as { output?: unknown }).output === 'number')
@@ -170,6 +182,12 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 
 	let fullText = '';
 	let fullReasoning = '';
+	// Latest step's usage (the context-window size), kept for when the turn ends on execution.succeeded.
+	let lastStepTokens: unknown = undefined;
+	// Used to start a new paragraph when a later step (or text after a tool ran) continues the reply.
+	let lastTextMessageID: string | undefined;
+	let lastReasoningMessageID: string | undefined;
+	let toolSinceText = false;
 
 	// Tool cards + compaction snapshots, merged per tool call id and emitted as
 	// one ordered list so the renderer can replace its state wholesale.
@@ -241,6 +259,14 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		return out;
 	};
 
+	const started = Date.now();
+	const armIdleTimeout = () => {
+		if (settled) return;
+		clearTimeout(idleTimer);
+		idleTimer = setTimeout(() => {
+			if (!settled) fail(`Loophole CLI: timed out after ${Math.round((Date.now() - started) / 1000)}s, no activity from the CLI for ${Math.round(LOOPHOLE_CLI_IDLE_TIMEOUT_MS / 1000)}s.`);
+		}, LOOPHOLE_CLI_IDLE_TIMEOUT_MS);
+	};
 	const MAX_STEPS = 60;
 	const STEP_TEXT_LIMIT = 3000;
 	const slimInput = (input: Record<string, unknown>): Record<string, unknown> => {
@@ -289,6 +315,7 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		if (!childID || !id) return;
 		void resolveChildTask(childID).then((taskId) => {
 			if (!taskId) return;
+			armIdleTimeout();
 			if (type === 'session.tool.input.started') {
 				upsertStep(taskId, id, { name: typeof data.name === 'string' ? data.name : '', status: 'input' });
 			}
@@ -309,8 +336,6 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 			}
 		});
 	};
-
-	const started = Date.now();
 	const handleEvent = (evt: { type?: string; data?: Record<string, unknown> }) => {
 		if (!evt || typeof evt.type !== 'string') return;
 		const data = evt.data ?? {};
@@ -319,9 +344,15 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 			if (evt.type.startsWith('session.tool.')) handleChildToolEvent(evt.type, data);
 			return;
 		}
+		armIdleTimeout();
 		if (evt.type === 'session.text.delta') {
 			const delta = typeof data.delta === 'string' ? data.delta : '';
 			if (delta) {
+				const messageID = typeof data.assistantMessageID === 'string' ? data.assistantMessageID : undefined;
+				const newStep = !!messageID && !!lastTextMessageID && messageID !== lastTextMessageID;
+				if (fullText && !/\s$/.test(fullText) && (toolSinceText || newStep)) fullText += '\n\n';
+				if (messageID) lastTextMessageID = messageID;
+				toolSinceText = false;
 				fullText += delta;
 				onText({ fullText, fullReasoning });
 			}
@@ -329,13 +360,16 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		else if (evt.type === 'session.reasoning.delta') {
 			const delta = typeof data.delta === 'string' ? data.delta : '';
 			if (delta) {
+				const messageID = typeof data.assistantMessageID === 'string' ? data.assistantMessageID : undefined;
+				if (fullReasoning && !/\s$/.test(fullReasoning) && !!messageID && !!lastReasoningMessageID && messageID !== lastReasoningMessageID) fullReasoning += '\n\n';
+				if (messageID) lastReasoningMessageID = messageID;
 				fullReasoning += delta;
 				onText({ fullText, fullReasoning });
 			}
 		}
 		else if (evt.type === 'session.tool.input.started') {
 			const id = typeof data.id === 'string' ? data.id : '';
-			if (id) upsertTool(id, { name: typeof data.name === 'string' ? data.name : '', status: 'input', inputText: '' });
+			if (id) { toolSinceText = true; upsertTool(id, { name: typeof data.name === 'string' ? data.name : '', status: 'input', inputText: '' }); }
 		}
 		else if (evt.type === 'session.tool.input.delta') {
 			const id = typeof data.id === 'string' ? data.id : '';
@@ -360,6 +394,7 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 				? data.input as Record<string, unknown>
 				: undefined;
 			const prev = toolsById.get(id);
+			toolSinceText = true;
 			upsertTool(id, { status: 'running', input, inputText: prev?.inputText });
 		}
 		else if (evt.type === 'session.tool.progress') {
@@ -448,10 +483,19 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 				onUsage({ usage });
 			}
 		}
-		else if (evt.type === 'session.step.ended' || evt.type === 'session.execution.succeeded') {
-			const evtTokens = evt.type === 'session.step.ended' ? data.tokens : undefined;
+		else if (evt.type === 'session.step.ended') {
+			if (data.tokens && typeof data.tokens === 'object') lastStepTokens = data.tokens;
+			// The step stopped for tools (or one is still running): the server runs them and writes
+			// the answer in a later step. Keep listening; the turn ends on a later step or on
+			// session.execution.succeeded. (chatTurn stays true so those steps' usage is counted.)
+			const toolRunning = [...toolsById.values()].some((t) => t.status === 'running');
+			if (stepContinuesTurn(data.finish) || toolRunning) return;
 			chatTurn = false;
-			finish(fullText, fullReasoning, evtTokens);
+			finish(fullText, fullReasoning, lastStepTokens);
+		}
+		else if (evt.type === 'session.execution.succeeded') {
+			chatTurn = false;
+			finish(fullText, fullReasoning, lastStepTokens);
 		}
 		else if (evt.type === 'session.step.failed' || evt.type === 'session.execution.failed') {
 			const err = data.error as { message?: unknown } | undefined;
@@ -462,6 +506,7 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 			// abortRef already swallowed the abort; treat as a plain stop without an error
 			if (!settled) {
 				settled = true;
+				clearTimeout(idleTimer);
 				onFinalMessage({ fullText, fullReasoning, anthropicReasoning: null });
 			}
 		}
@@ -511,15 +556,12 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 	await new Promise((resolve) => setTimeout(resolve, 100));
 	if (settled) return;
 	chatTurn = true;
+	armIdleTimeout();
 	try {
 		await channel.cliApi('POST', `/api/session/${encodeURIComponent(sessionID)}/prompt`, { text });
 	} catch (e) {
 		fail(`Loophole CLI: failed to send prompt (${e instanceof Error ? e.message : String(e)})`);
 		return;
 	}
-	// guard: no completion 5 minutes after the prompt (same spirit as AUTOCOMPLETE TIMEOUT_TIME, longer for chat)
-	setTimeout(() => {
-		if (!settled) fail(`Loophole CLI: timed out after ${Math.round((Date.now() - started) / 1000)}s without a completion event.`);
-	}, 5 * 60 * 1000);
 	await streamPromise;
 };
