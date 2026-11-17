@@ -19,7 +19,7 @@ export const exploreKindOf = (name: string): ExploreKind | undefined => {
 };
 
 export const isBashTool = (name: string): boolean => ['bash', 'terminal', 'shell'].includes(lower(name));
-export const isTaskTool = (name: string): boolean => lower(name) === 'task';
+export const isTaskTool = (name: string): boolean => ['task', 'subagent'].includes(lower(name));
 export const isGrepTool = (name: string): boolean => ['grep', 'search'].includes(lower(name));
 export const isGlobTool = (name: string): boolean => lower(name) === 'glob';
 export const isFetchTool = (name: string): boolean => ['webfetch', 'fetch'].includes(lower(name));

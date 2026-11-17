@@ -260,6 +260,36 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		return out;
 	};
 
+	// Shared builders so permission/form events can surface whether they belong to
+	// this session or a child (subagent) session.
+	const permissionFromData = (data: Record<string, unknown>, forSessionID: string): CliPermissionRequest | undefined => {
+		const id = typeof data.id === 'string' ? data.id : '';
+		if (!id) return undefined;
+		return {
+			id,
+			sessionID: forSessionID,
+			action: typeof data.action === 'string' ? data.action : 'unknown',
+			resources: Array.isArray(data.resources) ? data.resources.filter((r): r is string => typeof r === 'string') : [],
+			...(typeof data.message === 'string' ? { message: data.message } : {}),
+			...(Array.isArray(data.save) ? { save: data.save.filter((r): r is string => typeof r === 'string') } : {}),
+			...(data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata) ? { metadata: data.metadata as Record<string, unknown> } : {}),
+		};
+	};
+	const formFromData = (data: Record<string, unknown>, forSessionID: string): CliFormRequest | undefined => {
+		const form = (data.form && typeof data.form === 'object' && !Array.isArray(data.form)) ? data.form as Record<string, unknown> : undefined;
+		const id = form && typeof form.id === 'string' ? form.id : '';
+		const title = form && typeof form.title === 'string' ? form.title : '';
+		const fields = form && Array.isArray(form.fields) ? form.fields : [];
+		if (!id || fields.length === 0) return undefined;
+		return {
+			id,
+			sessionID: forSessionID,
+			title: typeof title === 'string' && title ? title : 'Question',
+			metadata: form && form.metadata && typeof form.metadata === 'object' && !Array.isArray(form.metadata) ? { ...(form.metadata as Record<string, unknown>) } : undefined,
+			fields: fields as CliFormRequest['fields'],
+		};
+	};
+
 	const started = Date.now();
 	const armIdleTimeout = () => {
 		if (settled) return;
@@ -294,7 +324,10 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 	const childTasks = new Map<string, Promise<string | undefined>>();
 	const claimedTasks = new Set<string>();
 	const taskForChild = (childID: string): string | undefined => {
-		const tasks = [...toolsById.values()].filter((tool) => tool.name.toLowerCase() === 'task');
+		const tasks = [...toolsById.values()].filter((tool) => {
+			const name = tool.name.toLowerCase();
+			return name === 'task' || name === 'subagent';
+		});
 		const byMetadata = tasks.find((tool) => !!tool.metadata && Object.values(tool.metadata).some((value) => value === childID));
 		const chosen = byMetadata ?? tasks.find((tool) => (tool.status === 'running' || tool.status === 'input') && !claimedTasks.has(tool.id));
 		if (!chosen) return undefined;
@@ -342,7 +375,18 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 		const data = evt.data ?? {};
 		// stay scoped to this turn's session
 		if (typeof data.sessionID === 'string' && data.sessionID !== sessionID) {
+			// A child (subagent) session: its tool events backfill the parent's subagent card;
+			// its permission/form asks must still reach the sidebar, tagged with the child
+			// session ID, or the child stalls forever waiting for an answer.
 			if (evt.type.startsWith('session.tool.')) handleChildToolEvent(evt.type, data);
+			else if (evt.type === 'permission.asked') {
+				const permission = permissionFromData(data, data.sessionID as string);
+				if (permission && onPermission) onPermission({ permission });
+			}
+			else if (evt.type === 'form.created') {
+				const form = formFromData(data, data.sessionID as string);
+				if (form && onForm) onForm({ form });
+			}
 			return;
 		}
 		armIdleTimeout();
@@ -443,38 +487,15 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 			// `data` is the full Permission.Request (id + sessionID/action/resources/...).
 			// The server pauses execution until the client replies via
 			// POST /api/session/:id/permission/:requestID/reply (see LoopholeCliService.permissionReply).
-			const id = typeof data.id === 'string' ? data.id : '';
-			if (id && onPermission) {
-				const permission: CliPermissionRequest = {
-					id,
-					sessionID: sessionID,
-					action: typeof data.action === 'string' ? data.action : 'unknown',
-					resources: Array.isArray(data.resources) ? data.resources.filter((r): r is string => typeof r === 'string') : [],
-					...(typeof data.message === 'string' ? { message: data.message } : {}),
-					...(Array.isArray(data.save) ? { save: data.save.filter((r): r is string => typeof r === 'string') } : {}),
-					...(data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata) ? { metadata: data.metadata as Record<string, unknown> } : {}),
-				};
-				onPermission({ permission });
-			}
+			const permission = permissionFromData(data, sessionID);
+			if (permission && onPermission) onPermission({ permission });
 		}
 		else if (evt.type === 'form.created') {
 			// Form asked of the user (packages/schema/src/form.ts). The server
 			// pauses the turn until POST /api/session/:id/form/:formID/reply
 			// (see LoopholeCliService.formReply). `data.form` is Form.Info.
-			const form = (data.form && typeof data.form === 'object' && !Array.isArray(data.form)) ? data.form as Record<string, unknown> : undefined;
-			const id = form && typeof form.id === 'string' ? form.id : '';
-			const title = form && typeof form.title === 'string' ? form.title : '';
-			const fields = form && Array.isArray(form.fields) ? form.fields : [];
-			if (id && fields.length > 0 && onForm) {
-				const request: CliFormRequest = {
-					id,
-					sessionID: sessionID,
-					title: typeof title === 'string' && title ? title : 'Question',
-					metadata: form && form.metadata && typeof form.metadata === 'object' && !Array.isArray(form.metadata) ? { ...(form.metadata as Record<string, unknown>) } : undefined,
-					fields: fields as CliFormRequest['fields'],
-				};
-				onForm({ form: request });
-			}
+			const form = formFromData(data, sessionID);
+			if (form && onForm) onForm({ form });
 		}
 		else if (evt.type === 'session.usage.updated') {
 			// Ephemeral per-session usage (packages/schema/src/session-event.ts):

@@ -1012,10 +1012,11 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						const always = this._configurationService.getValue<string[]>('loophole.permissions.alwaysAllowed') ?? [];
 						if (always.includes(permission.action)) {
 							// The user preset this action as always-allowed in the Permissions settings page;
-							// answer the prompt instead of showing it.
-							const sessionID = this.state.allThreads[threadId]?.state.cliSessionId;
-							if (sessionID) {
-								this._loopholeCliService.permissionReply(sessionID, permission.id, 'always').catch(() => {
+							// answer the prompt instead of showing it. Use the request's own session ID
+							// (may be a child/subagent session), not the thread's, to reply correctly.
+							const replySessionID = permission.sessionID ?? this.state.allThreads[threadId]?.state.cliSessionId;
+							if (replySessionID) {
+								this._loopholeCliService.permissionReply(replySessionID, permission.id, 'always').catch(() => {
 									// best effort; leave the prompt pending so the user can answer manually
 									this._addCliPermission(threadId, permission);
 								})

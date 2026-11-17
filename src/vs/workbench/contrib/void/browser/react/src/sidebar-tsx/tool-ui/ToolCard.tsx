@@ -33,7 +33,7 @@ export const titleOfToolName = (name: string): string => {
 	if (n === 'list') return 'List directory';
 	if (n === 'webfetch' || n === 'fetch') return 'Fetch web page';
 	if (n === 'websearch') return 'Web search';
-	if (n === 'task') return 'Run subagent';
+	if (n === 'task' || n === 'subagent') return 'Run subagent';
 	if (n === 'todowrite' || n === 'todoread') return 'Todos';
 	return name || 'Tool';
 };

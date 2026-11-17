@@ -186,7 +186,8 @@ export const CliQuestionCard = ({ threadId }: { threadId: string }) => {
 			answer[field.key] = value;
 		}
 		try {
-			await cliService.formReply(sessionID, form.id, answer);
+			const replySessionID = form.sessionID || sessionID
+			await cliService.formReply(replySessionID, form.id, answer);
 			chatThreadsService.removeCliForm(threadId, form.id);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));
@@ -199,7 +200,8 @@ export const CliQuestionCard = ({ threadId }: { threadId: string }) => {
 		setBusy(form.id);
 		setError(null);
 		try {
-			await cliService.formCancel(sessionID, form.id);
+			const replySessionID = form.sessionID || sessionID
+			await cliService.formCancel(replySessionID, form.id);
 			chatThreadsService.removeCliForm(threadId, form.id);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));

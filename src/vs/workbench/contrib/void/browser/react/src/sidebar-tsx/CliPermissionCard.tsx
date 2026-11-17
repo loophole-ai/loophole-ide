@@ -100,12 +100,13 @@ export const CliPermissionCard = ({ threadId }: { threadId: string }) => {
 
 	if (!sessionID || permissions.length === 0) return null;
 
-	const reply = async (requestID: string, decision: LoopholeCliPermissionDecision) => {
-		setBusyId(requestID)
+	const reply = async (request: LoopholeCliPermissionRequest, decision: LoopholeCliPermissionDecision) => {
+		setBusyId(request.id)
 		setError(null)
+		const replySessionID = request.sessionID || sessionID
 		try {
-			await cliService.permissionReply(sessionID, requestID, decision)
-			chatThreadsService.clearCliPermission(threadId, requestID)
+			await cliService.permissionReply(replySessionID, request.id, decision)
+			chatThreadsService.clearCliPermission(threadId, request.id)
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e))
 		} finally {
@@ -119,7 +120,7 @@ export const CliPermissionCard = ({ threadId }: { threadId: string }) => {
 			request={p}
 			busy={busyId === p.id}
 			error={error}
-			onReply={(decision) => void reply(p.id, decision)}
+			onReply={(decision) => void reply(p, decision)}
 		/>)}
 	</div>
 };

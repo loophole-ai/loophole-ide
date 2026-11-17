@@ -20,7 +20,7 @@ type PresetId =
 	| 'image-generate'
 	| 'question'
 	| 'skill'
-	| 'task'
+	| 'subagent'
 	| 'automation'
 	| 'todo'
 	| 'mcp'
@@ -43,7 +43,7 @@ const PRESETS: Array<{ id: PresetId; label: string; description?: string; reques
 	{ id: 'webfetch', label: 'Fetch web pages', description: 'Fetching the contents of URLs' },
 	{ id: 'websearch', label: 'Search the web', description: 'Searching the web for docs' },
 	{ id: 'image-generate', label: 'Generate images', description: 'Creating images from text' },
-	{ id: 'task', label: 'Use subagents', description: 'Spawning subagents for the task' },
+	{ id: 'subagent', label: 'Use subagents', description: 'Spawning subagents for the task' },
 	{ id: 'skill', label: 'Load skills', description: 'Reusing packaged skills' },
 	{ id: 'question', label: 'Ask questions', description: 'Asking you questionnaire questions' },
 	{ id: 'todo', label: 'Track todos', description: 'Updating the todo list' },
