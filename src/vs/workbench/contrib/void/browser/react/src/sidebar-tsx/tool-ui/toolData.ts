@@ -2,7 +2,6 @@
  *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
-
 import type { CliToolState } from '../../../../../common/sendLLMMessageTypes.js';
 
 const TRUNCATION_TAIL = '… (truncated)';
@@ -87,7 +86,7 @@ export const domainOf = (url: string): string => {
 const countNonEmpty = (text: string): number => text.split('\n').filter((line) => line.trim().length > 0).length;
 
 export const readLineCount = (text: string): number => {
-	const numbered = text.split('\n').filter((line) => /^\s*\d+\s*[|:\t→]/.test(line)).length;
+	const numbered = text.split('\n').filter((line) => /^\s*\d+\s*[|:\t\u2192]/.test(line)).length;
 	return numbered > 0 ? numbered : countNonEmpty(text);
 };
 
@@ -142,7 +141,7 @@ export const parseGlobOutput = (text: string): string[] => text
 	.replace(/\r\n/g, '\n')
 	.split('\n')
 	.map((line) => line.trim())
-	.filter((line) => line.length > 0 && line.length < 500 && !/^(Found |No files|\(|…)/i.test(line));
+	.filter((line) => line.length > 0 && line.length < 500 && !/^(Found |No files|\(|\u2026)/i.test(line));
 
 export type FetchView = { domain: string; title: string; excerpt: string; chars: number; truncated: boolean };
 
