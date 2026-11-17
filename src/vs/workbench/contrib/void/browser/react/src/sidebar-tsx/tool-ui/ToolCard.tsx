@@ -13,14 +13,16 @@
 // as soon as the call finishes and the result body lives in its own collapsible
 // section with a summary line and a scrollable, wrapping code block.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Ban, Check, ChevronRight, FilePlus, FileText, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Ban, Check, ChevronRight, ExternalLink, FilePlus, FileText, Loader2, RefreshCw } from 'lucide-react';
 import type { CliCompactionState, CliToolState, CliToolStatus } from '../../../../../common/sendLLMMessageTypes.js';
+import { splitPath } from './toolData.js';
+import { FileLink, useAutoOpen, useOpenFile } from './toolUi.js';
 
 // The transport caps stored text at 20k; rendering much less keeps the DOM
 // small even when a stored block is still large.
-const MAX_VISIBLE_CHARS = 8000;
+export const MAX_VISIBLE_CHARS = 8000;
 
-const titleOfToolName = (name: string): string => {
+export const titleOfToolName = (name: string): string => {
 	const n = name.toLowerCase();
 	if (n === 'read') return 'Read file';
 	if (n === 'edit') return 'Edit file';
@@ -64,14 +66,14 @@ const subtitleOf = (tool: CliToolState): string => {
 	return '';
 };
 
-const truncate = (text: string, max: number): { text: string; truncated: boolean } => {
+export const truncate = (text: string, max: number): { text: string; truncated: boolean } => {
 	if (text.length <= max) return { text, truncated: false };
 	return { text: text.slice(0, max), truncated: true };
 };
 
 const lineCountOf = (text: string): number => text.length === 0 ? 0 : text.split('\n').length;
 
-const firstLineOf = (text: string, max = 120): string => {
+export const firstLineOf = (text: string, max = 120): string => {
 	const line = text.split('\n').find((l) => l.trim().length > 0)?.trim() ?? '';
 	return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 };
@@ -84,19 +86,19 @@ const sizeOfText = (text: string): string => {
 	return `${lines} line${lines === 1 ? '' : 's'} · ${charsLabel} chars`;
 };
 
-const summaryOfText = (text: string): string => {
+export const summaryOfText = (text: string): string => {
 	const first = firstLineOf(text);
 	const size = sizeOfText(text);
 	return first ? `${first} · ${size}` : size;
 };
 
-const CodeBlock = ({ children }: { children: React.ReactNode }) => {
+export const CodeBlock = ({ children }: { children: React.ReactNode }) => {
 	return <pre className='font-mono whitespace-pre-wrap break-words text-xs text-loophole-fg-2 bg-loophole-bg-1 rounded p-1.5 overflow-auto max-h-[220px] select-text'>{children}</pre>;
 };
 
 // A labelled, collapsible inner block. Children are not mounted while closed,
 // so a very large result never sits in the DOM unless the user opens it.
-const Section = ({ label, summary, defaultOpen, icon, children }: {
+export const Section = ({ label, summary, defaultOpen, icon, children }: {
 	label: string;
 	summary?: string;
 	defaultOpen?: boolean;
@@ -118,10 +120,10 @@ const Section = ({ label, summary, defaultOpen, icon, children }: {
 // File changes: plain green/red unified diff built from the CLI's own
 // `metadata.files[]` ({ file, patch, additions, deletions }) — the editor's
 // own look, no third-party diff component.
-type DiffRow =
+export type DiffRow =
 	| { kind: 'hunk'; text: string }
 	| { kind: 'add' | 'del' | 'ctx'; text: string; oldLine?: number; newLine?: number }
-const parsePatch = (patch: string): DiffRow[] => {
+export const parsePatch = (patch: string): DiffRow[] => {
 	const rows: DiffRow[] = [];
 	let oldLine = 0;
 	let newLine = 0;
@@ -156,7 +158,7 @@ const stripAbbreviatedPath = (path: string) => {
 	return parts.length > 2 ? parts.slice(-2).join('/') : trimmed;
 };
 
-const DiffRows = ({ rows, showLineNumbers = true }: { rows: DiffRow[]; showLineNumbers?: boolean }) => {
+export const DiffRows = ({ rows, showLineNumbers = true, onLineClick }: { rows: DiffRow[]; showLineNumbers?: boolean; onLineClick?: (line: number) => void }) => {
 	return <>
 		{rows.map((row, i) => {
 			if (row.kind === 'hunk') {
@@ -167,7 +169,10 @@ const DiffRows = ({ rows, showLineNumbers = true }: { rows: DiffRow[]; showLineN
 			return <div key={i} className={`flex border-l-2 ${tone} whitespace-pre-wrap break-all`}>
 				{showLineNumbers && <>
 					<span className='w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.oldLine ?? ''}</span>
-					<span className='w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.newLine ?? ''}</span>
+					<span
+						className={`w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4 ${onLineClick && row.newLine !== undefined ? 'cursor-pointer hover:text-[var(--vscode-textLink-foreground)] hover:underline' : ''}`}
+						onClick={onLineClick && row.newLine !== undefined ? () => onLineClick(row.newLine as number) : undefined}
+					>{row.newLine ?? ''}</span>
 				</>}
 				<span className='w-4 flex-shrink-0 select-none text-center'>{gutter}</span>
 				<span className='pr-2'>{row.text || ' '}</span>
@@ -257,7 +262,7 @@ const ErrorBody = ({ tool, running }: { tool: CliToolState; running: boolean }) 
 	</Section>;
 };
 
-const StatusIcon = ({ status }: { status: CliToolState['status'] }) => {
+export const StatusIcon = ({ status }: { status: CliToolState['status'] }) => {
 	if (status === 'done') return <Check size={13} className='text-emerald-500 flex-shrink-0' />;
 	if (status === 'error') return <AlertTriangle size={13} className='text-loophole-warning flex-shrink-0' />;
 	return <Loader2 size={13} className='text-loophole-fg-4 animate-spin flex-shrink-0' />;
@@ -400,13 +405,6 @@ const changesOfTool = (tool: CliToolState): FileChange[] => {
 	return [{ file, patch: patches.join('\n'), isNew: false, synthetic: true }];
 };
 
-const splitPath = (file: string): { name: string; dir: string } => {
-	const parts = file.replace(/\\/g, '/').split('/').filter((part) => part.length > 0);
-	if (parts.length === 0) return { name: '', dir: '' };
-	const parents = parts.slice(Math.max(0, parts.length - 3), parts.length - 1);
-	return { name: parts[parts.length - 1], dir: parents.length > 0 ? `${parents.join('/')}/` : '' };
-};
-
 const countsOf = (change: FileChange, rows: DiffRow[]): { added: number; removed: number } => ({
 	added: change.additions ?? rows.filter((row) => row.kind === 'add').length,
 	removed: change.deletions ?? rows.filter((row) => row.kind === 'del').length,
@@ -414,26 +412,7 @@ const countsOf = (change: FileChange, rows: DiffRow[]): { added: number; removed
 
 const isRejection = (text: string | undefined): boolean => !!text && /reject|denied|declin/i.test(text);
 
-const useAutoOpen = (running: boolean): [boolean, () => void] => {
-	const [isOpen, setIsOpen] = useState(running);
-	const userToggled = useRef(false);
-	useEffect(() => {
-		if (userToggled.current) return;
-		if (running) {
-			setIsOpen(true);
-			return;
-		}
-		const timer = window.setTimeout(() => setIsOpen(false), 700);
-		return () => window.clearTimeout(timer);
-	}, [running]);
-	const toggle = () => {
-		userToggled.current = true;
-		setIsOpen((value) => !value);
-	};
-	return [isOpen, toggle];
-};
-
-const FileStatusIcon = ({ status, rejected, isNew }: { status: CliToolStatus; rejected: boolean; isNew: boolean }) => {
+export const FileStatusIcon = ({ status, rejected, isNew }: { status: CliToolStatus; rejected: boolean; isNew: boolean }) => {
 	if (status === 'running' || status === 'input') return <Loader2 size={13} className='text-loophole-fg-4 animate-spin flex-shrink-0' />;
 	if (status === 'error') return rejected
 		? <Ban size={13} className='text-loophole-fg-4 flex-shrink-0' />
@@ -443,7 +422,7 @@ const FileStatusIcon = ({ status, rejected, isNew }: { status: CliToolStatus; re
 		: <FileText size={13} className='text-loophole-fg-4 flex-shrink-0' />;
 };
 
-const ChangeCounts = ({ added, removed }: { added: number; removed: number }) => {
+export const ChangeCounts = ({ added, removed }: { added: number; removed: number }) => {
 	return <span className='ml-auto flex gap-1.5 flex-shrink-0 font-mono text-[11px]'>
 		{added > 0 && <span className='text-emerald-400'>+{added}</span>}
 		{removed > 0 && <span className='text-red-400'>−{removed}</span>}
@@ -453,6 +432,7 @@ const ChangeCounts = ({ added, removed }: { added: number; removed: number }) =>
 const FileChangeView = ({ change, status, errorText, fallbackName, nested }: { change: FileChange; status: CliToolStatus; errorText: string | undefined; fallbackName: string; nested: boolean }) => {
 	const running = status === 'running' || status === 'input';
 	const [isOpen, toggle] = useAutoOpen(running);
+	const openFile = useOpenFile();
 	const rows = useMemo(() => parsePatch(change.patch), [change.patch]);
 	const bodyRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
@@ -467,13 +447,18 @@ const FileChangeView = ({ change, status, errorText, fallbackName, nested }: { c
 		<div className={`group flex items-center gap-1.5 min-h-[26px] pl-1 pr-2 py-0.5 min-w-0 select-none ${hasBody ? 'cursor-pointer' : ''}`} onClick={hasBody ? toggle : undefined}>
 			<ChevronRight className={`text-loophole-fg-3 h-3.5 w-3.5 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'rotate-90' : ''} ${hasBody ? '' : 'opacity-0'}`} />
 			<FileStatusIcon status={status} rejected={rejected} isNew={change.isNew} />
-			<span className={`text-xs font-medium text-loophole-fg-2 group-hover:text-loophole-fg-1 flex-shrink-0 max-w-[60%] truncate ${struck}`}>{name || fallbackName}</span>
+			{change.file
+				? <FileLink path={change.file} className={`flex items-center gap-1 flex-shrink-0 max-w-[60%] text-xs font-medium text-loophole-fg-2 ${struck}`}>
+					<span className='truncate'>{name || fallbackName}</span>
+					<ExternalLink size={10} className='flex-shrink-0 opacity-0 group-hover:opacity-100' />
+				</FileLink>
+				: <span className={`text-xs font-medium text-loophole-fg-2 flex-shrink-0 max-w-[60%] truncate ${struck}`}>{name || fallbackName}</span>}
 			{dir && <span className={`text-[11px] text-loophole-fg-4 min-w-0 truncate ${struck}`}>{dir}</span>}
 			{change.isNew && <span className='text-[10px] text-loophole-fg-3 border border-loophole-border-3 rounded-sm px-1 flex-shrink-0'>New</span>}
 			<ChangeCounts added={added} removed={removed} />
 		</div>
 		{isOpen && hasBody && <div ref={bodyRef} className='border-t border-loophole-border-3 max-h-[260px] overflow-auto select-text font-mono text-[11px] leading-[1.45]'>
-			<DiffRows rows={rows} showLineNumbers={!change.synthetic} />
+			<DiffRows rows={rows} showLineNumbers={!change.synthetic} onLineClick={change.synthetic || !change.file ? undefined : (line) => openFile(change.file, line)} />
 			{errorText && <pre className='m-0 px-2 py-1.5 text-xs font-mono text-loophole-fg-2 whitespace-pre-wrap break-words'>{truncate(errorText, MAX_VISIBLE_CHARS).text}</pre>}
 		</div>}
 	</div>;
