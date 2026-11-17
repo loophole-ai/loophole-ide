@@ -165,12 +165,7 @@ export const DiffRows = ({ rows, showLineNumbers = true, onLineClick }: { rows: 
 				return <div key={i} className='px-2 py-0.5 bg-loophole-bg-2 text-loophole-fg-4 whitespace-pre-wrap'>{row.text}</div>;
 			}
 			const gutter = row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' ';
-			const tone = row.kind === 'add'
-				? 'bg-[rgba(52,211,153,0.18)] text-[#4ade80] border-[#22c55e]'
-				: row.kind === 'del'
-					? 'bg-[rgba(248,113,113,0.18)] text-[#ff7b86] border-[#ef4444]'
-					: 'text-loophole-fg-3 border-transparent';
-			return <div key={i} className={`flex border-l-2 ${tone} whitespace-pre-wrap break-all`}>
+			return <div key={i} className={`flex border-l-2 ${row.kind === 'add' ? 'bg-[rgba(52,211,153,0.18)] text-[#4ade80] border-[#22c55e]' : row.kind === 'del' ? 'bg-[rgba(248,113,113,0.18)] text-[#ff7b86] border-[#ef4444]' : 'text-loophole-fg-3 border-transparent'} whitespace-pre-wrap break-all`}>
 				{showLineNumbers && <>
 					<span className='w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.oldLine ?? ''}</span>
 					<span
@@ -446,18 +441,17 @@ const FileChangeView = ({ change, status, errorText, fallbackName, nested }: { c
 	const rejected = status === 'error' && isRejection(errorText);
 	const { name, dir } = splitPath(change.file);
 	const hasBody = rows.length > 0 || !!errorText;
-	const struck = rejected ? 'line-through' : '';
 	return <div className={`w-full min-w-0 border border-loophole-border-3 rounded overflow-hidden ${nested ? 'bg-loophole-bg-1' : 'bg-loophole-bg-3'}`}>
 		<div className={`group flex items-center gap-1.5 min-h-[26px] pl-1 pr-2 py-0.5 min-w-0 select-none ${hasBody ? 'cursor-pointer' : ''}`} onClick={hasBody ? toggle : undefined}>
 			<ChevronRight className={`text-loophole-fg-3 h-3.5 w-3.5 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'rotate-90' : ''} ${hasBody ? '' : 'opacity-0'}`} />
 			<FileStatusIcon status={status} rejected={rejected} isNew={change.isNew} />
 			{change.file
-				? <FileLink path={change.file} className={`flex items-center gap-1 flex-shrink-0 max-w-[60%] text-xs font-medium text-loophole-fg-2 ${struck}`}>
+				? <FileLink path={change.file} className={`flex items-center gap-1 flex-shrink-0 max-w-[60%] text-xs font-medium text-loophole-fg-2 ${rejected ? 'line-through' : ''}`}>
 					<span className='truncate'>{name || fallbackName}</span>
 					<ExternalLink size={10} className='flex-shrink-0 opacity-0 group-hover:opacity-100' />
 				</FileLink>
-				: <span className={`text-xs font-medium text-loophole-fg-2 flex-shrink-0 max-w-[60%] truncate ${struck}`}>{name || fallbackName}</span>}
-			{dir && <span className={`text-[11px] text-loophole-fg-4 min-w-0 truncate ${struck}`}>{dir}</span>}
+				: <span className={`text-xs font-medium text-loophole-fg-2 flex-shrink-0 max-w-[60%] truncate ${rejected ? 'line-through' : ''}`}>{name || fallbackName}</span>}
+			{dir && <span className={`text-[11px] text-loophole-fg-4 min-w-0 truncate ${rejected ? 'line-through' : ''}`}>{dir}</span>}
 			{change.isNew && <span className='text-[10px] text-loophole-fg-3 border border-loophole-border-3 rounded-sm px-1 flex-shrink-0'>New</span>}
 			<ChangeCounts added={added} removed={removed} />
 		</div>
