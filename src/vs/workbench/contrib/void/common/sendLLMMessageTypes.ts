@@ -119,6 +119,10 @@ export type CliToolState = {
 	outputText?: string; // concatenated text content (session.tool.success `content`)
 	error?: string; // failure message (session.tool.failed `error.message`)
 	metadata?: Record<string, unknown>; // UI metadata (session.tool.success/failed `metadata`)
+	startedAt?: number;
+	endedAt?: number;
+	outputLines?: number;
+	steps?: CliToolState[];
 }
 export type OnTool = (p: { tools: CliToolState[] }) => void
 export type CliCompactionPhase = 'started' | 'streaming' | 'done' | 'failed'
