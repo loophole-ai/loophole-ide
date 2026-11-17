@@ -40,7 +40,7 @@
 // - Tool input deltas are accumulated per call id and re-emitted as the full list;
 //   file (non-text) content parts are dropped, only text output is kept for cards.
 
-import type { LLMChatMessage, OnCompaction, OnError, OnFinalMessage, OnPermission, OnCliSession, OnText, OnTool, OnUsage, CliCompactionState, CliPermissionRequest, CliToolState, CliUsage } from '../../common/sendLLMMessageTypes.js';
+import type { LLMChatMessage, OnCompaction, OnError, OnFinalMessage, OnForm, OnPermission, OnCliSession, OnText, OnTool, OnUsage, CliCompactionState, CliPermissionRequest, CliFormRequest, CliToolState, CliUsage } from '../../common/sendLLMMessageTypes.js';
 import type { LoopholeCliModelRef } from '../../common/loopholeCliTypes.js';
 import { LOOPHOLE_CLI_TRUNCATION_MARKER, truncateLoopholeCliText } from '../../common/loopholeCliTypes.js';
 import { getLoopholeCliChannel } from '../loopholeCliChannel.js';
@@ -62,6 +62,7 @@ export type LoopholeCliChatParams = {
 	cliSessionId?: string;
 	onCliSession?: OnCliSession;
 	onPermission?: OnPermission;
+	onForm?: OnForm;
 	onUsage?: OnUsage;
 	onText: OnText;
 	onFinalMessage: OnFinalMessage;
@@ -109,7 +110,7 @@ const buildPromptText = (messages: LLMChatMessage[], separateSystemMessage: stri
 	return system ? `${system}\n\n${lastUserText}` : lastUserText;
 };
 
-export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, modelRef, cliSessionId, onCliSession, onPermission, onUsage, onText, onFinalMessage, onError, onTool, onCompaction, _setAborter }: LoopholeCliChatParams): Promise<void> => {
+export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, modelRef, cliSessionId, onCliSession, onPermission, onForm, onUsage, onText, onFinalMessage, onError, onTool, onCompaction, _setAborter }: LoopholeCliChatParams): Promise<void> => {
 	const channel = getLoopholeCliChannel();
 	if (!channel) {
 		onError({ message: 'Loophole CLI channel is unavailable.', fullError: null });
@@ -454,6 +455,25 @@ export const sendLoopholeCliChat = async ({ messages, separateSystemMessage, mod
 					...(data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata) ? { metadata: data.metadata as Record<string, unknown> } : {}),
 				};
 				onPermission({ permission });
+			}
+		}
+		else if (evt.type === 'form.created') {
+			// Form asked of the user (packages/schema/src/form.ts). The server
+			// pauses the turn until POST /api/session/:id/form/:formID/reply
+			// (see LoopholeCliService.formReply). `data.form` is Form.Info.
+			const form = (data.form && typeof data.form === 'object' && !Array.isArray(data.form)) ? data.form as Record<string, unknown> : undefined;
+			const id = form && typeof form.id === 'string' ? form.id : '';
+			const title = form && typeof form.title === 'string' ? form.title : '';
+			const fields = form && Array.isArray(form.fields) ? form.fields : [];
+			if (id && fields.length > 0 && onForm) {
+				const request: CliFormRequest = {
+					id,
+					sessionID: sessionID,
+					title: typeof title === 'string' && title ? title : 'Question',
+					metadata: form && form.metadata && typeof form.metadata === 'object' && !Array.isArray(form.metadata) ? { ...(form.metadata as Record<string, unknown>) } : undefined,
+					fields: fields as CliFormRequest['fields'],
+				};
+				onForm({ form: request });
 			}
 		}
 		else if (evt.type === 'session.usage.updated') {

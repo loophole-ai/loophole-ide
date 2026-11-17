@@ -12,7 +12,7 @@ import { URI } from '../../../../base/common/uri.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { chat_userMessageContent, isABuiltinToolName } from '../common/prompt/prompts.js';
-import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj, CliCompactionState, CliPermissionRequest, CliToolState, CliUsage } from '../common/sendLLMMessageTypes.js';
+import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj, CliCompactionState, CliPermissionRequest, CliFormRequest, CliToolState, CliUsage } from '../common/sendLLMMessageTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
@@ -255,6 +255,11 @@ export interface IChatThreadService {
 	onDidChangeCliPermissions: Event<{ threadId: string }>
 	getCliPermissions: (threadId: string) => CliPermissionRequest[]
 	setCliPermissions: (threadId: string, permissions: CliPermissionRequest[]) => void;
+	addCliForm: (threadId: string, form: CliFormRequest) => void;
+	removeCliForm: (threadId: string, formID: string) => void;
+	getCliForms: (threadId: string) => CliFormRequest[];
+	clearCliForms: (threadId: string) => void;
+	onDidChangeCliForms: Event<{ threadId: string }>
 	clearCliPermission: (threadId: string, requestID: string) => void
 
 	getCurrentThread(): ThreadType;
@@ -334,6 +339,11 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	private readonly _cliPermissions: { [threadId: string]: CliPermissionRequest[] } = {};
 	private readonly _onDidChangeCliPermissions = new Emitter<{ threadId: string }>();
 	readonly onDidChangeCliPermissions: Event<{ threadId: string }> = this._onDidChangeCliPermissions.event;
+
+	// Pending server-side form requests (ask_followups), keyed by thread.
+	private readonly _cliForms: { [threadId: string]: CliFormRequest[] } = {};
+	private readonly _onDidChangeCliForms = new Emitter<{ threadId: string }>();
+	readonly onDidChangeCliForms: Event<{ threadId: string }> = this._onDidChangeCliForms.event;
 
 	// Turns server-applied CLI edits into Void diffs (Accept/Reject).
 	private readonly _cliEdits: CliEditAcceptReject;
@@ -543,6 +553,32 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	getCliPermissions = (threadId: string): CliPermissionRequest[] => {
 		return this._cliPermissions[threadId] ?? []
+	}
+
+	getCliForms = (threadId: string): CliFormRequest[] => {
+		return this._cliForms[threadId] ?? []
+	}
+
+	addCliForm = (threadId: string, form: CliFormRequest) => {
+		const list = this._cliForms[threadId] ?? []
+		if (list.some((f) => f.id === form.id)) return
+		this._cliForms[threadId] = [...list, form]
+		this._onDidChangeCliForms.fire({ threadId })
+	}
+
+	removeCliForm = (threadId: string, formID: string) => {
+		const list = this._cliForms[threadId]
+		if (!list) return
+		const next = list.filter((f) => f.id !== formID)
+		if (next.length === list.length) return
+		this._cliForms[threadId] = next
+		this._onDidChangeCliForms.fire({ threadId })
+	}
+
+	clearCliForms = (threadId: string) => {
+		if (!this._cliForms[threadId]?.length) return
+		this._cliForms[threadId] = []
+		this._onDidChangeCliForms.fire({ threadId })
 	}
 
 	// Replace the pending list (used to backfill from GET permission list so
@@ -972,6 +1008,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					},
 					onPermission: ({ permission }) => {
 						this._addCliPermission(threadId, permission)
+					},
+					onForm: ({ form }) => {
+						this.addCliForm(threadId, form)
 					},
 					onUsage: ({ usage }) => {
 						this.updateCliUsage(threadId, usage)

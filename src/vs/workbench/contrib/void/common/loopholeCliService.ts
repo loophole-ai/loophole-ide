@@ -12,7 +12,7 @@ import { Schemas } from '../../../../base/common/network.js';
 import { Emitter, type Event } from '../../../../base/common/event.js';
 import type { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import type { LoopholeCliConfig, LoopholeCliConfigUpdateParams, LoopholeCliConnectKeyParams, LoopholeCliConnectParams, LoopholeCliFimEvent, LoopholeCliFimParams, LoopholeCliIntegrationInfo, LoopholeCliModelInfo, LoopholeCliProviderInfo, LoopholeCliStatus, LoopholeCliVoiceWsEvent } from './loopholeCliTypes.js';
-import type { LoopholeCliCommandInfo, LoopholeCliPermissionDecision, LoopholeCliPermissionRequest, LoopholeCliRevert, LoopholeCliSessionInfo, LoopholeCliSessionMessage, LoopholeCliSkillInfo, LoopholeCliUpdateInfo, LoopholeCliUpdateResult, LoopholeCliVoiceModel, LoopholeCliVoiceTransport } from './loopholeCliTypes.js';
+import type { LoopholeCliCommandInfo, LoopholeCliFormRequest, LoopholeCliPermissionDecision, LoopholeCliPermissionRequest, LoopholeCliRevert, LoopholeCliSessionInfo, LoopholeCliSessionMessage, LoopholeCliSkillInfo, LoopholeCliUpdateInfo, LoopholeCliUpdateResult, LoopholeCliVoiceModel, LoopholeCliVoiceTransport } from './loopholeCliTypes.js';
 
 /** Loophole CLI (opencode) backend connection. See LOOPHOLECLI.md. */
 export const ILoopholeCliService = createDecorator<ILoopholeCliService>('loopholeCliService');
@@ -82,7 +82,13 @@ export interface ILoopholeCliService {
 	revertClear: (sessionID: string) => Promise<void>;
 	/** `POST /api/session/:id/revert/commit`. */
 	revertCommit: (sessionID: string) => Promise<void>;
-	/** `GET /api/session/:id/permission` — pending permission requests for a session. */
+	/** `GET /api/session/:id/form` - pending form requests (questionnaire/elicitation in the CLI). */
+	formList: (sessionID: string) => Promise<LoopholeCliFormRequest[]>;
+	/** `POST /api/session/:id/form/:formID/reply` with answers (`{ fieldKey: value }`). */
+	formReply: (sessionID: string, formID: string, answer: Record<string, unknown>) => Promise<void>;
+	/** `DELETE /api/session/:id/form/:formID` - dismiss a form without answering. */
+	formCancel: (sessionID: string, formID: string) => Promise<void>;
+	/** `GET /api/session/:id/permission` - pending permission requests for a session. */
 	permissionList: (sessionID: string) => Promise<LoopholeCliPermissionRequest[]>;
 	/** `POST /api/session/:id/permission/:requestID/reply`. */
 	permissionReply: (sessionID: string, requestID: string, decision: LoopholeCliPermissionDecision, message?: string) => Promise<void>;
@@ -329,6 +335,16 @@ export class LoopholeCliService extends Disposable implements ILoopholeCliServic
 
 	async revertCommit(sessionID: string): Promise<void> {
 		await this.channel.call('revertCommit', { sessionID });
+	}
+
+	async formList(sessionID: string): Promise<LoopholeCliFormRequest[]> {
+		return this.channel.call('formList', { sessionID });
+	}
+	async formReply(sessionID: string, formID: string, answer: Record<string, unknown>): Promise<void> {
+		return this.channel.call('formReply', { sessionID, formID, answer });
+	}
+	async formCancel(sessionID: string, formID: string): Promise<void> {
+		return this.channel.call('formCancel', { sessionID, formID });
 	}
 
 	async permissionList(sessionID: string): Promise<LoopholeCliPermissionRequest[]> {

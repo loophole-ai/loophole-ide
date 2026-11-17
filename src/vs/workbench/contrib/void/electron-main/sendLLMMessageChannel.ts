@@ -8,7 +8,7 @@
 
 import { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
-import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMessageOnFinalMessageParams, EventLLMMessageOnToolParams, EventLLMMessageOnCompactionParams, EventLLMMessageOnCliSessionParams, EventLLMMessageOnPermissionParams, EventLLMMessageOnUsageParams, MainSendLLMMessageParams, AbortRef, SendLLMMessageParams, MainLLMMessageAbortParams, ModelListParams, EventModelListOnSuccessParams, EventModelListOnErrorParams, OllamaModelResponse, OpenaiCompatibleModelResponse, MainModelListParams, } from '../common/sendLLMMessageTypes.js';
+import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMessageOnFinalMessageParams, EventLLMMessageOnToolParams, EventLLMMessageOnCompactionParams, EventLLMMessageOnCliSessionParams, EventLLMMessageOnPermissionParams, EventLLMMessageOnFormParams, EventLLMMessageOnUsageParams, MainSendLLMMessageParams, AbortRef, SendLLMMessageParams, MainLLMMessageAbortParams, ModelListParams, EventModelListOnSuccessParams, EventModelListOnErrorParams, OllamaModelResponse, OpenaiCompatibleModelResponse, MainModelListParams, } from '../common/sendLLMMessageTypes.js';
 import { sendLLMMessage } from './llmMessage/sendLLMMessage.js'
 import { IMetricsService } from '../common/metricsService.js';
 import { sendLLMMessageToProviderImplementation } from './llmMessage/sendLLMMessage.impl.js';
@@ -26,6 +26,7 @@ export class LLMMessageChannel implements IServerChannel {
 		onCompaction: new Emitter<EventLLMMessageOnCompactionParams>(),
 		onCliSession: new Emitter<EventLLMMessageOnCliSessionParams>(),
 		onPermission: new Emitter<EventLLMMessageOnPermissionParams>(),
+		onForm: new Emitter<EventLLMMessageOnFormParams>(),
 		onUsage: new Emitter<EventLLMMessageOnUsageParams>(),
 	}
 
@@ -65,6 +66,7 @@ export class LLMMessageChannel implements IServerChannel {
 		else if (event === 'onCompaction_sendLLMMessage') return this.llmMessageEmitters.onCompaction.event;
 		else if (event === 'onCliSession_sendLLMMessage') return this.llmMessageEmitters.onCliSession.event;
 		else if (event === 'onPermission_sendLLMMessage') return this.llmMessageEmitters.onPermission.event;
+		else if (event === 'onForm_sendLLMMessage') return this.llmMessageEmitters.onForm.event;
 		else if (event === 'onUsage_sendLLMMessage') return this.llmMessageEmitters.onUsage.event;
 		// list
 		else if (event === 'onSuccess_list_ollama') return this.listEmitters.ollama.success.event;
@@ -129,6 +131,9 @@ export class LLMMessageChannel implements IServerChannel {
 			},
 			onPermission: (p) => {
 				this.llmMessageEmitters.onPermission.fire({ requestId, ...p });
+			},
+			onForm: (p) => {
+				this.llmMessageEmitters.onForm.fire({ requestId, ...p });
 			},
 			onUsage: (p) => {
 				this.llmMessageEmitters.onUsage.fire({ requestId, ...p });

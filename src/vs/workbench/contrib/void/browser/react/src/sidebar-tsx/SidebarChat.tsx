@@ -6,8 +6,9 @@
 import React, { ButtonHTMLAttributes, FormEvent, FormHTMLAttributes, Fragment, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
-import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useCliPermissions } from '../util/services.js';
+import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useCliPermissions, useCliForms } from '../util/services.js';
 import { CliPermissionCard } from './CliPermissionCard.js';
+import { CliQuestionCard } from './CliQuestionCard.js';
 import { CliUsageChip } from './CliUsageChip.js';
 import { CliSlashMenu, filterCliSlashEntries, useCliSlashEntries } from './CliSlashMenu.js';
 import { CliMicButton, useCliVoiceRecorder } from './CliVoiceButton.js';
@@ -3188,6 +3189,7 @@ export const SidebarChat = () => {
 	const latestError = currThreadStreamState?.error
 	const { displayContentSoFar, toolCallSoFar, reasoningSoFar, cliTools, compaction } = currThreadStreamState?.llmInfo ?? {}
 	const cliPermissions = useCliPermissions(chatThreadsState.currentThreadId)
+	const cliForms = useCliForms(chatThreadsState.currentThreadId)
 	// Backfill pending permissions from the GET list on bind (permission.asked can
 	// fire before the SSE subscription is established).
 	const cliSessionId = chatThreadsState.allThreads[chatThreadsState.currentThreadId]?.state.cliSessionId
@@ -3206,6 +3208,28 @@ export const SidebarChat = () => {
 					...(p.message ? { message: p.message } : {}),
 				}));
 				if (mapped.length > 0) chatThreadsService.setCliPermissions(chatThreadsState.currentThreadId, mapped);
+			})
+			.catch(() => { /* best effort — live SSE still works */ });
+		return () => { cancelled = true; }
+	}, [cliService, chatThreadsService, cliEnabled, cliSessionId, chatThreadsState.currentThreadId])
+	// Backfill pending questionnaire forms too.
+	useEffect(() => {
+		if (!cliEnabled || !cliSessionId) return;
+		let cancelled = false;
+		cliService.formList(cliSessionId)
+			.then((list) => {
+				if (cancelled) return;
+				const forms = Array.isArray(list) ? list : [];
+				for (const form of forms) {
+					const request = {
+						id: form.id,
+						sessionID: form.sessionID,
+						title: typeof form.title === 'string' && form.title ? form.title : 'Question',
+						metadata: form.metadata && typeof form.metadata === 'object' ? { ...(form.metadata as Record<string, unknown>) } : undefined,
+						fields: Array.isArray(form.fields) ? form.fields as Parameters<typeof chatThreadsService.addCliForm>[1]['fields'] : [],
+					};
+					chatThreadsService.addCliForm(chatThreadsState.currentThreadId, request);
+				}
 			})
 			.catch(() => { /* best effort — live SSE still works */ });
 		return () => { cancelled = true; }
@@ -3531,8 +3555,9 @@ export const SidebarChat = () => {
 		<CliUsageChip threadId={threadId} />
 	</div> : null
 
-	const permissionHTML = cliEnabled && cliPermissions.length > 0 ? <div className='px-2 pb-1'>
+	const permissionHTML = cliEnabled && (cliPermissions.length > 0 || cliForms.length > 0) ? <div className='px-2 pb-1 flex flex-col gap-1'>
 		<CliPermissionCard threadId={threadId} />
+		<CliQuestionCard threadId={threadId} />
 	</div> : null
 
 

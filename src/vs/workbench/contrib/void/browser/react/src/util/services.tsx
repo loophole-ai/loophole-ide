@@ -343,6 +343,8 @@ export const useFullChatThreadsStreamState = () => {
 // Loophole CLI pending permission requests for one thread (permission.asked).
 let cliPermissionsVersion = 0
 const cliPermissionsListeners: Set<() => void> = new Set()
+let cliFormsVersion = 0
+const cliFormsListeners: Set<() => void> = new Set()
 
 export const useCliPermissions = (threadId: string) => {
 	const accessor = useAccessor()
@@ -364,6 +366,28 @@ export const useCliPermissions = (threadId: string) => {
 		return () => { try { (d as { dispose?: () => void })?.dispose?.() } catch { /* best effort */ } }
 	}, [chatThreadsService])
 	return chatThreadsService.getCliPermissions(threadId)
+}
+
+// Loophole CLI pending form requests for one thread (ask_followups).
+export const useCliForms = (threadId: string) => {
+	const accessor = useAccessor()
+	const chatThreadsService = accessor.get('IChatThreadService')
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const [_version, setVersion] = useState(cliFormsVersion)
+	useEffect(() => {
+		setVersion(cliFormsVersion)
+		const listener = () => setVersion(cliFormsVersion)
+		cliFormsListeners.add(listener)
+		return () => { cliFormsListeners.delete(listener) }
+	}, [])
+	useEffect(() => {
+		const d = chatThreadsService.onDidChangeCliForms(() => {
+			cliFormsVersion += 1
+			cliFormsListeners.forEach(l => l())
+		})
+		return () => { try { (d as { dispose?: () => void })?.dispose?.() } catch { /* best effort */ } }
+	}, [chatThreadsService])
+	return chatThreadsService.getCliForms(threadId)
 }
 
 

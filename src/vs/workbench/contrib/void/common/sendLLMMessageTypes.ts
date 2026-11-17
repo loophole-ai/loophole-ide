@@ -6,6 +6,7 @@
 import { InternalToolInfo } from './prompt/prompts.js'
 import { ToolName, ToolParamName } from './toolsServiceTypes.js'
 import { ChatMode, ModelSelection, ModelSelectionOptions, OverridesOfModel, ProviderName, RefreshableProviderName, SettingsOfProvider } from './voidSettingsTypes.js'
+import type { LoopholeCliFormRequest } from './loopholeCliTypes.js'
 
 
 export const errorDetails = (fullError: Error | null): string | null => {
@@ -149,6 +150,8 @@ export type CliPermissionRequest = {
 	metadata?: Record<string, unknown>;
 }
 export type OnPermission = (p: { permission: CliPermissionRequest }) => void
+export type CliFormRequest = LoopholeCliFormRequest
+export type OnForm = (p: { form: LoopholeCliFormRequest }) => void
 export type CliUsage = {
 	cost: number; // USD, cumulative for the session (Session.Info + session.usage.updated)
 	tokens: { input: number; output: number; reasoning: number; cache: { read: number; write: number } };
@@ -181,6 +184,7 @@ export type ServiceSendLLMMessageParams = {
 	cliSessionId?: string;
 	onCliSession?: OnCliSession;
 	onPermission?: OnPermission;
+	onForm?: OnForm;
 	onUsage?: OnUsage;
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
 	modelSelection: ModelSelection | null;
@@ -199,6 +203,7 @@ export type SendLLMMessageParams = {
 	cliSessionId?: string;
 	onCliSession?: OnCliSession;
 	onPermission?: OnPermission;
+	onForm?: OnForm;
 	onUsage?: OnUsage;
 	logging: { loggingName: string, loggingExtras?: { [k: string]: any } };
 	abortRef: AbortRef;
@@ -222,7 +227,7 @@ export type CliOverrides = {
 }
 
 // can't send functions across a proxy, use listeners instead
-export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'onTool' | 'onCompaction' | 'onCliSession' | 'onPermission' | 'onUsage' | 'abortRef'
+export type BlockedMainLLMMessageParams = 'onText' | 'onFinalMessage' | 'onError' | 'onTool' | 'onCompaction' | 'onCliSession' | 'onPermission' | 'onForm' | 'onUsage' | 'abortRef'
 export type MainSendLLMMessageParams = Omit<SendLLMMessageParams, BlockedMainLLMMessageParams | 'modelSelection'> & { requestId: string, modelSelection: ModelSelection | null, cli?: CliOverrides } & SendLLMType
 
 export type MainLLMMessageAbortParams = { requestId: string }
@@ -234,6 +239,7 @@ export type EventLLMMessageOnToolParams = Parameters<OnTool>[0] & { requestId: s
 export type EventLLMMessageOnCompactionParams = Parameters<OnCompaction>[0] & { requestId: string }
 export type EventLLMMessageOnCliSessionParams = Parameters<OnCliSession>[0] & { requestId: string }
 export type EventLLMMessageOnPermissionParams = Parameters<OnPermission>[0] & { requestId: string }
+export type EventLLMMessageOnFormParams = Parameters<OnForm>[0] & { requestId: string }
 export type EventLLMMessageOnUsageParams = Parameters<OnUsage>[0] & { requestId: string }
 
 // service -> main -> internal -> event (back to main)

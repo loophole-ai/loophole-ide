@@ -240,6 +240,70 @@ export interface LoopholeCliPermissionRequest {
 
 export type LoopholeCliPermissionDecision = 'once' | 'always' | 'reject';
 
+/** `Form.Option` (packages/schema/src/form.ts). */
+export interface LoopholeCliFormOption {
+	value: string;
+	label: string;
+	description?: string;
+}
+
+/** `Form.Field` union (packages/schema/src/form.ts). Untyped fields use `type` to discriminate. */
+export interface LoopholeCliFormFieldBase {
+	key: string;
+	title?: string;
+	description?: string;
+	required?: boolean;
+	hidden?: boolean;
+	when?: Array<{ key: string; op: 'eq' | 'neq'; value: string | number | boolean }>;
+}
+export interface LoopholeCliFormStringField extends LoopholeCliFormFieldBase {
+	type: 'string';
+	placeholder?: string;
+	default?: string;
+	options?: LoopholeCliFormOption[];
+	custom?: boolean;
+	minLength?: number;
+	maxLength?: number;
+	pattern?: string;
+}
+export interface LoopholeCliFormNumberField extends LoopholeCliFormFieldBase {
+	type: 'number' | 'integer';
+	default?: number;
+	minimum?: number;
+	maximum?: number;
+}
+export interface LoopholeCliFormBooleanField extends LoopholeCliFormFieldBase {
+	type: 'boolean';
+	default?: boolean;
+}
+export interface LoopholeCliFormMultiselectField extends LoopholeCliFormFieldBase {
+	type: 'multiselect';
+	options: LoopholeCliFormOption[];
+	custom?: boolean;
+	minItems?: number;
+	maxItems?: number;
+	default?: string[];
+}
+export interface LoopholeCliFormExternalField extends LoopholeCliFormFieldBase {
+	type: 'external';
+	url: string;
+}
+export type LoopholeCliFormField =
+	| LoopholeCliFormStringField
+	| LoopholeCliFormNumberField
+	| LoopholeCliFormBooleanField
+	| LoopholeCliFormMultiselectField
+	| LoopholeCliFormExternalField;
+
+/** `Form.Info` (packages/schema/src/form.ts). Sent ephemerally over the session stream as `form.created`. */
+export interface LoopholeCliFormRequest {
+	id: string;
+	sessionID: string;
+	title: string;
+	metadata?: Record<string, unknown>;
+	fields: LoopholeCliFormField[];
+}
+
 /** `Session.Revert` (packages/schema/src/session-revert.ts). */
 export interface LoopholeCliRevert {
 	messageID: string;
