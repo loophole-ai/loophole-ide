@@ -165,7 +165,11 @@ export const DiffRows = ({ rows, showLineNumbers = true, onLineClick }: { rows: 
 				return <div key={i} className='px-2 py-0.5 bg-loophole-bg-2 text-loophole-fg-4 whitespace-pre-wrap'>{row.text}</div>;
 			}
 			const gutter = row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' ';
-			const tone = row.kind === 'add' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500' : row.kind === 'del' ? 'bg-red-500/10 text-red-300 border-red-500' : 'text-loophole-fg-3 border-transparent';
+			const tone = row.kind === 'add'
+				? 'bg-[rgba(52,211,153,0.18)] text-[#4ade80] border-[#22c55e]'
+				: row.kind === 'del'
+					? 'bg-[rgba(248,113,113,0.18)] text-[#ff7b86] border-[#ef4444]'
+					: 'text-loophole-fg-3 border-transparent';
 			return <div key={i} className={`flex border-l-2 ${tone} whitespace-pre-wrap break-all`}>
 				{showLineNumbers && <>
 					<span className='w-7 flex-shrink-0 text-right px-1 select-none text-loophole-fg-4'>{row.oldLine ?? ''}</span>
