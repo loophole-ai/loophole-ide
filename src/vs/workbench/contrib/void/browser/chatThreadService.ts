@@ -11,6 +11,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { URI } from '../../../../base/common/uri.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
+import { ILoopholeCliService } from '../common/loopholeCliService.js';
 import { chat_userMessageContent, isABuiltinToolName } from '../common/prompt/prompts.js';
 import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj, CliCompactionState, CliPermissionRequest, CliFormRequest, CliToolState, CliUsage } from '../common/sendLLMMessageTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
@@ -374,6 +375,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IMCPService private readonly _mcpService: IMCPService,
 		@ITokenUsageService private readonly _tokenUsageService: ITokenUsageService,
 		@IConfigurationService private readonly _configurationService: IConfigurationService,
+		@ILoopholeCliService private readonly _loopholeCliService: ILoopholeCliService,
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
@@ -1007,6 +1009,19 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						this.setCliSessionId(threadId, cliSessionId)
 					},
 					onPermission: ({ permission }) => {
+						const always = this._configurationService.getValue<string[]>('loophole.permissions.alwaysAllowed') ?? [];
+						if (always.includes(permission.action)) {
+							// The user preset this action as always-allowed in the Permissions settings page;
+							// answer the prompt instead of showing it.
+							const sessionID = this.state.allThreads[threadId]?.state.cliSessionId;
+							if (sessionID) {
+								this._loopholeCliService.permissionReply(sessionID, permission.id, 'always').catch(() => {
+									// best effort; leave the prompt pending so the user can answer manually
+									this._addCliPermission(threadId, permission);
+								})
+								return;
+							}
+						}
 						this._addCliPermission(threadId, permission)
 					},
 					onForm: ({ form }) => {

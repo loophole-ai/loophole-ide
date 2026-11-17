@@ -22,6 +22,9 @@ export const loopholeCliModelSettingId = (role: LoopholeCliModelRole) => `loopho
 /** Models switched off in Settings > Models; they disappear from every picker. */
 export const LoopholeCliDisabledModelsSettingId = 'loophole.cli.models.disabled';
 
+/** Permission actions the user has set to always-allow on the Permissions settings page. */
+export const LoopholePermissionsAlwaysAllowedSettingId = 'loophole.permissions.alwaysAllowed';
+
 /** OpenAI-compatible providers added in Settings > Providers. */
 export const LoopholeCliCustomProvidersSettingId = 'loophole.cli.customProviders';
 
@@ -91,6 +94,12 @@ configurationRegistry.registerConfiguration({
 			type: 'array',
 			items: { type: 'string' },
 			description: nls.localize('loophole.cli.models.disabled', 'Models switched off in Settings > Models, as "providerID/modelID". They are hidden from every picker.'),
+			default: [],
+		},
+		[LoopholePermissionsAlwaysAllowedSettingId]: {
+			type: 'array',
+			items: { type: 'string' },
+			description: nls.localize('loophole.permissions.alwaysAllowed', 'Permission actions the user has preset to always-allow on the Permissions settings page. Asked-once actions are auto-answered in the sidebar, never shown to the user.'),
 			default: [],
 		},
 		[LoopholeCliCustomProvidersSettingId]: {

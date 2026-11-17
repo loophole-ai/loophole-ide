@@ -16,7 +16,7 @@ import { WebSocket } from 'ws';
 import type { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { Emitter, type Event } from '../../../../base/common/event.js';
 import type { LoopholeCliConfig, LoopholeCliConfigUpdateParams, LoopholeCliConnectKeyParams, LoopholeCliConnectParams, LoopholeCliFimParams, LoopholeCliStatus, LoopholeCliVoiceWsEvent } from '../common/loopholeCliTypes.js';
-import type { LoopholeCliCommandInfo, LoopholeCliPermissionDecision, LoopholeCliPermissionRequest, LoopholeCliSessionInfo, LoopholeCliSessionMessage, LoopholeCliSkillInfo, LoopholeCliUpdateInfo, LoopholeCliUpdateResult, LoopholeCliVoiceModel, LoopholeCliVoiceTransport, LoopholeCliRevert } from '../common/loopholeCliTypes.js';
+import type { LoopholeCliCommandInfo, LoopholeCliPermissionDecision, LoopholeCliPermissionRequest, LoopholeCliSessionInfo, LoopholeCliSessionMessage, LoopholeCliSkillInfo, LoopholeCliUpdateInfo, LoopholeCliUpdateResult, LoopholeCliVoiceModel, LoopholeCliVoiceTransport, LoopholeCliRevert, LoopholeCliFormRequest } from '../common/loopholeCliTypes.js';
 
 // Direct Inception FIM endpoint (the CLI has no FIM endpoint).
 const INCEPTION_FIM_URL = 'https://api.inceptionlabs.ai/v1/fim/completions';
@@ -188,6 +188,9 @@ export class LoopholeCliChannel implements IServerChannel {
 		if (command === 'revertCommit') return this._callRevertCommit(params);
 		if (command === 'permissionList') return this._callPermissionList(params);
 		if (command === 'permissionReply') return this._callPermissionReply(params);
+		if (command === 'formList') return this._callFormList(params);
+		if (command === 'formReply') return this._callFormReply(params);
+		if (command === 'formCancel') return this._callFormCancel(params);
 		if (command === 'voiceModels') return this._callVoiceModels();
 		if (command === 'voiceSession') return this._callVoiceSession(params);
 		if (command === 'voiceWsConnect') return this._callVoiceWsConnect(params);
@@ -839,6 +842,20 @@ export class LoopholeCliChannel implements IServerChannel {
 			decision: params.decision,
 			...(params.message ? { message: params.message } : {}),
 		});
+	}
+
+	private _callFormList(params: { sessionID: string }): Promise<LoopholeCliFormRequest[]> {
+		return this.cliApi('GET', `/api/session/${encodeURIComponent(params.sessionID)}/form`);
+	}
+
+	private _callFormReply(params: { sessionID: string; formID: string; answer: Record<string, unknown> }): Promise<void> {
+		return this.cliApi('POST', `/api/session/${encodeURIComponent(params.sessionID)}/form/${encodeURIComponent(params.formID)}/reply`, {
+			answer: params.answer,
+		});
+	}
+
+	private _callFormCancel(params: { sessionID: string; formID: string }): Promise<void> {
+		return this.cliApi('DELETE', `/api/session/${encodeURIComponent(params.sessionID)}/form/${encodeURIComponent(params.formID)}`);
 	}
 
 	private _callVoiceModels(): Promise<{ models: LoopholeCliVoiceModel[]; default?: string }> {
