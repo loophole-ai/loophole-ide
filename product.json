@@ -1,4 +1,4 @@
-{
+﻿{
 	"version": "1.121.0",
 	"commit": "release",
 	"updateUrl": "https://raw.githubusercontent.com/loophole-ai/versions/refs/heads/main",
@@ -9,7 +9,7 @@
 	"applicationName": "loophole",
 	"dataFolderName": ".loophole-editor",
 	"win32MutexName": "loophole",
-	"licenseName": "AGPL-3.0",
+	"licenseName": "MIT",
 	"licenseUrl": "https://github.com/loophole-ai/loophole-ide/blob/main/LICENSE.txt",
 	"serverLicenseUrl": "https://github.com/loophole-ai/loophole-ide/blob/main/LICENSE.txt",
 	"serverGreeting": [],

@@ -119,4 +119,4 @@ We welcome contributions from the community. Please read the [Contributing Guide
 
 ## License
 
-Loophole is licensed under the [GNU Affero General Public License v3.0](./LICENSE.txt) (AGPL-3.0). It incorporates code from [Void Editor](https://github.com/voideditor/void) (Apache 2.0) and [VS Code](https://github.com/microsoft/vscode) (MIT).
+Loophole is licensed under the [MIT License](./LICENSE.txt). It incorporates code from [Void Editor](https://github.com/voideditor/void) and [VS Code](https://github.com/microsoft/vscode).

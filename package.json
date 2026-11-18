@@ -1,11 +1,11 @@
-{
+﻿{
 	"name": "loophole",
 	"version": "1.121.0",
 	"distro": "4c30891870580a899a75d284d7ee387f3fdf696e",
 	"author": {
 		"name": "Loophole AI"
 	},
-	"license": "AGPL-3.0",
+	"license": "MIT",
 	"main": "./out/main.js",
 	"type": "module",
 	"private": true,

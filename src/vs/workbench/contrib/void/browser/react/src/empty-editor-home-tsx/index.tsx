@@ -1,6 +1,6 @@
-/*--------------------------------------------------------------------------------------
+﻿/*--------------------------------------------------------------------------------------
  *  Copyright 2026 Loophole AI. All rights reserved.
- *  Licensed under the AGPL-3.0 License. See LICENSE.txt for more information.
+ *  Licensed under the MIT License. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
 import React from 'react';
