@@ -18,21 +18,45 @@ import { MCPServer } from '../../../../common/mcpServiceTypes.js'
 import { useMCPServiceState } from '../util/services.js'
 import { PROJECT_MEMORY_STORAGE_KEY } from '../../../../common/storageKeys.js'
 import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js'
+import { CliProvidersTab } from './cli-settings/CliProvidersTab.js'
+import { CliModelsTab } from './cli-settings/CliModelsTab.js'
+import { CliAutocompleteTab } from './cli-settings/CliAutocompleteTab.js'
+import { CliVoiceTab } from './cli-settings/CliVoiceTab.js'
+import { CliContextTab } from './cli-settings/CliContextTab.js'
+import { CliCommitMessageTab } from './cli-settings/CliCommitMessageTab.js'
+import { CliNotificationsTab } from './cli-settings/CliNotificationsTab.js'
 import { CliStatusTab } from './cli-settings/CliStatusTab.js'
+import { CliAboutTab } from './cli-settings/CliAboutTab.js'
 import { CliPermissionsTab } from './cli-settings/CliPermissionsTab.js'
 
 type Tab =
+	| 'models'
+	| 'providers'
+	| 'autocomplete'
+	| 'voice'
+	| 'context'
+	| 'commitMessage'
+	| 'notifications'
 	| 'permissions'
 	| 'status'
 	| 'general'
 	| 'mcp'
+	| 'about'
 	| 'all';
 
 const navItems: { tab: Tab, label: string }[] = [
+	{ tab: 'models', label: 'Models' },
+	{ tab: 'providers', label: 'Providers' },
+	{ tab: 'autocomplete', label: 'Autocomplete' },
+	{ tab: 'voice', label: 'Voice' },
+	{ tab: 'context', label: 'Context' },
+	{ tab: 'commitMessage', label: 'Commit Message' },
+	{ tab: 'notifications', label: 'Notifications' },
 	{ tab: 'permissions', label: 'Permissions' },
 	{ tab: 'status', label: 'Status' },
 	{ tab: 'general', label: 'General' },
 	{ tab: 'mcp', label: 'MCP' },
+	{ tab: 'about', label: 'About' },
 	{ tab: 'all', label: 'All Settings' },
 ]
 
@@ -555,6 +579,34 @@ export const Settings = () => {
 						<div className='w-full h-[1px] my-4' />
 
 						<div className='flex flex-col gap-12'>
+							<div className={shouldShowTab('models') ? '' : 'hidden'}>
+								{selectedSection === 'models' || selectedSection === 'all' ? <ErrorBoundary><CliModelsTab /></ErrorBoundary> : null}
+							</div>
+
+							<div className={shouldShowTab('providers') ? '' : 'hidden'}>
+								{selectedSection === 'providers' || selectedSection === 'all' ? <ErrorBoundary><CliProvidersTab /></ErrorBoundary> : null}
+							</div>
+
+							<div className={shouldShowTab('autocomplete') ? '' : 'hidden'}>
+								{selectedSection === 'autocomplete' || selectedSection === 'all' ? <ErrorBoundary><CliAutocompleteTab /></ErrorBoundary> : null}
+							</div>
+
+							<div className={shouldShowTab('voice') ? '' : 'hidden'}>
+								{selectedSection === 'voice' || selectedSection === 'all' ? <ErrorBoundary><CliVoiceTab /></ErrorBoundary> : null}
+							</div>
+
+							<div className={shouldShowTab('context') ? '' : 'hidden'}>
+								{selectedSection === 'context' || selectedSection === 'all' ? <ErrorBoundary><CliContextTab /></ErrorBoundary> : null}
+							</div>
+
+							<div className={shouldShowTab('commitMessage') ? '' : 'hidden'}>
+								{selectedSection === 'commitMessage' || selectedSection === 'all' ? <ErrorBoundary><CliCommitMessageTab /></ErrorBoundary> : null}
+							</div>
+
+							<div className={shouldShowTab('notifications') ? '' : 'hidden'}>
+								{selectedSection === 'notifications' || selectedSection === 'all' ? <ErrorBoundary><CliNotificationsTab /></ErrorBoundary> : null}
+							</div>
+
 							<div className={shouldShowTab('permissions') ? '' : 'hidden'}>
 								{selectedSection === 'permissions' || selectedSection === 'all' ? <ErrorBoundary><CliPermissionsTab /></ErrorBoundary> : null}
 							</div>
@@ -569,6 +621,10 @@ export const Settings = () => {
 
 							<div className={shouldShowTab('mcp') ? '' : 'hidden'}>
 								{selectedSection === 'mcp' || selectedSection === 'all' ? <ErrorBoundary><MCPTab /></ErrorBoundary> : null}
+							</div>
+
+							<div className={shouldShowTab('about') ? '' : 'hidden'}>
+								{selectedSection === 'about' || selectedSection === 'all' ? <ErrorBoundary><CliAboutTab /></ErrorBoundary> : null}
 							</div>
 						</div>
 					</div>
