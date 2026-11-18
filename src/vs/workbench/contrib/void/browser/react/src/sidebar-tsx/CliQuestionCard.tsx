@@ -5,7 +5,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, HelpCircle, Loader2, X } from 'lucide-react';
-import { useAccessor, useChatThreadsState } from '../util/services.js';
+import { useAccessor, useChatThreadsState, useCliForms } from '../util/services.js';
 import type { LoopholeCliFormRequest } from '../../../../common/loopholeCliTypes.js';
 import type { CliToolState } from '../../../../common/sendLLMMessageTypes.js';
 import { ToolCard, firstLineOf } from './tool-ui/ToolCard.js';
@@ -356,4 +356,18 @@ export const QuestionToolCard = ({ tool, form, threadId }: { tool: CliToolState;
 		return <AnswerSummary rows={[]} skipped={true} note={tool.error ? firstLineOf(tool.error) : undefined} />;
 	}
 	return <ToolCard tool={tool} />;
+};
+
+// Ask-follow-question card for the Loophole CLI (`form.created`).
+// Renders every pending question form for the thread; answers and skips flow
+// through ILoopholeCliService.formReply / formCancel inside FormCard, which
+// also removes the form from the pending list once answered.
+export const CliQuestionCard = ({ threadId }: { threadId: string }) => {
+	const forms = useCliForms(threadId);
+
+	if (forms.length === 0) return null;
+
+	return <div className='flex flex-col gap-1 w-full'>
+		{forms.map((form) => <LooseFormCard key={form.id} form={form} threadId={threadId} />)}
+	</div>;
 };
