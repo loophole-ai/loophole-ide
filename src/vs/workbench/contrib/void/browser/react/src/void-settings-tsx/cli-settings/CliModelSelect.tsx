@@ -1,5 +1,6 @@
 /*--------------------------------------------------------------------------------------
  *  Copyright 2026 Loophole AI. All rights reserved.
+ *  Licensed under the MIT License. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
