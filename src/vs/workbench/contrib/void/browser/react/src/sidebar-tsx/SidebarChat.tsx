@@ -2114,33 +2114,29 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 	'read_file': {
 		resultWrapper: ({ toolMessage }) => {
 			const accessor = useAccessor()
-			const commandService = accessor.get('ICommandService')
 
 			const title = getTitle(toolMessage)
 
 			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor);
 			const icon = null
 
-			if (toolMessage.type === 'tool_request') return null // do not show past requests
-			if (toolMessage.type === 'running_now') return null // do not show running
-
-			const isError = false
+			// Plain, non-expandable read block (no dropdown/children). Always visible across states.
 			const isRejected = toolMessage.type === 'rejected'
-			const { rawParams, params } = toolMessage
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+			const { params } = toolMessage
+			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, icon, isRejected }
 
 			let range: [number, number] | undefined = undefined
-			if (toolMessage.params.startLine !== null || toolMessage.params.endLine !== null) {
-				const start = toolMessage.params.startLine === null ? `1` : `${toolMessage.params.startLine}`
-				const end = toolMessage.params.endLine === null ? `` : `${toolMessage.params.endLine}`
-				const addStr = `(${start}-${end})`
-				componentParams.desc1 += ` ${addStr}`
+			if (params.startLine !== null || params.endLine !== null) {
+				const start = params.startLine === null ? `1` : `${params.startLine}`
+				const end = params.endLine === null ? `` : `${params.endLine}`
+				componentParams.desc1 = `${desc1} (${start}-${end})`
 				range = [params.startLine || 1, params.endLine || 1]
 			}
 
 			if (toolMessage.type === 'success') {
 				const { result } = toolMessage
 				componentParams.onClick = () => { voidOpenFileFn(params.uri, accessor, range) }
+				componentParams.desc1OnClick = componentParams.onClick
 				if (result.hasNextPage && params.pageNumber === 1)  // first page
 					componentParams.desc2 = `(truncated after ${Math.round(MAX_FILE_CHARS_PAGE) / 1000}k)`
 				else if (params.pageNumber > 1) // subsequent pages
@@ -2148,7 +2144,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			}
 			else if (toolMessage.type === 'tool_error') {
 				const { result } = toolMessage
-				// JumpToFileButton removed in favor of FileLinkText
+				componentParams.isError = true
 				componentParams.bottomChildren = <BottomChildren title='Error'>
 					<CodeChildren>
 						{result}
