@@ -414,13 +414,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download x64 DMG
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: Loophole-darwin-x64-${{ env.VERSION }}-dmg
           path: downloads/x64
 
       - name: Download arm64 DMG
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: Loophole-darwin-arm64-${{ env.VERSION }}-dmg
           path: downloads/arm64
