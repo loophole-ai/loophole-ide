@@ -222,7 +222,7 @@ jobs:
             "dist/Loophole-darwin-x64-$VERSION.dmg"
 
       - name: Upload — DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Loophole-darwin-x64-${{ env.VERSION }}-dmg
           path: dist/Loophole-darwin-x64-${{ env.VERSION }}.dmg
@@ -370,7 +370,7 @@ jobs:
 
       # Save the arm64 .app for the universal job
       - name: Upload — arm64 .app bundle (for universal build)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: loophole-darwin-arm64-app-${{ env.VERSION }}
           path: ../*darwin-arm64/*.app
@@ -378,7 +378,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload — DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Loophole-darwin-arm64-${{ env.VERSION }}-dmg
           path: dist/Loophole-darwin-arm64-${{ env.VERSION }}.dmg
@@ -484,7 +484,7 @@ jobs:
             "dist/Loophole-darwin-universal-$VERSION.dmg"
 
       - name: Upload — Universal DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Loophole-darwin-universal-${{ env.VERSION }}-dmg
           path: dist/Loophole-darwin-universal-${{ env.VERSION }}.dmg

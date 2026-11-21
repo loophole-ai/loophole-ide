@@ -231,7 +231,7 @@ jobs:
           ls -lh dist/
 
       - name: Upload — deb x64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Loophole-${{ env.VERSION }}-amd64-deb
           path: dist/*.deb
@@ -239,7 +239,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload — rpm x64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Loophole-${{ env.VERSION }}-x86_64-rpm
           path: dist/*.rpm
@@ -398,7 +398,7 @@ jobs:
           ls -lh dist/
 
       - name: Upload — deb arm64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Loophole-${{ env.VERSION }}-arm64-deb
           path: dist/*.deb
@@ -406,7 +406,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload — rpm arm64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Loophole-${{ env.VERSION }}-aarch64-rpm
           path: dist/*.rpm
