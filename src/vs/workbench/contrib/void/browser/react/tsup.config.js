@@ -17,14 +17,24 @@ const bundleDir = path.join(reactDir, 'out', '__bundle__')
 // Source files nested deeper than src2/<name>/ (e.g. src2/void-settings-tsx/cli-settings/*.tsx) write a longer path than the bundle needs,
 // and a bundler that just keeps the specifier as written leaves it one or more `../` too deep ("Could not resolve ../../../../voidSettingsPane.js").
 // So resolve the specifier against the importing file and re-express it relative to the bundle's output folder.
+//
+// This must ONLY touch imports written in our own source files. Relative imports inside npm packages (e.g. lucide-react's ./icons/*.js) also resolve
+// to a path outside react/ (node_modules), but those have to be bundled like any other dependency; externalising them leaves raw node_modules files
+// that import bare "react", which the renderer cannot resolve.
+const isInsideNodeModules = (p) => p.split(path.sep).includes('node_modules')
+const isInsideReactDir = (p) => {
+	const rel = path.relative(reactDir, p)
+	return !rel.startsWith('..') && !path.isAbsolute(rel)
+}
+
 const rewriteExternalRelativeImports = {
 	name: 'rewrite-external-relative-imports',
 	setup(build) {
 		build.onResolve({ filter: /^\.\.?\// }, (args) => {
-			if (args.kind === 'entry-point' || !args.resolveDir) return undefined
+			if (args.kind === 'entry-point' || !args.resolveDir || !args.importer) return undefined
+			if (!isInsideReactDir(args.importer) || isInsideNodeModules(args.importer)) return undefined // importer is a dependency -> bundle as usual
 			const abs = path.resolve(args.resolveDir, args.path)
-			const rel = path.relative(reactDir, abs)
-			if (!rel.startsWith('..') && !path.isAbsolute(rel)) return undefined // inside react/ -> bundle as usual
+			if (isInsideReactDir(abs) || isInsideNodeModules(abs)) return undefined // our own react/ code or a dependency -> bundle as usual
 			let external = path.relative(bundleDir, abs).split(path.sep).join('/')
 			if (!external.startsWith('.')) external = './' + external
 			return { path: external, external: true }
