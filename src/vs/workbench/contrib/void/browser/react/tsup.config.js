@@ -3,7 +3,34 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { defineConfig } from 'tsup'
+
+const reactDir = path.dirname(fileURLToPath(import.meta.url))
+
+// Every entry is ./src2/<name>/index.tsx and is emitted to ./out/<name>/index.js, so every bundle sits exactly one folder below out/.
+const bundleDir = path.join(reactDir, 'out', '__bundle__')
+
+// Imports that point outside of this react/ folder (e.g. ../../../voidSettingsPane.js, ../../../../common/*.js) are the workbench's own modules.
+// They must stay external (the workbench build bundles them), but their specifier has to be valid from where the bundle is emitted.
+// Source files nested deeper than src2/<name>/ (e.g. src2/void-settings-tsx/cli-settings/*.tsx) write a longer path than the bundle needs,
+// and a bundler that just keeps the specifier as written leaves it one or more `../` too deep ("Could not resolve ../../../../voidSettingsPane.js").
+// So resolve the specifier against the importing file and re-express it relative to the bundle's output folder.
+const rewriteExternalRelativeImports = {
+	name: 'rewrite-external-relative-imports',
+	setup(build) {
+		build.onResolve({ filter: /^\.\.?\// }, (args) => {
+			if (args.kind === 'entry-point' || !args.resolveDir) return undefined
+			const abs = path.resolve(args.resolveDir, args.path)
+			const rel = path.relative(reactDir, abs)
+			if (!rel.startsWith('..') && !path.isAbsolute(rel)) return undefined // inside react/ -> bundle as usual
+			let external = path.relative(bundleDir, abs).split(path.sep).join('/')
+			if (!external.startsWith('.')) external = './' + external
+			return { path: external, external: true }
+		})
+	},
+}
 
 export default defineConfig({
 	entry: [
@@ -35,26 +62,11 @@ export default defineConfig({
 		/^@huggingface\//,
 		/^(?!\.).*$/
 	],
-	external: [ // these imports should be kept external ../../../ are external (this is just an optimization so the output file doesn't re-implement functions)
-		new RegExp('../../../*.js'
-			.replaceAll('.', '\\.')
-			.replaceAll('*', '.*'))
-	],
+	// NOTE: do not add a RegExp for relative imports to `external` here. tsup's own external plugin would claim them first and keep the specifier as written.
+	// Relative imports that leave react/ are handled by rewriteExternalRelativeImports instead.
+	esbuildPlugins: [rewriteExternalRelativeImports], // must go through esbuildPlugins: plugins assigned inside esbuildOptions() are never registered by tsup
 	treeshake: true,
 	esbuildOptions(options) {
 		options.outbase = 'src2'  // tries copying the folder hierarchy starting at src2
-		// Relative imports like ../../../voidSettingsPane.js are correct from both src2/* and out/* (same depth under react).
-		// esbuild rewrites them because bundled files are shallower than their sources; force the original path.
-		options.plugins = [
-			...(options.plugins ?? []),
-			{
-				name: 'preserve-void-external-paths',
-				setup(build) {
-					build.onResolve({ filter: /^\.\.\/\.\.\/\.\.\/.*\.js$/ }, (args) => {
-						return { path: args.path, external: true }
-					})
-				},
-			},
-		]
 	}
 })
