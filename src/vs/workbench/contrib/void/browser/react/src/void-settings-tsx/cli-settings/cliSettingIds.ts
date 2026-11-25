@@ -26,8 +26,14 @@ export type LoopholeNotificationCategory = 'chatErrors' | 'applyChanges' | 'comm
 export const loopholeNotificationCategorySettingId = (category: LoopholeNotificationCategory) =>
 	`loophole.notifications.${category}`
 
-/** Models switched off in Settings > Models; they disappear from every picker. */
-export const LoopholeCliDisabledModelsSettingId = 'loophole.cli.models.disabled'
+/**
+ * Models the user switched on in Settings > Models, as `providerID/modelID`.
+ *
+ * Opt-in on purpose: a provider such as OpenRouter reports ~350 models, and
+ * putting all of them in the composer dropdown makes it lag. Nothing is shown in
+ * a picker until it is checked here.
+ */
+export const LoopholeCliEnabledModelsSettingId = 'loophole.cli.models.enabled'
 
 /** OpenAI-compatible providers added in Settings > Providers. */
 export const LoopholeCliCustomProvidersSettingId = 'loophole.cli.customProviders'
