@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAccessor, useSettingsState } from '../../util/services.js'
 import { VoidButtonBgDarken, VoidInputBox2, VoidSwitch } from '../../util/inputs.js'
 import { loopholeCliModelSettingId } from './cliSettingIds.js'
-import { CliModelSelect, useCliModels } from './CliModelSelect.js'
+import { CliModelSelect, useCliModels, useEnabledCliModels, visibleCliModels } from './CliModelSelect.js'
 import { useCliConfig } from './CliConfig.js'
 import { SettingsList, SettingsNote, SettingsRow, SettingsSection } from './CliSettingsRows.js'
 
@@ -18,11 +18,14 @@ export const CliCommitMessageTab = () => {
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const settingsState = useSettingsState()
 	const { models, loading, error } = useCliModels()
+	const { enabled: enabledRefs } = useEnabledCliModels()
 	const { config, loading: configLoading, error: configError, update, reload } = useCliConfig()
 
 	const [model, setModel] = useState(() => configService.getValue<string>(loopholeCliModelSettingId('commitMessage')) ?? '')
 	const [prompt, setPrompt] = useState('')
 	const [message, setMessage] = useState<string | null>(null)
+	// Only models checked in Settings > Models (plus the one already chosen) are offered.
+	const offered = useMemo(() => visibleCliModels(models, enabledRefs, model ? [model] : []), [models, enabledRefs, model])
 
 	useEffect(() => {
 		setPrompt(config?.commit_message?.prompt ?? '')
@@ -67,7 +70,7 @@ export const CliCommitMessageTab = () => {
 			<SettingsRow label='Model' description={loading ? 'Loading models...' : error ? error : 'Choosing a model turns off “Use the default chat model”.'}>
 				<CliModelSelect
 					value={model}
-					models={models}
+					models={offered}
 					onChange={saveModel}
 					allowDefault={true}
 				/>
