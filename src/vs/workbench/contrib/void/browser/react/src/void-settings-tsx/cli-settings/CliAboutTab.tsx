@@ -24,6 +24,7 @@ export const CliAboutTab = () => {
 	const [update, setUpdate] = useState<LoopholeCliUpdateInfo | null>(null)
 	const [checking, setChecking] = useState(false)
 	const [installing, setInstalling] = useState(false)
+	const [downloading, setDownloading] = useState(false)
 	const [result, setResult] = useState<string | null>(null)
 
 	const check = useCallback(async () => {
@@ -62,6 +63,26 @@ export const CliAboutTab = () => {
 		}
 	}
 
+	const download = async () => {
+		setDownloading(true)
+		setResult(null)
+		try {
+			const done = await cliService.downloadCli()
+			if (done.ok) {
+				setResult(`Loophole CLI installed to ${done.path ?? '~/.loophole/bin'}.`)
+				await cliService.connect().catch(() => { /* best effort */ })
+			} else {
+				setResult(done.error || 'Download failed.')
+			}
+			setVersion(await cliService.version().catch(() => 'unknown'))
+			setUpdate(await cliService.updateCheck().catch(() => ({ current: '', latest: '', updateAvailable: false })))
+		} catch (e) {
+			setResult(e instanceof Error ? e.message : String(e))
+		} finally {
+			setDownloading(false)
+		}
+	}
+
 	const notes = update?.notes?.trim()
 
 	return <>
@@ -97,17 +118,25 @@ export const CliAboutTab = () => {
 						label={update?.updateAvailable ? `New release: Loophole CLI ${update.latest}` : 'Loophole CLI'}
 						description={update?.error
 							? `Could not check for updates: ${update.error}`
-							: update?.updateAvailable
-								? `Installed ${update.current} · latest ${update.latest}`
-								: update ? `Installed ${update.current}` : 'Checking...'}
+							: !update
+								? 'Checking...'
+								: update.current === 'not installed'
+									? 'Loophole CLI is not installed.'
+									: update.updateAvailable
+										? `Installed ${update.current || 'unknown'} → latest ${update.latest}`
+										: `Installed ${update.current || 'unknown'}`}
 					>
-						{update?.updateAvailable
-							? <VoidButtonBgDarken className='px-3 py-1' onClick={() => { void install() }} disabled={installing}>
-								{installing ? 'Updating...' : 'Update'}
+						{update?.current === 'not installed'
+							? <VoidButtonBgDarken className='px-3 py-1' onClick={() => { void download() }} disabled={downloading}>
+								{downloading ? 'Downloading...' : 'Download CLI'}
 							</VoidButtonBgDarken>
-							: <VoidButtonBgDarken className='px-3 py-1' onClick={() => { void check() }} disabled={checking}>
-								{checking ? 'Checking...' : 'Check again'}
-							</VoidButtonBgDarken>}
+							: update?.updateAvailable
+								? <VoidButtonBgDarken className='px-3 py-1' onClick={() => { void install() }} disabled={installing}>
+									{installing ? 'Updating...' : 'Update'}
+								</VoidButtonBgDarken>
+								: <VoidButtonBgDarken className='px-3 py-1' onClick={() => { void check() }} disabled={checking || downloading}>
+									{checking ? 'Checking...' : 'Check again'}
+								</VoidButtonBgDarken>}
 					</SettingsRow>
 				</SettingsList>
 

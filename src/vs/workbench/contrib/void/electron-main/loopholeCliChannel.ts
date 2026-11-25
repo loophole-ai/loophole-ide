@@ -6,7 +6,7 @@
 // registered in app.ts next to LLMMessageChannel; consumed by LoopholeCliService (renderer)
 
 import { execFile, spawn, spawnSync, type ChildProcess } from 'child_process';
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { createServer, request, type IncomingMessage } from 'http';
 import { randomBytes } from 'crypto';
@@ -145,6 +145,8 @@ export class LoopholeCliChannel implements IServerChannel {
 	private readonly _fimControllers = new Map<string, AbortController>();
 	// requestId -> proxied voice WebSockets (provider realtime audio; browser WS cannot set Authorization headers)
 	private readonly _voiceWsSockets = new Map<string, WebSocket>();
+	// Coalesce concurrent health checks so status polling doesn't spam the CLI.
+	private _statusHealthCheck: Promise<boolean> | null = null;
 
 	constructor() {
 		currentChannel = this;
@@ -202,7 +204,7 @@ export class LoopholeCliChannel implements IServerChannel {
 		throw new Error(`LoopholeCli: command "${command}" not recognized.`);
 	}
 
-	private _callStatus(): LoopholeCliStatus {
+	private _callStatusSync(): LoopholeCliStatus {
 		return {
 			status: this.state,
 			port: this.handle?.port,
@@ -210,6 +212,30 @@ export class LoopholeCliChannel implements IServerChannel {
 			binaryPath: resolveBinary(),
 			pid: this.handle?.process?.pid,
 		};
+	}
+
+	private async _isHealthy(): Promise<boolean> {
+		const handle = this.handle;
+		if (!handle || this.state !== 'connected') return false;
+		if (handle.process && handle.process.exitCode !== null) return false;
+		try {
+			// Any answered request proves the server is up; 404/401 still means the port is ours.
+			const status = await this._httpGet(handle.port, handle.password, '/api/session/active');
+			return status >= 200 && status < 500;
+		} catch {
+			return false;
+		}
+	}
+
+	private async _callStatus(): Promise<LoopholeCliStatus> {
+		if (this.state === 'connected' && this.handle) {
+			const healthy = await (this._statusHealthCheck ??= this._isHealthy().finally(() => { this._statusHealthCheck = null; }));
+			if (!healthy && this.state === 'connected') {
+				this._teardown('error');
+				this.statusError = 'Loophole CLI stopped responding. Click Reconnect to restart it.';
+			}
+		}
+		return this._callStatusSync();
 	}
 
 	/** Runs `<binary> --version`; the CLI is the only thing needed to answer this. */
@@ -341,6 +367,7 @@ export class LoopholeCliChannel implements IServerChannel {
 			mkdirSync(dir, { recursive: true });
 			const target = path.join(dir, file);
 			writeFileSync(target, binary);
+			if (process.platform !== 'win32') chmodSync(target, 0o755);
 			return { ok: true, path: target };
 		} catch (e) {
 			return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -501,16 +528,24 @@ export class LoopholeCliChannel implements IServerChannel {
 	private async _callConnect(params: LoopholeCliConnectParams = {}): Promise<LoopholeCliStatus> {
 		// The editor's open folder; ignored when it no longer exists on disk.
 		const requestedCwd = params.workspacePath && existsSync(params.workspacePath) ? params.workspacePath : undefined;
-		if (this.state === 'connected' && this.handle && this._runsIn(requestedCwd)) return this._callStatus();
+		if (this.state === 'connected' && this.handle && this._runsIn(requestedCwd)) {
+			const status = await this._callStatus();
+			if (this.state === 'connected') return status;
+			// Health check failed and tore down the stale connection; fall through to reconnect.
+		}
 		if (this.state === 'starting') {
 			// Another caller is already spawning the CLI; wait for that attempt instead of failing.
 			const deadline = Date.now() + 120_000;
 			while (this.state === 'starting' && Date.now() < deadline) {
 				await new Promise((resolve) => setTimeout(resolve, 200));
 			}
-			// Still starting, or it came up in the folder we want: done. Otherwise it was
-			// started for a different folder, so fall through and restart it for this one.
-			if (this.state === 'starting' || this._runsIn(requestedCwd)) return this._callStatus();
+			// Still starting: report it. If it came up in the folder we want and is healthy, done.
+			// Otherwise fall through and restart it for this folder / recover from a dead process.
+			if (this.state === 'starting') return this._callStatusSync();
+			if (this._runsIn(requestedCwd)) {
+				const status = await this._callStatus();
+				if (this.state === 'connected') return status;
+			}
 		}
 		this._teardown('starting');
 		this.state = 'starting';

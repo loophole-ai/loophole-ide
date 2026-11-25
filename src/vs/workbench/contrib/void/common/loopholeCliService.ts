@@ -188,10 +188,11 @@ export class LoopholeCliService extends Disposable implements ILoopholeCliServic
 	// If the CLI is already up (or coming up), ask it to restart in this window's folder.
 	// The main process is a no-op when it already runs there. When it is not running,
 	// the next connect() starts it in the right folder, so nothing is spawned eagerly.
+	// 'error' is included so a stale/dead CLI process is recovered on startup or folder change.
 	private async _alignWorkspace(): Promise<void> {
 		try {
 			const { status } = await this.status();
-			if (status === 'connected' || status === 'starting') await this.connect();
+			if (status === 'connected' || status === 'starting' || status === 'error') await this.connect();
 		} catch (e) {
 			console.warn(`[LoopholeCli] could not align CLI with the workspace folder: ${e instanceof Error ? e.message : String(e)}`);
 		}
