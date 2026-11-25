@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import { VoidCustomDropdownBox } from '../../util/inputs.js'
-import { LoopholeCliDisabledModelsSettingId, LoopholeCliCustomProvidersSettingId, type LoopholeCliCustomProvider } from './cliSettingIds.js'
+import { LoopholeCliEnabledModelsSettingId, LoopholeCliCustomProvidersSettingId, type LoopholeCliCustomProvider } from './cliSettingIds.js'
 import type { LoopholeCliModelInfo } from '../../../../../common/loopholeCliTypes.js'
 
 export type CliModelOption = {
@@ -17,31 +17,44 @@ export type CliModelOption = {
 
 export const cliModelRef = (model: LoopholeCliModelInfo) => `${model.providerID}/${model.modelID}`
 
-/** Ids of models the user switched off in Settings > Models. */
-export const useDisabledCliModels = () => {
+/** Ids (`providerID/modelID`) of models the user switched on in Settings > Models. */
+export const useEnabledCliModels = () => {
 	const accessor = useAccessor()
 	const configService = accessor.get('IConfigurationService')
-	const [disabled, setDisabled] = useState<string[]>(() =>
-		configService.getValue<string[]>(LoopholeCliDisabledModelsSettingId) ?? [],
-	)
+	const read = () => configService.getValue<string[]>(LoopholeCliEnabledModelsSettingId) ?? []
+	const [enabled, setEnabled] = useState<string[]>(read)
 	useEffect(() => {
 		const disposable = configService.onDidChangeConfiguration((event) => {
-			if (!event.affectsConfiguration(LoopholeCliDisabledModelsSettingId)) return
-			setDisabled(configService.getValue<string[]>(LoopholeCliDisabledModelsSettingId) ?? [])
+			if (!event.affectsConfiguration(LoopholeCliEnabledModelsSettingId)) return
+			setEnabled(read())
 		})
 		return () => disposable.dispose()
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [configService])
-	const toggle = (ref: string) => {
-		const next = disabled.includes(ref) ? disabled.filter((id) => id !== ref) : [...disabled, ref]
-		configService.updateValue(LoopholeCliDisabledModelsSettingId, next)
-		setDisabled(next)
-	}
-	return { disabled, toggle }
+
+	// One write per change, even when a provider switch flips hundreds of models.
+	const setMany = useCallback((refs: string[], on: boolean) => {
+		const current = new Set(read())
+		for (const ref of refs) on ? current.add(ref) : current.delete(ref)
+		const next = [...current]
+		configService.updateValue(LoopholeCliEnabledModelsSettingId, next)
+		setEnabled(next)
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [configService])
+	const toggle = useCallback((ref: string) => setMany([ref], !read().includes(ref)), [setMany])
+	return { enabled, toggle, setMany }
 }
 
-/** Models the user has left enabled, i.e. what every picker should offer. */
-export const visibleCliModels = (models: LoopholeCliModelInfo[], disabled: string[]) =>
-	models.filter((model) => !disabled.includes(cliModelRef(model)))
+/**
+ * Models the pickers offer: only the ones the user checked. `pinned` refs (the
+ * models currently assigned to a role) are always kept so a selection never
+ * disappears from its own dropdown just because it was never checked.
+ */
+export const visibleCliModels = (models: LoopholeCliModelInfo[], enabled: string[], pinned: string[] = []) => {
+	if (enabled.length === 0 && pinned.length === 0) return []
+	const allowed = new Set([...enabled, ...pinned])
+	return models.filter((model) => allowed.has(cliModelRef(model)))
+}
 
 /** Model list + connection state shared by the Models, Autocomplete, and Commit Message pages. */
 // Shared cache: every page that mounts asks for the same list and one fetch is
@@ -126,11 +139,13 @@ export const useCliModels = () => {
 }
 
 /** Dropdown over the CLI model list using the editor's standard dropdown component. */
-export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault = true, className }: {
+export const CliModelSelect = ({ value, models, onChange, onCustom, onManage, allowDefault = true, className }: {
 	value: string
 	models: LoopholeCliModelInfo[]
 	onChange: (value: string) => void
 	onCustom?: () => void
+	/** Adds a pinned "Manage models..." entry that opens Settings > Models (where models are switched on). */
+	onManage?: () => void
 	allowDefault?: boolean
 	className?: string
 }) => {
@@ -146,8 +161,9 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 			list.push({ value, label: value, detail: 'Custom model' })
 		}
 		if (onCustom) list.push({ value: '__custom__', label: 'Custom model...', detail: 'Enter a model id and provider' })
+		if (onManage) list.push({ value: '__manage__', label: 'Manage models...', detail: models.length === 0 ? 'No models enabled yet' : 'Choose which models appear here' })
 		return list
-	}, [models, value, allowDefault, onCustom])
+	}, [models, value, allowDefault, onCustom, onManage])
 
 	const selected = options.find(option => option.value === value) ?? options[0]
 
@@ -160,6 +176,10 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 				onCustom?.()
 				return
 			}
+			if (option.value === '__manage__') {
+				onManage?.()
+				return
+			}
 			onChange(option.value)
 		}}
 		getOptionDisplayName={(option) => option.label}
@@ -167,8 +187,8 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, allowDefault
 		getOptionDropdownDetail={(option) => option.detail ?? ''}
 		getOptionsEqual={(a, b) => a.value === b.value}
 		matchInputWidth={false}
-		searchable={options.length > 6}
+		searchable={models.length > 6}
 		searchPlaceholder='Search models...'
-		isPinnedOption={(option) => option.value === '__custom__'}
+		isPinnedOption={(option) => option.value === '__custom__' || option.value === '__manage__'}
 	/>
 }
