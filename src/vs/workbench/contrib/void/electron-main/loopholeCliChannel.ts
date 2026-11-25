@@ -31,6 +31,16 @@ export function getLoopholeCliChannel(): LoopholeCliChannel | null {
 
 type CliState = 'disconnected' | 'starting' | 'connected' | 'error';
 
+// A busy CLI can take a few seconds to answer; 3s with a single strike was enough
+// to tear down a perfectly healthy server and show "Click Reconnect".
+const HEALTH_PROBE_TIMEOUT_MS = 8000;
+const HEALTH_FAILURES_BEFORE_RESTART = 3;
+const MAX_RECOVERIES = 3;
+const RECOVERY_WINDOW_MS = 60_000;
+// How long to wait for the Location plugins after the server starts answering.
+// Past this the CLI is reported connected anyway (callers retry 503s themselves).
+const PLUGIN_WARMUP_MS = 45_000;
+
 class LoopholeCliHandle {
 	readonly process: ChildProcess | null;
 	readonly port: number;
@@ -85,9 +95,40 @@ function extractFileFromTarGz(gzip: Buffer, wanted: string): Buffer | null {
 	return null;
 }
 
-/** Bundled binary, then overrides, then PATH - but only if it really is the Loophole CLI. */
-function resolveBinary(explicit?: string): string {
+// resolveBinary() runs on every status() poll. Uncached it re-checks a dozen paths
+// and, when nothing is bundled, runs up to three blocking `spawnSync(... --version)`
+// probes (8s timeout each) on the editor's main process - that is a visible freeze.
+// So the answer is remembered: a binary found on disk is trusted while the file
+// still exists, and a miss is remembered briefly so it is not re-probed per poll.
+let cachedBinary: { path: string; at: number; onDisk: boolean } | undefined;
+const MISSING_BINARY_CACHE_MS = 30_000;
+
+/** Forget the remembered binary (after an install/upgrade changed what is on disk). */
+function forgetResolvedBinary(): void {
+	cachedBinary = undefined;
+}
+
+/**
+ * `probePath` is true only on the connect path. status() polls must never run the
+ * blocking `--version` probes against PATH entries, so they pass false and get
+ * the cached answer (or a cheap, non-probing guess) instead.
+ */
+function resolveBinary(explicit?: string, probePath = true): string {
 	if (explicit) return explicit;
+	const now = Date.now();
+	if (cachedBinary) {
+		if (cachedBinary.onDisk ? existsSync(cachedBinary.path) : now - cachedBinary.at < MISSING_BINARY_CACHE_MS) {
+			return cachedBinary.path;
+		}
+	}
+	const resolved = findBinary(probePath);
+	// A non-probed guess is not remembered, or it would shadow the real PATH lookup.
+	if (probePath) cachedBinary = { path: resolved, at: now, onDisk: existsSync(resolved) };
+	return resolved;
+}
+
+/** Bundled binary, then overrides, then PATH - but only if it really is the Loophole CLI. */
+function findBinary(probePath: boolean): string {
 	const exe = process.platform === 'win32' ? 'loophole.exe' : 'loophole';
 	const cliExe = process.platform === 'win32' ? 'loophole-cli.exe' : 'loophole-cli';
 	// A packaged build puts the app in <install>/resources/app next to the
@@ -114,6 +155,7 @@ function resolveBinary(explicit?: string): string {
 	if (process.env.LOOPHOLE_CLI_BIN && existsSync(process.env.LOOPHOLE_CLI_BIN)) return process.env.LOOPHOLE_CLI_BIN;
 	// Nothing bundled: fall back to PATH, but the probe rejects the editor's own
 	// `loophole` shim, which shares the name and would exit 0 on `serve`.
+	if (!probePath) return cliExe
 	const onPath = ['loophole-cli', exe, cliExe].find((name) => isLoopholeCli(name))
 	return onPath ?? cliExe
 }
@@ -147,6 +189,14 @@ export class LoopholeCliChannel implements IServerChannel {
 	private readonly _voiceWsSockets = new Map<string, WebSocket>();
 	// Coalesce concurrent health checks so status polling doesn't spam the CLI.
 	private _statusHealthCheck: Promise<boolean> | null = null;
+	// Consecutive failed health probes. One slow answer (the CLI is busy indexing or
+	// running a tool) must not kill a healthy server, so only a streak counts.
+	private _healthFailures = 0;
+	// Start times of automatic restarts, to stop a crash loop from respawning forever.
+	private _recoveries: number[] = [];
+	// binaryPath/env of the last connect(), so an automatic restart launches the same CLI
+	// the user had instead of re-resolving a different one.
+	private _lastConnect: Pick<LoopholeCliConnectParams, 'binaryPath' | 'env'> = {};
 
 	constructor() {
 		currentChannel = this;
@@ -209,7 +259,7 @@ export class LoopholeCliChannel implements IServerChannel {
 			status: this.state,
 			port: this.handle?.port,
 			error: this.statusError,
-			binaryPath: resolveBinary(),
+			binaryPath: resolveBinary(undefined, false),
 			pid: this.handle?.process?.pid,
 		};
 	}
@@ -220,19 +270,46 @@ export class LoopholeCliChannel implements IServerChannel {
 		if (handle.process && handle.process.exitCode !== null) return false;
 		try {
 			// Any answered request proves the server is up; 404/401 still means the port is ours.
-			const status = await this._httpGet(handle.port, handle.password, '/api/session/active');
+			const status = await this._httpGet(handle.port, handle.password, '/api/session/active', HEALTH_PROBE_TIMEOUT_MS);
 			return status >= 200 && status < 500;
 		} catch {
 			return false;
 		}
 	}
 
+	/**
+	 * Restart the CLI in the background after it died or hung, so the user never has
+	 * to click Reconnect. Bounded: three restarts per minute, then the error stays
+	 * visible for a manual retry instead of spinning.
+	 */
+	private _autoRecover(reason: string): void {
+		const now = Date.now();
+		this._recoveries = this._recoveries.filter((at) => now - at < RECOVERY_WINDOW_MS);
+		if (this._recoveries.length >= MAX_RECOVERIES) {
+			console.warn(`[LoopholeCli] not restarting again (${reason}): ${MAX_RECOVERIES} restarts in the last minute`);
+			return;
+		}
+		this._recoveries.push(now);
+		console.warn(`[LoopholeCli] restarting automatically: ${reason}`);
+		void this._callConnect({ ...this._lastConnect, workspacePath: this.cwd }).catch((e) => {
+			console.warn(`[LoopholeCli] automatic restart failed: ${e instanceof Error ? e.message : String(e)}`);
+		});
+	}
+
 	private async _callStatus(): Promise<LoopholeCliStatus> {
 		if (this.state === 'connected' && this.handle) {
 			const healthy = await (this._statusHealthCheck ??= this._isHealthy().finally(() => { this._statusHealthCheck = null; }));
-			if (!healthy && this.state === 'connected') {
-				this._teardown('error');
-				this.statusError = 'Loophole CLI stopped responding. Click Reconnect to restart it.';
+			if (healthy) {
+				this._healthFailures = 0;
+			} else if (this.state === 'connected') {
+				this._healthFailures++;
+				const exited = !!this.handle?.process && this.handle.process.exitCode !== null;
+				if (exited || this._healthFailures >= HEALTH_FAILURES_BEFORE_RESTART) {
+					this._healthFailures = 0;
+					this._teardown('error');
+					this.statusError = 'Loophole CLI stopped responding; restarting it.';
+					this._autoRecover('it stopped responding');
+				}
 			}
 		}
 		return this._callStatusSync();
@@ -368,6 +445,7 @@ export class LoopholeCliChannel implements IServerChannel {
 			const target = path.join(dir, file);
 			writeFileSync(target, binary);
 			if (process.platform !== 'win32') chmodSync(target, 0o755);
+			forgetResolvedBinary();
 			return { ok: true, path: target };
 		} catch (e) {
 			return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -384,12 +462,13 @@ export class LoopholeCliChannel implements IServerChannel {
 			});
 		});
 		const failed = /\b(failed|timed out)\b/i.test(output);
+		forgetResolvedBinary();
 		if (!failed) {
 			// The running process still serves the old binary; restart it so the new
 			// version answers and the status page reflects reality.
 			const wasConnected = this.state === 'connected';
 			this._teardown('disconnected');
-			if (wasConnected) await this._callConnect({ workspacePath: this.cwd });
+			if (wasConnected) await this._callConnect({ ...this._lastConnect, workspacePath: this.cwd });
 		}
 		return { ok: !failed, version, output };
 	}
@@ -477,7 +556,7 @@ export class LoopholeCliChannel implements IServerChannel {
 		});
 	}
 
-	private _httpGet(port: number, password: string, urlPath: string): Promise<number> {
+	private _httpGet(port: number, password: string, urlPath: string, timeoutMs = 3000): Promise<number> {
 		return new Promise((resolve, reject) => {
 			const req = request({
 				hostname: '127.0.0.1',
@@ -485,7 +564,7 @@ export class LoopholeCliChannel implements IServerChannel {
 				path: urlPath,
 				method: 'GET',
 				headers: { Authorization: this._basicAuth(password) },
-				timeout: 3000,
+				timeout: timeoutMs,
 			}, (res: IncomingMessage) => resolve(res.statusCode ?? 0));
 			req.on('error', reject);
 			req.on('timeout', () => req.destroy(new Error(`timed out waiting for ${urlPath}`)));
@@ -506,11 +585,39 @@ export class LoopholeCliChannel implements IServerChannel {
 			try {
 				// any answered request proves the server is up; 401 means auth works, 404 means the port is ours but route changed
 				const status = await this._httpGet(port, password, '/api/session/active');
-				if (status >= 200 && status < 500) return;
+				if (status >= 200 && status < 500) {
+					await this._waitForPlugins(port, password, proc, Math.max(0, deadlineMs - (Date.now() - start)));
+					return;
+				}
 			} catch { /* not up yet */ }
 			await new Promise((resolve) => setTimeout(resolve, 250));
 		}
 		throw new Error('Loophole CLI did not become ready in time');
+	}
+
+	/**
+	 * Wait until the CLI's plugin-gated endpoints answer.
+	 *
+	 * The HTTP server comes up well before the Location plugins finish activating.
+	 * Until then `/api/provider` and `/api/model` answer 503 ("did not finish
+	 * activating"), each request holding for ~5s. Reporting "connected" at that
+	 * point is what made the first model list / session call fail and forced a
+	 * manual "Reconnect" / "Check again". Staying in `starting` until a plugin-gated
+	 * read succeeds makes `connected` mean the CLI is actually usable.
+	 */
+	private async _waitForPlugins(port: number, password: string, proc: ChildProcess, remainingMs: number): Promise<void> {
+		const start = Date.now();
+		const budget = Math.min(remainingMs, PLUGIN_WARMUP_MS);
+		while (Date.now() - start < budget) {
+			if (proc.exitCode !== null) return; // the caller reports the exit
+			try {
+				const status = await this._httpGet(port, password, '/api/provider', 8000);
+				// 503 = still activating. Anything else answered, so the plugins are up.
+				if (status !== 503 && status < 500) return;
+			} catch { /* request timed out or dropped; keep waiting */ }
+			await new Promise((resolve) => setTimeout(resolve, 250));
+		}
+		console.warn(`[LoopholeCli] plugins still activating after ${Math.round((Date.now() - start) / 1000)}s; continuing`);
 	}
 
 	// Normalised form used only to compare two folders (case-insensitive on Windows).
@@ -550,6 +657,7 @@ export class LoopholeCliChannel implements IServerChannel {
 		this._teardown('starting');
 		this.state = 'starting';
 
+		this._lastConnect = { binaryPath: params.binaryPath, env: params.env };
 		const binary = resolveBinary(params.binaryPath);
 		// Resolve before spawning: a missing binary otherwise surfaces as the
 		// cryptic "exited with code -4058" (libuv ENOENT), which tells the user
@@ -593,8 +701,12 @@ export class LoopholeCliChannel implements IServerChannel {
 		});
 		proc.on('exit', (code) => {
 			if (this.handle?.process === proc) {
+				// A crash after a good start is restarted here. A failed start is already
+				// handled by _callConnect's own error path, so it must not spawn a second one.
+				const wasConnected = this.state === 'connected';
 				this._teardown('error');
 				this.statusError = `Loophole CLI exited with code ${code}`;
+				if (wasConnected) this._autoRecover(`it exited with code ${code}`);
 			}
 		});
 
@@ -610,6 +722,7 @@ export class LoopholeCliChannel implements IServerChannel {
 		try {
 			await this._waitReady(port, password, proc, 120_000);
 			this.state = 'connected';
+			this._healthFailures = 0;
 			console.log(`[LoopholeCli] connected on port ${port}`);
 		} catch (e) {
 			this._teardown('error');
