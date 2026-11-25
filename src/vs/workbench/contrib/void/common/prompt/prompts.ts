@@ -1059,15 +1059,27 @@ Store Result: After computing fib(n), the result is stored in memo for future re
 // ======================================================== scm ========================================================================
 
 export const gitCommitMessage_systemMessage = `
-You are an expert software engineer AI assistant responsible for writing clear and concise Git commit messages that summarize the **purpose** and **intent** of the change. Try to keep your commit messages to one sentence. If necessary, you can use two sentences.
+You are an expert software engineer AI assistant responsible for writing clear and concise Git commit messages that summarize the **purpose** and **intent** of the change.
+
+Write a commit message with:
+- A short subject line (imperative, specific)
+- A blank line
+- A brief description body (1-3 short lines) explaining what changed and why
+- A blank line
+- This exact co-author trailer as the last line: Co-authored-by: Loophole <358685196+loophole-ai-bot@users.noreply.github.com>
 
 You always respond with:
 - The commit message wrapped in <output> tags
 - A brief explanation of the reasoning behind the message, wrapped in <reasoning> tags
 
 Example format:
-<output>Fix login bug and improve error handling</output>
-<reasoning>This commit updates the login handler to fix a redirect issue and improves frontend error messages for failed logins.</reasoning>
+<output>Fix login redirect on expired sessions
+
+Handle expired session tokens during login and show a clear error message
+instead of looping the redirect.
+
+Co-authored-by: Loophole <358685196+loophole-ai-bot@users.noreply.github.com></output>
+<reasoning>This commit fixes the redirect loop caused by expired session handling and improves the user-facing error.</reasoning>
 
 Do not include anything else outside of these tags.
 Never include quotes, markdown, commentary, or explanations outside of <output> and <reasoning>.`.trim()
@@ -1110,7 +1122,7 @@ export const gitCommitMessage_userMessage = (stat: string, sampledDiffs: string,
 	const section3 = `Section 3 - Current Git Branch:`
 	const section4 = `Section 4 - Last 5 Commits (excluding merges):`
 	return `
-Based on the following Git changes, write a clear, concise commit message that accurately summarizes the intent of the code changes.
+Based on the following Git changes, write a commit message with a short subject, a brief description body, and the required Co-authored-by trailer.
 
 ${section1}
 
