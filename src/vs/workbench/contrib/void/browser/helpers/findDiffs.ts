@@ -14,7 +14,7 @@ export function findDiffs(oldStr: string, newStr: string) {
 
 	// an ordered list of every original line, line added to the new file, and line removed from the old file (order is unambiguous, think about it)
 	const lineByLineChanges = diffLines(oldStr, newStr);
-	lineByLineChanges.push({ value: '', added: false, removed: false }) // add a dummy so we flush any streaks we haven't yet at the very end (!line.added && !line.removed)
+	lineByLineChanges.push({ value: '', count: 0, added: false, removed: false }) // add a dummy so we flush any streaks we haven't yet at the very end (!line.added && !line.removed)
 
 	let oldFileLineNum: number = 1;
 	let newFileLineNum: number = 1;
