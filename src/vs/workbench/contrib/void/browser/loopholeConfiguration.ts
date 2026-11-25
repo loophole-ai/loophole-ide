@@ -20,7 +20,7 @@ export type LoopholeCliModelRole = 'default' | 'small' | 'subagent' | 'autocompl
 export const loopholeCliModelSettingId = (role: LoopholeCliModelRole) => `loophole.cli.models.${role}`;
 
 /** Models switched off in Settings > Models; they disappear from every picker. */
-export const LoopholeCliDisabledModelsSettingId = 'loophole.cli.models.disabled';
+export const LoopholeCliEnabledModelsSettingId = 'loophole.cli.models.enabled';
 
 /** Permission actions the user has set to always-allow on the Permissions settings page. */
 export const LoopholePermissionsAlwaysAllowedSettingId = 'loophole.permissions.alwaysAllowed';
@@ -90,10 +90,10 @@ configurationRegistry.registerConfiguration({
 			description: roleProperties['commitMessage'],
 			default: '',
 		},
-		[LoopholeCliDisabledModelsSettingId]: {
+		[LoopholeCliEnabledModelsSettingId]: {
 			type: 'array',
 			items: { type: 'string' },
-			description: nls.localize('loophole.cli.models.disabled', 'Models switched off in Settings > Models, as "providerID/modelID". They are hidden from every picker.'),
+			description: nls.localize('loophole.cli.models.enabled', 'Models switched on in Settings > Models, as "providerID/modelID". Only these appear in the model pickers; every model starts unchecked.'),
 			default: [],
 		},
 		[LoopholePermissionsAlwaysAllowedSettingId]: {
