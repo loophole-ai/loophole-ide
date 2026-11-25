@@ -43,5 +43,18 @@ export default defineConfig({
 	treeshake: true,
 	esbuildOptions(options) {
 		options.outbase = 'src2'  // tries copying the folder hierarchy starting at src2
+		// Relative imports like ../../../voidSettingsPane.js are correct from both src2/* and out/* (same depth under react).
+		// esbuild rewrites them because bundled files are shallower than their sources; force the original path.
+		options.plugins = [
+			...(options.plugins ?? []),
+			{
+				name: 'preserve-void-external-paths',
+				setup(build) {
+					build.onResolve({ filter: /^\.\.\/\.\.\/\.\.\/.*\.js$/ }, (args) => {
+						return { path: args.path, external: true }
+					})
+				},
+			},
+		]
 	}
 })
