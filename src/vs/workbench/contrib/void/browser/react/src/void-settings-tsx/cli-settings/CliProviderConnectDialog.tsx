@@ -6,8 +6,7 @@
 import { useCallback, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import { VoidButtonBgDarken, VoidSimpleInputBox } from '../../util/inputs.js'
-import { LoopholeCliDisabledModelsSettingId } from './cliSettingIds.js'
-import { clearCliModelsCache, cliModelRef } from './CliModelSelect.js'
+import { clearCliModelsCache } from './CliModelSelect.js'
 import type { LoopholeCliIntegrationInfo } from '../../../../../common/loopholeCliTypes.js'
 
 const hintOfIntegration = (integration: LoopholeCliIntegrationInfo) => {
@@ -58,22 +57,9 @@ export const CliProviderConnectDialog = ({ integration, onClose, onConnected }: 
 			if (/inception|mercury/i.test(integration.id) || /inception/i.test(integration.name)) {
 				configService.updateValue('loophole.fim.apiKey', key.trim())
 			}
-			// New providers can expose hundreds of models; leave them unchecked by default so the user
-			// opts into only the models they want (avoids loading/showing everything at once).
-			if (!wasConnected) {
-				try {
-					clearCliModelsCache()
-					const [providers, models] = await Promise.all([cliService.providers(), cliService.models()])
-					const provider = providers.find((p) => p.id === integration.id || p.integrationID === integration.id)
-					const providerIDs = new Set([integration.id, provider?.id, provider?.integrationID].filter((v): v is string => !!v))
-					const refs = models.filter((m) => providerIDs.has(m.providerID)).map(cliModelRef)
-					if (refs.length > 0) {
-						const current = configService.getValue<string[]>(LoopholeCliDisabledModelsSettingId) ?? []
-						const next = Array.from(new Set([...current, ...refs]))
-						configService.updateValue(LoopholeCliDisabledModelsSettingId, next)
-					}
-				} catch { /* best effort - connection already succeeded */ }
-			}
+			// Nothing to do for model visibility: models are opt-in (Settings > Models), so a
+			// provider with hundreds of models adds none to the pickers until the user checks them.
+			clearCliModelsCache()
 			setKey('')
 			setSuccess(wasConnected
 				? `API key stored for ${integration.name}.`
