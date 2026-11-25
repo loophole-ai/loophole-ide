@@ -7,8 +7,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import type { IConfigurationService } from '../../../../../../../../platform/configuration/common/configuration.js'
 import { loopholeCliModelSettingId } from './cliSettingIds.js'
-import { CliModelSelect, useCliModels, useDisabledCliModels, visibleCliModels } from './CliModelSelect.js'
+import { CliModelSelect, useCliModels, useEnabledCliModels, visibleCliModels } from './CliModelSelect.js'
 import { CliCustomModelDialog } from './CliCustomModelDialog.js'
+import { VOID_OPEN_SETTINGS_ACTION_ID } from '../../../../voidSettingsPane.js'
 
 const readDefaultModel = (configService: IConfigurationService) => {
 	const role = configService.getValue<string>(loopholeCliModelSettingId('default')) ?? ''
@@ -20,11 +21,13 @@ export const CliModelPicker = ({ className }: { className?: string }) => {
 	const accessor = useAccessor()
 	const configService = accessor.get('IConfigurationService')
 	const chatThreadService = accessor.get('IChatThreadService')
+	const commandService = accessor.get('ICommandService')
 	const { models } = useCliModels()
-	const { disabled } = useDisabledCliModels()
-	const enabled = useMemo(() => visibleCliModels(models, disabled), [models, disabled])
+	const { enabled: enabledRefs } = useEnabledCliModels()
 
 	const [value, setValue] = useState(() => readDefaultModel(configService))
+	// Only checked models reach the dropdown (the current selection is always kept).
+	const enabled = useMemo(() => visibleCliModels(models, enabledRefs, value ? [value] : []), [models, enabledRefs, value])
 	const [custom, setCustom] = useState(false)
 
 	useEffect(() => {
@@ -48,6 +51,7 @@ export const CliModelPicker = ({ className }: { className?: string }) => {
 			models={enabled}
 			onChange={choose}
 			onCustom={() => setCustom(true)}
+			onManage={() => { void commandService.executeCommand(VOID_OPEN_SETTINGS_ACTION_ID) }}
 			className={className ?? 'text-xs text-loophole-fg-3 bg-loophole-bg-1 border border-loophole-border-1 rounded-md px-2 py-1'}
 		/>
 		{custom ? <CliCustomModelDialog
