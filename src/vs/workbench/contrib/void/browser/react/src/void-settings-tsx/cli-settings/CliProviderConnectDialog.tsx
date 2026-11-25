@@ -6,6 +6,8 @@
 import { useCallback, useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import { VoidButtonBgDarken, VoidSimpleInputBox } from '../../util/inputs.js'
+import { LoopholeCliDisabledModelsSettingId } from './cliSettingIds.js'
+import { clearCliModelsCache, cliModelRef } from './CliModelSelect.js'
 import type { LoopholeCliIntegrationInfo } from '../../../../../common/loopholeCliTypes.js'
 
 const hintOfIntegration = (integration: LoopholeCliIntegrationInfo) => {
@@ -47,6 +49,8 @@ export const CliProviderConnectDialog = ({ integration, onClose, onConnected }: 
 		setError(null)
 		setSuccess(null)
 		try {
+			const prevProviders = await cliService.providers().catch(() => [])
+			const wasConnected = prevProviders.some((p) => p.id === integration.id || p.integrationID === integration.id)
 			await cliService.connectKey({ integrationID: integration.id, key: key.trim() })
 			// Inline completions talk to the provider directly, so the key entered
 			// here is also what autocomplete should use. Keeping one place to enter
@@ -54,8 +58,26 @@ export const CliProviderConnectDialog = ({ integration, onClose, onConnected }: 
 			if (/inception|mercury/i.test(integration.id) || /inception/i.test(integration.name)) {
 				configService.updateValue('loophole.fim.apiKey', key.trim())
 			}
+			// New providers can expose hundreds of models; leave them unchecked by default so the user
+			// opts into only the models they want (avoids loading/showing everything at once).
+			if (!wasConnected) {
+				try {
+					clearCliModelsCache()
+					const [providers, models] = await Promise.all([cliService.providers(), cliService.models()])
+					const provider = providers.find((p) => p.id === integration.id || p.integrationID === integration.id)
+					const providerIDs = new Set([integration.id, provider?.id, provider?.integrationID].filter((v): v is string => !!v))
+					const refs = models.filter((m) => providerIDs.has(m.providerID)).map(cliModelRef)
+					if (refs.length > 0) {
+						const current = configService.getValue<string[]>(LoopholeCliDisabledModelsSettingId) ?? []
+						const next = Array.from(new Set([...current, ...refs]))
+						configService.updateValue(LoopholeCliDisabledModelsSettingId, next)
+					}
+				} catch { /* best effort - connection already succeeded */ }
+			}
 			setKey('')
-			setSuccess(`API key stored for ${integration.name}.`)
+			setSuccess(wasConnected
+				? `API key stored for ${integration.name}.`
+				: `API key stored for ${integration.name}. Models are unchecked by default; enable the ones you want in Settings > Models.`)
 			onConnected()
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e))

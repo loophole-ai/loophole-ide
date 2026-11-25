@@ -51,6 +51,11 @@ let cachedModels: LoopholeCliModelInfo[] | undefined
 let cachedAt = 0
 const CACHE_MS = 30_000
 
+export const clearCliModelsCache = () => {
+	cachedModels = undefined
+	cachedAt = 0
+}
+
 export const useCliModels = () => {
 	const accessor = useAccessor()
 	const configService = accessor.get('IConfigurationService')

@@ -7,7 +7,8 @@ import { useState } from 'react'
 import { useAccessor } from '../../util/services.js'
 import { VoidButtonBgDarken, VoidSimpleInputBox } from '../../util/inputs.js'
 import { SettingsList, SettingsNote, SettingsRow, SettingsSection } from './CliSettingsRows.js'
-import { LoopholeCliCustomProvidersSettingId, type LoopholeCliCustomProvider } from './cliSettingIds.js'
+import { LoopholeCliCustomProvidersSettingId, LoopholeCliDisabledModelsSettingId, type LoopholeCliCustomProvider } from './cliSettingIds.js'
+import { clearCliModelsCache } from './CliModelSelect.js'
 
 /**
  * Add an OpenAI-compatible endpoint as a provider.
@@ -45,6 +46,11 @@ export const CliCustomProviderDialog = ({ onClose, onSaved }: { onClose: () => v
 			apiKey: apiKey.trim() || undefined,
 		}
 		configService.updateValue(LoopholeCliCustomProvidersSettingId, [...existing, entry])
+		// New providers can expose many models; leave them unchecked by default.
+		const ref = `${providerID}/${modelID}`
+		const disabled = configService.getValue<string[]>(LoopholeCliDisabledModelsSettingId) ?? []
+		if (!disabled.includes(ref)) configService.updateValue(LoopholeCliDisabledModelsSettingId, [...disabled, ref])
+		clearCliModelsCache()
 		onSaved()
 		onClose()
 	}
