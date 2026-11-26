@@ -9,6 +9,7 @@ import { VoidButtonBgDarken, VoidSwitch } from '../../util/inputs.js'
 import type { LoopholeCliStatus } from '../../../../../common/loopholeCliTypes.js'
 import { cliStatusLabel } from './CliStatusCard.js'
 import { SettingsList, SettingsNote, SettingsRow, SettingsSection, SettingsStatus } from './CliSettingsRows.js'
+import { clearCliModelsCache } from './CliModelSelect.js'
 
 /** The CLI connection page: state, binary, version, and manual controls. */
 const VoidSwitchForEnabled = () => {
@@ -53,6 +54,7 @@ export const CliStatusTab = () => {
 		setError(null)
 		try {
 			setStatus(await cliService.connect())
+			clearCliModelsCache() // the CLI just came up: reload the model pickers
 			setVersion(await cliService.version().catch(() => 'unknown'))
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e))
@@ -67,6 +69,7 @@ export const CliStatusTab = () => {
 		try {
 			await cliService.disconnect()
 			setStatus(await cliService.connect())
+			clearCliModelsCache() // restarted: the model list may have changed
 			setVersion(await cliService.version().catch(() => 'unknown'))
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e))
