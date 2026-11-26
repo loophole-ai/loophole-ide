@@ -8,6 +8,7 @@ import { useAccessor } from '../../util/services.js'
 import { VoidButtonBgDarken } from '../../util/inputs.js'
 import type { LoopholeCliStatus } from '../../../../../common/loopholeCliTypes.js'
 import { SettingsStatus } from './CliSettingsRows.js'
+import { clearCliModelsCache } from './CliModelSelect.js'
 
 export const cliStatusLabel = (status: LoopholeCliStatus['status']) => {
 	if (status === 'connected') return 'Connected'
@@ -33,6 +34,7 @@ export const CliStatusCard = ({ onChange }: { onChange?: () => void }) => {
 			const next = await cliService.connect()
 			setStatus(next)
 			if (next.status === 'error' && next.error) setError(next.error)
+			else clearCliModelsCache() // the CLI just came up: reload the model pickers
 			onChange?.()
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e))
