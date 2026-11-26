@@ -8,6 +8,7 @@ import { useAccessor } from '../../util/services.js'
 import { VoidButtonBgDarken, VoidSimpleInputBox } from '../../util/inputs.js'
 import { CliProviderConnectDialog } from './CliProviderConnectDialog.js'
 import { CliCustomProviderDialog } from './CliCustomProviderDialog.js'
+import { clearCliModelsCache } from './CliModelSelect.js'
 import { CliStatusCard } from './CliStatusCard.js'
 import { SettingsList, SettingsNote, SettingsRow, SettingsSection } from './CliSettingsRows.js'
 import { LoopholeCliCustomProvidersSettingId, type LoopholeCliCustomProvider } from './cliSettingIds.js'
@@ -130,6 +131,8 @@ export const CliProvidersTab = () => {
 			for (const credential of credentials) {
 				await cliService.credentialRemove(credential.id)
 			}
+			// The provider's models are gone, so every model picker (sidebar included) must reload.
+			clearCliModelsCache()
 			await load()
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e))
