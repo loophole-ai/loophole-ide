@@ -10,7 +10,6 @@ import { OneClickSwitchButton } from '../void-settings-tsx/Settings.js';
 import { ColorScheme } from '../../../../../../../platform/theme/common/theme.js';
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js';
 import { isLinux } from '../../../../../../../base/common/platform.js';
-import { LocalVoiceModelSettings } from '../local-voice/LocalVoiceModelSettings.js';
 import { VoidSimpleInputBox } from '../util/inputs.js';
 import { clearCliModelsCache, cliModelRef, useCliModels, useEnabledCliModels } from '../void-settings-tsx/cli-settings/CliModelSelect.js';
 import { hintOfIntegration } from '../void-settings-tsx/cli-settings/CliProviderConnectDialog.js';
@@ -631,11 +630,7 @@ const ConnectProviderPage = ({ pageIndex, setPageIndex }: { pageIndex: number, s
 					{providerCount > 0 && <ModelsBlock />}
 				</>
 			)}
-
-			<div className="w-full max-w-xl mt-8 bg-loophole-bg-2/30 rounded-lg p-6 border border-loophole-border-4">
-				<LocalVoiceModelSettings compact />
-			</div>
-
+			
 			{/* Navigation buttons in right column */}
 			<div className="flex flex-col items-end w-full mt-auto pt-8">
 				{errorMessage && (
