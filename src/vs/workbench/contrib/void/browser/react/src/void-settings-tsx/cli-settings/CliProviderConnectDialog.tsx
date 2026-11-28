@@ -9,7 +9,7 @@ import { VoidButtonBgDarken, VoidSimpleInputBox } from '../../util/inputs.js'
 import { clearCliModelsCache } from './CliModelSelect.js'
 import type { LoopholeCliIntegrationInfo } from '../../../../../common/loopholeCliTypes.js'
 
-const hintOfIntegration = (integration: LoopholeCliIntegrationInfo) => {
+export const hintOfIntegration = (integration: LoopholeCliIntegrationInfo) => {
 	const oauth = integration.methods.find((method) => method.type === 'oauth')
 	if (oauth) return `Sign-in for ${integration.name} uses OAuth or a device code. Complete it in the Loophole CLI; the editor stores API keys only.`
 	const external = integration.methods.find((method) => method.type === 'external')
