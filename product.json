@@ -4,7 +4,7 @@
 	"updateUrl": "https://raw.githubusercontent.com/loophole-ai/versions/refs/heads/main",
 	"nameShort": "Loophole",
 	"nameLong": "Loophole Editor",
-	"loopholeVersion": "2.2.11",
+	"loopholeVersion": "2.2.12",
 	"loopholeRelease": "1000",
 	"applicationName": "loophole",
 	"dataFolderName": ".loophole-editor",
