@@ -6,105 +6,60 @@
 /**
  * expertCanvasStore — singleton pub/sub store.
  * Both ExpertCanvas (sidebar) and ExpertCanvasPage (editor tab) subscribe to this.
+ *
+ * What lives here is *transient run state*: the goal, who is running, and each
+ * expert's transcript for this run. Per-expert model choice, enabled flag, and
+ * edit approval live in the `loophole.experts.*` settings instead, so they
+ * survive a reload.
  */
 
-import { ModelOption, VoidSettingsState } from '../../../../common/voidSettingsService.js';
-import {
-	displayInfoOfProviderName,
-	ModelSelection,
-	modelSelectionsEqual,
-	ProviderName,
-} from '../../../../common/voidSettingsTypes.js';
+import { ExpertState, ExpertMessage, CanvasState, ExpertStatus, resetExperts } from './expertCanvasRunState.js';
+export { ExpertState, ExpertMessage, CanvasState, ExpertStatus };
 
 // ── Shared model helpers ──────────────────────────────────────────────────────
 //
-// Used by both the sidebar (ExpertCanvas) and the canvas tab (ExpertCanvasPage).
-// Nothing here is provider-specific. The lists come from the user's own settings
-// (`_modelOptions`), so this works with whatever they have actually configured:
-// OpenRouter, Ollama, LM Studio, an OpenAI-compatible endpoint, or a cloud
-// provider. An expert with no explicit choice inherits the model the user picked
-// for Chat, so a fresh install needs no configuration at all.
+// Models come from the Loophole CLI (`ILoopholeCliService.models()`), the same list
+// the chat's model picker uses, so every provider connected in the CLI works here.
+// A model is stored as "providerID/modelID". An expert with no choice runs on the
+// chat model, so a fresh install needs no configuration at all.
 
 export const inheritLabel = 'Same as Chat';
 
-/** The model an expert will actually run on, or null if nothing is available. */
-export const resolveModel = (
-	expertModel: ModelSelection | null,
-	settingsState: VoidSettingsState,
-): ModelSelection | null => {
-	const options = settingsState._modelOptions;
-	if (expertModel) {
-		// The expert's model may have been removed from settings since it was
-		// chosen, so fall back rather than sending an unusable selection.
-		const stillThere = options.find(o => modelSelectionsEqual(o.selection, expertModel));
-		if (stillThere) { return stillThere.selection; }
-	}
-	const chatModel = settingsState.modelSelectionOfFeature.Chat;
-	if (chatModel) {
-		const match = options.find(o => modelSelectionsEqual(o.selection, chatModel));
-		if (match) { return match.selection; }
-	}
-	return options.length > 0 ? options[0].selection : null;
+export const expertsModelsSettingId = 'loophole.experts.models';
+export const expertsDisabledSettingId = 'loophole.experts.disabled';
+export const expertsAutoApproveSettingId = 'loophole.experts.autoApprove';
+
+type ConfigReader = { getValue: <T>(key: string) => T | undefined };
+
+/** The model the user picked for this expert, or '' when it follows the chat model. */
+export const expertModelRef = (config: ConfigReader, expertId: string): string =>
+	(config.getValue<Record<string, string>>(expertsModelsSettingId) ?? {})[expertId] ?? '';
+
+/** Short label for a "providerID/modelID" ref, or the inherit label when empty. */
+export const modelLabel = (ref: string): string => ref || inheritLabel;
+
+export const enabledExpertIds = (config: ConfigReader, allIds: string[]): string[] => {
+	const disabled = config.getValue<string[]>(expertsDisabledSettingId) ?? [];
+	return allIds.filter(id => !disabled.includes(id));
 };
 
-export const modelLabel = (selection: ModelSelection | null): string =>
-	selection
-		? `${displayInfoOfProviderName(selection.providerName).title} / ${selection.modelName}`
-		: 'No model';
+// ── Tool activity, for the UI ────────────────────────────────────────────────
 
-/** Providers that have at least one usable model, in first-seen order. */
-export const providerNamesOfOptions = (options: ModelOption[]): ProviderName[] => {
-	const seen: ProviderName[] = [];
-	for (const o of options) {
-		if (!seen.includes(o.selection.providerName)) { seen.push(o.selection.providerName); }
-	}
-	return seen;
-};
+export type ToolActivityStatus = 'pending' | 'awaiting-approval' | 'running' | 'success' | 'rejected' | 'error';
 
-export type ExpertStatus = 'idle' | 'working' | 'done' | 'failed';
-
-export interface ExpertMessage {
-	role: 'user' | 'assistant';
-	content: string;
-	isStreaming: boolean;
-}
-
-export interface ExpertState {
+export interface ToolActivity {
 	id: string;
-	name: string;
-	role: string;
-	/**
-	 * Provider + model this expert runs on. `null` means "inherit whatever the
-	 * user has selected for Chat", which is the default so a fresh install
-	 * works with the provider they already configured. Never hard-code a
-	 * provider here - the available list comes from the user's own settings.
-	 */
-	model: ModelSelection | null;
-	status: ExpertStatus;
-	messages: ExpertMessage[];
+	expertId: string;
+	toolName: string;
+	/** Short human summary, e.g. `create index.html`. */
+	title: string;
+	status: ToolActivityStatus;
+	/** Populated for `success` (the model already saw it) and for `error`. */
+	result?: string;
+	/** Validated params, needed to run the call for real once approved. */
+	params?: Record<string, any>;
+	toolCallId: string;
 }
-
-export interface CanvasState {
-	currentGoal: string;
-	isRunning: boolean;
-	experts: ExpertState[];
-}
-
-// `messages` is left off each entry on purpose: `resetExperts` below is the one
-// place transcripts are created, so a fresh transcript cannot be half-specified.
-const DEFAULT_EXPERTS: Omit<ExpertState, 'model' | 'messages'>[] = [
-	{ id: 'sara',  name: 'Sara',  role: 'Team Lead',      status: 'idle' },
-	{ id: 'leo',   name: 'Leo',   role: 'Researcher',     status: 'idle' },
-	{ id: 'karl',  name: 'Karl',  role: 'Engineer',       status: 'idle' },
-	{ id: 'jake',  name: 'Jake',  role: 'QA Engineer',    status: 'idle' },
-	{ id: 'ray',   name: 'Ray',   role: 'Code Reviewer',  status: 'idle' },
-	{ id: 'nora',  name: 'Nora',  role: 'Debug Engineer', status: 'idle' },
-	{ id: 'elena', name: 'Elena', role: 'UI/UX Operator', status: 'idle' },
-	{ id: 'max',   name: 'Max',   role: 'Docs Writer',    status: 'idle' },
-];
-
-const resetExperts = (): ExpertState[] =>
-	DEFAULT_EXPERTS.map(e => ({ ...e, model: null, messages: [], status: 'idle' as ExpertStatus }));
 
 class ExpertCanvasStore {
 	private state: CanvasState = {
@@ -113,10 +68,18 @@ class ExpertCanvasStore {
 		experts: resetExperts(),
 	};
 
+	private toolActivities: ToolActivity[] = [];
+	/** Resolves when the user approves or rejects a pending tool. */
+	private approvalWaiters = new Map<string, (approved: boolean) => void>();
+
 	private listeners = new Set<() => void>();
 
 	getState(): CanvasState {
 		return this.state;
+	}
+
+	getToolActivities(): ToolActivity[] {
+		return this.toolActivities;
 	}
 
 	subscribe(fn: () => void): () => void {
@@ -130,47 +93,33 @@ class ExpertCanvasStore {
 
 	// ---- Mutations ----
 
-	/** Full team run — clears transcripts, but keeps each expert's chosen model. */
-	reset(goal: string) {
-		this.state = {
-			currentGoal: goal,
-			isRunning: true,
-			experts: this.state.experts.map(e => ({
-				...e,
-				status: 'idle' as ExpertStatus,
-				messages: [],
-			})),
-		};
+	/**
+	 * Full team run. Starts a clean slate for every expert: no transcripts, no
+	 * tool activity, all statuses back to idle. Model choices are untouched
+	 * because they live in settings, not here.
+	 */
+	reset(goal: string, enabledIds: string[]) {
+		// A previous run could still be parked on an approval decision. Clearing
+		// the activity list without releasing those waiters would leave that run's
+		// promise unresolved forever.
+		this.rejectAllApprovals();
+
+		const experts = resetExperts().filter(e => enabledIds.includes(e.id));
+		this.state = { currentGoal: goal, isRunning: true, experts };
+		this.toolActivities = [];
 		this.notify();
 	}
 
-	/** Clears transcripts everywhere and drops all model choices back to "inherit". */
-	resetModelsToDefault() {
-		this.state = {
-			...this.state,
-			experts: this.state.experts.map(e => ({ ...e, model: null })),
-		};
-		this.notify();
-	}
-
-	/** Per-expert provider + model. `null` means inherit the Chat selection. */
-	setExpertModel(expertId: string, model: ModelSelection | null) {
-		this.state = {
-			...this.state,
-			experts: this.state.experts.map(e => (e.id === expertId ? { ...e, model } : e)),
-		};
-		this.notify();
-	}
-
-	/** Direct @mention — only resets the named expert, keeps others intact */
+	/** Direct @mention — only resets the named expert, keeps others intact. */
 	directMessage(expertId: string, goal: string) {
+		this.rejectAllApprovals();
 		this.state = {
 			...this.state,
 			currentGoal: goal,
 			isRunning: true,
 			experts: this.state.experts.map(e =>
 				e.id === expertId
-					? { ...e, status: 'idle' as ExpertStatus, messages: [] }
+					? { ...e, status: 'idle' as ExpertStatus, messages: [], toolActivities: [] }
 					: e
 			),
 		};
@@ -187,6 +136,22 @@ class ExpertCanvasStore {
 			...this.state,
 			experts: this.state.experts.map(e =>
 				e.id === expertId ? { ...e, status } : e
+			),
+		};
+		this.notify();
+	}
+
+	/**
+	 * Mark an expert as skipped. "Skipped" is not a status the old four-state
+	 * model had, and it matters: previously Nora and Elena sat at "Pending"
+	 * forever with no explanation, which read as "still working" rather than
+	 * "Sara decided they were not needed".
+	 */
+	skipExpert(expertId: string, reason: string) {
+		this.state = {
+			...this.state,
+			experts: this.state.experts.map(e =>
+				e.id === expertId ? { ...e, status: 'skipped' as ExpertStatus, skipReason: reason } : e
 			),
 		};
 		this.notify();
@@ -244,6 +209,65 @@ class ExpertCanvasStore {
 			}),
 		};
 		this.notify();
+	}
+
+	// ---- Tool activity ----
+
+	private updateToolActivity(id: string, patch: Partial<ToolActivity>) {
+		this.toolActivities = this.toolActivities.map(t => (t.id === id ? { ...t, ...patch } : t));
+		this.notify();
+	}
+
+	/** Called when the model asks for a tool that needs the user's OK. */
+	beginToolActivity(expertId: string, toolName: string, title: string, toolCallId: string, status: ToolActivityStatus, params?: Record<string, any>): string {
+		const id = `${expertId}-${toolCallId}`;
+		const existing = this.toolActivities.find(t => t.id === id);
+		// A repeated call with the same id is a retry of the same request, not a
+		// new one, so update in place rather than stacking a second pending row the
+		// user would have to answer twice.
+		if (existing) {
+			this.updateToolActivity(id, { status, params });
+			return id;
+		}
+		this.toolActivities = [...this.toolActivities, { id, expertId, toolName, title, status, toolCallId, params }];
+		this.notify();
+		return id;
+	}
+
+	setToolActivityStatus(id: string, status: ToolActivityStatus, result?: string) {
+		this.updateToolActivity(id, result === undefined ? { status } : { status, result });
+	}
+
+	/** Drops a tool's params once it is done, so the UI is not holding file contents. */
+	clearToolParams(id: string) {
+		this.updateToolActivity(id, { params: undefined });
+	}
+
+	/**
+	 * Waits for the user to approve or reject `id`. Resolves true when approved.
+	 * Any pending approvals are auto-rejected when a run is cancelled, so the
+	 * agent loop can never be left hanging on a promise nobody will resolve.
+	 */
+	waitForApproval(id: string): Promise<boolean> {
+		return new Promise<boolean>(resolve => {
+			this.approvalWaiters.set(id, resolve);
+		});
+	}
+
+	resolveApproval(id: string, approved: boolean) {
+		const waiter = this.approvalWaiters.get(id);
+		if (!waiter) { return; }
+		this.approvalWaiters.delete(id);
+		this.setToolActivityStatus(id, approved ? 'running' : 'rejected',
+			approved ? undefined : 'Rejected by user.');
+		waiter(approved);
+	}
+
+	/** Reject everything still waiting. Called on abort/reset. */
+	rejectAllApprovals() {
+		for (const id of [...this.approvalWaiters.keys()]) {
+			this.resolveApproval(id, false);
+		}
 	}
 }
 

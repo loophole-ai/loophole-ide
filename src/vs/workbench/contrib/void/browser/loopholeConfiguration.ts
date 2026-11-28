@@ -28,6 +28,13 @@ export const LoopholePermissionsAlwaysAllowedSettingId = 'loophole.permissions.a
 /** OpenAI-compatible providers added in Settings > Providers. */
 export const LoopholeCliCustomProvidersSettingId = 'loophole.cli.customProviders';
 
+/** Expert Canvas: per-expert CLI model (`{ [expertId]: "providerID/modelID" }`; missing = same as chat). */
+export const LoopholeExpertsModelsSettingId = 'loophole.experts.models';
+/** Expert Canvas: ids of experts switched off. */
+export const LoopholeExpertsDisabledSettingId = 'loophole.experts.disabled';
+/** Expert Canvas: let experts edit files and run commands without asking. */
+export const LoopholeExpertsAutoApproveSettingId = 'loophole.experts.autoApprove';
+
 export const LoopholeNotificationCategorySettingId = (category: 'chatErrors' | 'applyChanges' | 'commitMessages' | 'voice') =>
 	`loophole.notifications.${category}`;
 
@@ -106,6 +113,23 @@ configurationRegistry.registerConfiguration({
 			type: 'array',
 			description: nls.localize('loophole.cli.customProviders', 'OpenAI-compatible providers added in Settings > Providers.'),
 			default: [],
+		},
+		[LoopholeExpertsModelsSettingId]: {
+			type: 'object',
+			additionalProperties: { type: 'string' },
+			description: nls.localize('loophole.experts.models', 'CLI model per Expert Canvas expert, as \"providerID/modelID\". An expert with no entry uses the chat model.'),
+			default: {},
+		},
+		[LoopholeExpertsDisabledSettingId]: {
+			type: 'array',
+			items: { type: 'string' },
+			description: nls.localize('loophole.experts.disabled', 'Expert Canvas experts that are switched off.'),
+			default: [],
+		},
+		[LoopholeExpertsAutoApproveSettingId]: {
+			type: 'boolean',
+			description: nls.localize('loophole.experts.autoApprove', 'Let Expert Canvas experts edit files and run commands without asking first.'),
+			default: false,
 		},
 		'loophole.updates.checkOnStartup': {
 			type: 'boolean',

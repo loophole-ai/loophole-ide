@@ -1,42 +1,30 @@
 /*--------------------------------------------------------------------------------------
  *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
- *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
+ *  Licensed under the Apache License, Version 2.0. See LICENSE.txt in the project root for license information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import '../styles.css';
-import { useIsDark, useSettingsState } from '../util/services.js';
+import { useAccessor, useIsDark } from '../util/services.js';
 import {
 	expertCanvasStore,
 	modelLabel,
-	resolveModel,
+	expertModelRef,
 	type ExpertState,
 	type ExpertMessage,
 } from './expertCanvasStore.js';
-
-// ---- Avatars ----
-import saraAvatar  from './avatars/sara.png';
-import leoAvatar   from './avatars/leo.png';
-import karlAvatar  from './avatars/karl.png';
-import jakeAvatar  from './avatars/jake.png';
-import rayAvatar   from './avatars/ray.png';
-import noraAvatar  from './avatars/nora.png';
-import elenaAvatar from './avatars/elena.png';
-import maxAvatar   from './avatars/max.png';
-
-const EXPERT_AVATARS: Record<string, string> = {
-	sara: saraAvatar, leo: leoAvatar, karl: karlAvatar, jake: jakeAvatar,
-	ray: rayAvatar, nora: noraAvatar, elena: elenaAvatar, max: maxAvatar,
-};
+import { EXPERTS } from './expertDefs.js';
+import { toolDisplayName } from './expertDefs.js';
 
 // ---- Status badge ----
 type StatusType = ExpertState['status'];
 
 const STATUS_BADGE: Record<StatusType, { label: string; cls: string }> = {
-	idle:    { label: 'Pending',     cls: 'text-loophole-fg-4 border border-loophole-border-3' },
+	idle:    { label: 'Queued',     cls: 'text-loophole-fg-4 border border-loophole-border-3' },
 	working: { label: 'In Progress', cls: 'text-yellow-400 border border-yellow-400/40' },
 	done:    { label: 'Completed',   cls: 'text-green-400 border border-green-400/40' },
 	failed:  { label: 'Failed',      cls: 'text-red-400 border border-red-400/40' },
+	skipped: { label: 'Skipped',     cls: 'text-loophole-fg-4 border border-loophole-border-3 opacity-70' },
 };
 
 const STATUS_DOT: Record<StatusType, string> = {
@@ -44,19 +32,23 @@ const STATUS_DOT: Record<StatusType, string> = {
 	working: 'bg-yellow-400 animate-pulse',
 	done:    'bg-green-400',
 	failed:  'bg-red-400',
+	skipped: 'bg-loophole-fg-4 opacity-40',
 };
 
 // ---- Avatar component ----
-const Avatar = ({ id, name, size = 32 }: { id: string; name: string; size?: number }) => (
-	<img
-		src={EXPERT_AVATARS[id] ?? ''}
-		alt={name}
-		width={size}
-		height={size}
-		className="rounded-md flex-shrink-0"
-		style={{ imageRendering: 'pixelated', width: size, height: size }}
-	/>
-);
+const Avatar = ({ id, name, size = 32 }: { id: string; name: string; size?: number }) => {
+	const expert = EXPERTS.find(e => e.id === id);
+	return (
+		<img
+			src={expert?.avatar ?? ''}
+			alt={name}
+			width={size}
+			height={size}
+			className="rounded-md flex-shrink-0"
+			style={{ imageRendering: 'pixelated', width: size, height: size }}
+		/>
+	);
+};
 
 // ============================================================
 // LEFT PANEL — Task list
@@ -69,7 +61,7 @@ const TaskRow = ({ expert, isActive, onClick }: {
 }) => {
 	const badge = STATUS_BADGE[expert.status];
 	const lastMsg = expert.messages.filter(m => m.role === 'assistant').slice(-1)[0];
-	const preview = lastMsg?.content?.split('\n')[0]?.slice(0, 52) ?? '';
+	const preview = lastMsg?.content?.split('\n')?.find(l => l.trim())?.slice(0, 52) ?? '';
 
 	return (
 		<div
@@ -77,13 +69,11 @@ const TaskRow = ({ expert, isActive, onClick }: {
 			className={`flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors border-b border-loophole-border-4
 				${isActive ? 'bg-loophole-bg-1' : 'hover:bg-loophole-bg-1/50'}`}
 		>
-			{/* Avatar with status dot */}
 			<div className="relative flex-shrink-0 mt-0.5">
 				<Avatar id={expert.id} name={expert.name} size={32} />
 				<span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-loophole-bg-2 ${STATUS_DOT[expert.status]}`} />
 			</div>
 
-			{/* Content */}
 			<div className="flex-1 min-w-0">
 				<div className="flex items-center justify-between gap-2 mb-0.5">
 					<span className="text-xs font-semibold text-loophole-fg-1 truncate">{expert.name}</span>
@@ -95,35 +85,41 @@ const TaskRow = ({ expert, isActive, onClick }: {
 				{preview && (
 					<div className="text-[10px] text-loophole-fg-3 truncate mt-0.5">{preview}</div>
 				)}
+				{expert.status === 'skipped' && expert.skipReason && (
+					<div className="text-[10px] text-loophole-fg-4 opacity-70 truncate mt-0.5" title={expert.skipReason}>
+						{expert.skipReason}
+					</div>
+				)}
 			</div>
 		</div>
 	);
 };
 
-const LeftPanel = ({ experts, activeId, onSelect, goal, progress }: {
+const LeftPanel = ({ experts, activeId, onSelect, progress }: {
 	experts: ExpertState[];
 	activeId: string | null;
 	onSelect: (id: string) => void;
-	goal: string;
 	progress: number;
 }) => {
 	const done    = experts.filter(e => e.status === 'done').length;
 	const working = experts.filter(e => e.status === 'working').length;
 	const idle    = experts.filter(e => e.status === 'idle').length;
 	const failed  = experts.filter(e => e.status === 'failed').length;
+	const skipped = experts.filter(e => e.status === 'skipped').length;
 
 	return (
 		<div className="flex flex-col flex-shrink-0 border-r border-loophole-border-4 bg-loophole-bg-2"
 			style={{ width: '220px', minWidth: '220px' }}>
 
-			{/* Panel header */}
 			<div className="flex-shrink-0 px-3 pt-3 pb-2 border-b border-loophole-border-4">
 				<div className="flex items-center justify-between mb-2">
 					<span className="text-xs font-semibold text-loophole-fg-1">Agent Canvas</span>
 					<span className="text-[10px] text-loophole-fg-4">{experts.length} experts</span>
 				</div>
 
-				{/* Progress bar */}
+				{/* Progress counts only experts that were actually asked to do
+				    something. Counting skipped experts would cap the bar below
+				    100% for any goal that did not need everyone. */}
 				<div className="mb-2">
 					<div className="flex items-center justify-between mb-1">
 						<span className="text-[10px] text-loophole-fg-4">Progress</span>
@@ -137,14 +133,14 @@ const LeftPanel = ({ experts, activeId, onSelect, goal, progress }: {
 					</div>
 				</div>
 
-				{/* Stats row */}
 				<div className="grid grid-cols-2 gap-x-3 gap-y-1">
 					{[
 						{ label: 'Completed',   val: done,    cls: 'text-green-400'  },
 						{ label: 'In Progress', val: working, cls: 'text-yellow-400' },
-						{ label: 'Pending',     val: idle,    cls: 'text-loophole-fg-4' },
+						{ label: 'Queued',      val: idle,    cls: 'text-loophole-fg-4' },
+						{ label: 'Skipped',     val: skipped, cls: 'text-loophole-fg-4' },
 						{ label: 'Failed',      val: failed,  cls: 'text-red-400'    },
-					].map(({ label, val, cls }) => (
+					].filter(s => s.val > 0 || s.label === 'Completed' || s.label === 'In Progress').map(({ label, val, cls }) => (
 						<div key={label}>
 							<div className={`text-sm font-semibold ${cls}`}>{val}</div>
 							<div className="text-[10px] text-loophole-fg-4">{label}</div>
@@ -153,14 +149,12 @@ const LeftPanel = ({ experts, activeId, onSelect, goal, progress }: {
 				</div>
 			</div>
 
-			{/* Task count */}
 			<div className="flex-shrink-0 px-3 py-2 border-b border-loophole-border-4">
 				<span className="text-[10px] text-loophole-fg-4 uppercase tracking-wide font-medium">
 					Tasks {experts.length}
 				</span>
 			</div>
 
-			{/* Task list */}
 			<div className="flex-1 overflow-y-auto">
 				{experts.map(expert => (
 					<TaskRow
@@ -176,15 +170,47 @@ const LeftPanel = ({ experts, activeId, onSelect, goal, progress }: {
 };
 
 // ============================================================
-// RIGHT AREA — Parallel agent columns
+// Tool activity + messages
 // ============================================================
+
+const TOOL_STATUS_CLS: Record<string, string> = {
+	'pending':          'text-loophole-fg-4',
+	'awaiting-approval': 'text-yellow-400',
+	'running':          'text-loophole-fg-3',
+	'success':          'text-green-400',
+	'rejected':         'text-red-400',
+	'error':            'text-red-400',
+};
+
+const ToolActivityList = ({ activity }: { activity: { id: string, toolName: string, title: string, status: string }[] }) => {
+	if (activity.length === 0) return null;
+	return (
+		<div className="space-y-0.5 py-1.5 border-y border-loophole-border-4">
+			{activity.map(t => (
+				<div key={t.id} className="flex items-center gap-1.5">
+					<span className={`text-[9px] w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+						t.status === 'success' ? 'bg-green-400'
+							: t.status === 'error' || t.status === 'rejected' ? 'bg-red-400'
+								: t.status === 'awaiting-approval' ? 'bg-yellow-400 animate-pulse'
+									: 'bg-loophole-fg-4'
+					}`} />
+					<span className={`text-[10px] truncate ${TOOL_STATUS_CLS[t.status] ?? ''}`} title={t.title}>
+						{toolDisplayName(t.toolName)}
+						{t.status === 'awaiting-approval' && ' — waiting for you'}
+						{t.status === 'rejected' && ' — denied'}
+					</span>
+				</div>
+			))}
+		</div>
+	);
+};
 
 const MessageBubble = ({ msg }: { msg: ExpertMessage }) => {
 	const isUser = msg.role === 'user';
 	return (
 		<div className={`text-xs leading-relaxed ${isUser ? 'text-loophole-fg-4' : 'text-loophole-fg-1'}`}>
 			{isUser && (
-				<div className="text-[10px] text-loophole-fg-4 uppercase tracking-wide mb-0.5 font-medium">Goal</div>
+				<div className="text-[10px] text-loophole-fg-4 uppercase tracking-wide mb-0.5 font-medium">Task</div>
 			)}
 			<span className="whitespace-pre-wrap break-words">{msg.content}</span>
 			{msg.isStreaming && (
@@ -194,15 +220,23 @@ const MessageBubble = ({ msg }: { msg: ExpertMessage }) => {
 	);
 };
 
-const AgentColumn = ({ expert, isActive }: { expert: ExpertState; isActive: boolean }) => {
+const AgentColumn = ({ expert, isActive, toolActivities }: {
+	expert: ExpertState;
+	isActive: boolean;
+	toolActivities: { id: string, toolName: string, title: string, status: string }[];
+}) => {
 	const bottomRef = useRef<HTMLDivElement>(null);
-	const settingsState = useSettingsState();
+	const configService = useAccessor().get('IConfigurationService');
 
 	useEffect(() => {
 		bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
 	}, [expert.messages.length, expert.messages[expert.messages.length - 1]?.content]);
 
 	const badge = STATUS_BADGE[expert.status];
+	const myTools = useMemo(
+		() => toolActivities.filter(t => t.expertId === expert.id),
+		[toolActivities, expert.id],
+	);
 
 	return (
 		<div
@@ -210,7 +244,6 @@ const AgentColumn = ({ expert, isActive }: { expert: ExpertState; isActive: bool
 				${isActive ? 'bg-loophole-bg-1' : 'bg-loophole-bg-2'}`}
 			style={{ width: '260px', minWidth: '260px' }}
 		>
-			{/* Column header */}
 			<div className="flex-shrink-0 flex items-center gap-2 px-3 py-2.5 border-b border-loophole-border-4">
 				<Avatar id={expert.id} name={expert.name} size={28} />
 				<div className="flex-1 min-w-0">
@@ -220,33 +253,57 @@ const AgentColumn = ({ expert, isActive }: { expert: ExpertState; isActive: bool
 					</div>
 					<div className="text-[10px] text-loophole-fg-4 truncate">{expert.role}</div>
 				</div>
-				{/* working indicator */}
 				{expert.status === 'working' && (
 					<div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
 				)}
 			</div>
 
-			{/* Messages */}
 			<div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
-				{expert.messages.length === 0 ? (
+				{expert.messages.length === 0 && myTools.length === 0 ? (
 					<div className="text-[10px] text-loophole-fg-4 mt-2 select-none">
-						{expert.status === 'idle' ? 'Waiting...' : 'Starting...'}
+						{expert.status === 'skipped'
+							? (expert.skipReason ?? 'Not needed for this goal.')
+							: expert.status === 'idle' ? 'Waiting...' : 'Starting...'}
 					</div>
 				) : (
-					expert.messages.map((msg, i) => (
-						<MessageBubble key={i} msg={msg} />
-					))
+					<>
+						<Messages messages={expert.messages} />
+						<ToolActivityList activity={myTools} />
+					</>
 				)}
 				<div ref={bottomRef} />
 			</div>
 
-			{/* Footer */}
 			<div className="flex-shrink-0 px-3 py-1.5 border-t border-loophole-border-4">
 				<span className="text-[10px] text-loophole-fg-4">
-					{modelLabel(resolveModel(expert.model, settingsState))}
+					{modelLabel(expertModelRef(configService, expert.id))}
 				</span>
 			</div>
 		</div>
+	);
+};
+
+/**
+ * Collapses consecutive assistant messages. Without the agent loop an expert
+ * produced one message; now each tool round adds another, and rendering the
+ * tool-instrumented chatter as separate paragraphs made every transcript
+ * harder to read.
+ */
+const Messages = ({ messages }: { messages: ExpertMessage[] }) => {
+	const collapsed: { role: 'user' | 'assistant', content: string, isStreaming: boolean }[] = [];
+	for (const m of messages) {
+		const last = collapsed[collapsed.length - 1];
+		if (last && m.role === 'assistant' && last.role === 'assistant') {
+			last.content = `${last.content}\n\n${m.content}`.trim();
+			last.isStreaming = m.isStreaming;
+		} else {
+			collapsed.push({ role: m.role, content: m.content, isStreaming: m.isStreaming });
+		}
+	}
+	return (
+		<>
+			{collapsed.map((m, i) => <MessageBubble key={i} msg={m} />)}
+		</>
 	);
 };
 
@@ -266,20 +323,27 @@ const EmptyState = () => (
 export const ExpertCanvasPage = () => {
 	const isDark = useIsDark();
 	const [state, setState] = useState(() => expertCanvasStore.getState());
+	const [toolActivities, setToolActivities] = useState(() => expertCanvasStore.getToolActivities());
 	const [activeExpertId, setActiveExpertId] = useState<string | null>(null);
 
 	useEffect(() => {
-		return expertCanvasStore.subscribe(() => setState({ ...expertCanvasStore.getState() }));
+		return expertCanvasStore.subscribe(() => {
+			setState({ ...expertCanvasStore.getState() });
+			setToolActivities([...expertCanvasStore.getToolActivities()]);
+		});
 	}, []);
 
 	const { experts, currentGoal } = state;
-	const hasActivity = experts.some(e => e.messages.length > 0);
+	// Show every column that has started, not just those with text, so an
+	// expert that is mid-tool-call is visible.
+	const hasActivity = experts.some(e => e.messages.length > 0 || e.status === 'working');
 
-	// Progress = done / total * 100
-	const done = experts.filter(e => e.status === 'done').length;
-	const progress = experts.length > 0 ? Math.round((done / experts.length) * 100) : 0;
+	// Progress over the experts that were actually asked to work, so a goal
+	// that legitimately skipped half the team can still reach 100%.
+	const engaged = experts.filter(e => e.status !== 'skipped');
+	const done = engaged.filter(e => e.status === 'done').length;
+	const progress = engaged.length > 0 ? Math.round((done / engaged.length) * 100) : 0;
 
-	// Auto-select the first working expert
 	useEffect(() => {
 		if (activeExpertId) return;
 		const working = experts.find(e => e.status === 'working');
@@ -290,23 +354,21 @@ export const ExpertCanvasPage = () => {
 		<div className={`@@loophole-scope ${isDark ? 'dark' : ''}`} style={{ width: '100%', height: '100%' }}>
 			<div className="w-full h-full flex overflow-hidden bg-loophole-bg-2">
 
-				{/* Left task list panel */}
 				<LeftPanel
 					experts={experts}
 					activeId={activeExpertId}
 					onSelect={setActiveExpertId}
-					goal={currentGoal}
 					progress={progress}
 				/>
 
-				{/* Right: parallel columns */}
 				{hasActivity ? (
 					<div className="flex-1 flex overflow-x-auto overflow-y-hidden">
-						{experts.filter(e => e.messages.length > 0).map(expert => (
+						{experts.filter(e => e.messages.length > 0 || e.status === 'working').map(expert => (
 							<AgentColumn
 								key={expert.id}
 								expert={expert}
 								isActive={activeExpertId === expert.id}
+								toolActivities={toolActivities}
 							/>
 						))}
 					</div>
@@ -315,6 +377,7 @@ export const ExpertCanvasPage = () => {
 				)}
 
 			</div>
+			{currentGoal && <div className="hidden" data-goal={currentGoal} />}
 		</div>
 	);
 };
