@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
- *  Licensed under the Apache License, Version 2.0. See LICENSE.txt in the project root for license information.
+ *  Copyright 2026 Loophole AI. All rights reserved.
+ *  Licensed under the MIT License. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
