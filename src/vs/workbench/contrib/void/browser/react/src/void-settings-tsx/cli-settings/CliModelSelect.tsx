@@ -241,7 +241,7 @@ export const useCliModels = () => {
 }
 
 /** Dropdown over the CLI model list using the editor's standard dropdown component. */
-export const CliModelSelect = ({ value, models, onChange, onCustom, onManage, allowDefault = true, className }: {
+export const CliModelSelect = ({ value, models, onChange, onCustom, onManage, allowDefault = true, emptyLabel, className }: {
 	value: string
 	models: LoopholeCliModelInfo[]
 	onChange: (value: string) => void
@@ -249,13 +249,16 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, onManage, al
 	/** Adds a pinned "Manage models..." entry that opens Settings > Models (where models are switched on). */
 	onManage?: () => void
 	allowDefault?: boolean
+	/** When set, a leading entry with the empty value (e.g. "Same as Chat") is always offered. */
+	emptyLabel?: string
 	className?: string
 }) => {
 	const options = useMemo(() => {
 		const list: CliModelOption[] = []
 		// With real models available the list is the models themselves; "default"
 		// only exists as a fallback so the picker is never empty.
-		if (allowDefault && models.length === 0) list.push({ value: '', label: 'Default', detail: 'Let the CLI choose' })
+		if (emptyLabel) list.push({ value: '', label: emptyLabel })
+		else if (allowDefault && models.length === 0) list.push({ value: '', label: 'Default', detail: 'Let the CLI choose' })
 		for (const model of models) {
 			list.push({ value: cliModelRef(model), label: model.name ?? model.modelID, detail: model.providerID })
 		}
@@ -265,7 +268,7 @@ export const CliModelSelect = ({ value, models, onChange, onCustom, onManage, al
 		if (onCustom) list.push({ value: '__custom__', label: 'Custom model...', detail: 'Enter a model id and provider' })
 		if (onManage) list.push({ value: '__manage__', label: 'Manage models...', detail: models.length === 0 ? 'No models enabled yet' : 'Choose which models appear here' })
 		return list
-	}, [models, value, allowDefault, onCustom, onManage])
+	}, [models, value, allowDefault, emptyLabel, onCustom, onManage])
 
 	const selected = options.find(option => option.value === value) ?? options[0]
 

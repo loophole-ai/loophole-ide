@@ -182,6 +182,8 @@ export type ServiceSendLLMMessageParams = {
 	// Loophole CLI session binding (optional, CLI-only): reuses the thread's
 	// server session when set; the main process reports the created id via onCliSession.
 	cliSessionId?: string;
+	// CLI-only: run this request on "providerID/modelID" instead of the configured chat model.
+	cliModel?: string;
 	onCliSession?: OnCliSession;
 	onPermission?: OnPermission;
 	onForm?: OnForm;

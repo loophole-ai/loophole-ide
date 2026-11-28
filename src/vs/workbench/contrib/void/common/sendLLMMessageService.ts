@@ -134,7 +134,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 	}
 
 	sendLLMMessage(params: ServiceSendLLMMessageParams) {
-		const { onText, onFinalMessage, onError, onTool, onCompaction, onCliSession, onPermission, onForm, onUsage, onAbort, modelSelection, cliSessionId, ...proxyParams } = params;
+		const { onText, onFinalMessage, onError, onTool, onCompaction, onCliSession, onPermission, onForm, onUsage, onAbort, modelSelection, cliSessionId, cliModel, ...proxyParams } = params;
 
 		// Phase 2: Loophole CLI (the CLI owns providers/models) — modelSelection may be null.
 		const cliEnabled = this.configService.getValue<boolean>('loophole.cli.enabled') === true;
@@ -143,7 +143,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		const syncScmToChat = this.voidSettingsService.state.globalSettings.syncSCMToChat !== false;
 		const role = isScm && !syncScmToChat ? 'commitMessage' : 'default';
 		const roleModel = this.configService.getValue<string>(`loophole.cli.models.${role}`) ?? '';
-		const cliModelParam = roleModel || (this.configService.getValue<string>('loophole.cli.model') ?? '');
+		const cliModelParam = cliModel || roleModel || (this.configService.getValue<string>('loophole.cli.model') ?? '');
 		const cliModelSlash = cliModelParam.indexOf('/');
 		const cli = cliEnabled ? {
 			enabled: true,

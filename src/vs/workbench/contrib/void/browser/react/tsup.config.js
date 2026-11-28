@@ -53,6 +53,7 @@ export default defineConfig({
 		'./src2/diff/index.tsx',
 		'./src2/void-token-usage-tsx/index.tsx',
 		'./src2/empty-editor-home-tsx/index.tsx',
+		'./src2/expert-canvas-tsx/index.tsx',
 	],
 	outDir: './out',
 	format: ['esm'],
@@ -78,5 +79,6 @@ export default defineConfig({
 	treeshake: true,
 	esbuildOptions(options) {
 		options.outbase = 'src2'  // tries copying the folder hierarchy starting at src2
+		options.loader = { ...options.loader, '.png': 'dataurl' }  // inline PNGs as base64
 	}
 })
